@@ -233,6 +233,23 @@ export function buildTown(W: World, T: Terrain, site: Site, def: SettlementDef, 
     const k: ObjKind = pf === 'well' ? 'well' : 'decor';
     obj(W, k, pf, cx, cz, ground(cx, cz), 0, def.faction, site.id, 0, { data: { r: pf === 'arena' ? plazaR - 3 : pf === 'pyre' ? 2.5 : 1.3 } });
   }
+  // lights: lamp posts round the plaza, braziers either side of each gate
+  if (style !== 'hive' && style !== 'hive_dead') {
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+      const lx = cx + Math.sin(a) * (plazaR - 0.5), lz = cz + Math.cos(a) * (plazaR - 0.5);
+      if (T.roadAt(lx, lz) > 0.5) continue;
+      obj(W, 'lamp', 'lamp', lx, lz, ground(lx, lz), a, def.faction, site.id, 0);
+    }
+    for (const g of info.gates) {
+      for (const side of [-1, 1]) {
+        const ta = g.a + side * (5.5 / Math.max(20, wallR));
+        const r = wallR - 2.2;
+        const bx = cx + Math.sin(ta) * r, bz = cz + Math.cos(ta) * r;
+        obj(W, 'decor', 'brazier', bx, bz, ground(bx, bz), 0, def.faction, site.id, 0);
+      }
+    }
+  }
   const loopR = Math.max(plazaR + 4, R * 0.55);
   for (let i = 0; i < 8; i++) {
     const a = (i / 8) * Math.PI * 2 + rng.range(-0.2, 0.2);

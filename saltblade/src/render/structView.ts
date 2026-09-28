@@ -9,6 +9,33 @@ import { buildingAt } from '../sim/structures';
 import { buildSiteMesh } from './baseView';
 
 const TILE = 256;
+
+// warm pools of light on the ground around lamps and fires, strongest at night
+const poolU = { uNight: { value: 0 }, uTime: { value: 0 } };
+const poolMat = new THREE.ShaderMaterial({
+  uniforms: poolU,
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `uniform float uNight, uTime; varying vec2 vUv;
+    void main() {
+      float r = length(vUv * 2.0 - 1.0);
+      float flick = 0.88 + 0.12 * sin(uTime * 9.0 + vUv.x * 3.0) * sin(uTime * 5.3);
+      float a = pow(max(0.0, 1.0 - r), 2.2) * uNight * flick;
+      gl_FragColor = vec4(vec3(1.0, 0.62, 0.28) * a * 0.75, 1.0);
+    }`,
+});
+const poolGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+const POOL: Record<string, number> = { lamp: 7, campfire: 7, firepit: 8, brazier: 6, pyre: 14, fire: 8, stove: 3.5 };
+function lightPool(def: string): THREE.Mesh | null {
+  const r = POOL[def];
+  if (!r) return null;
+  const m = new THREE.Mesh(poolGeo, poolMat);
+  m.scale.set(r * 2, 1, r * 2);
+  m.position.y = 0.06;
+  m.renderOrder = 4;
+  m.frustumCulled = true;
+  return m;
+}
 const FAR = 2600;
 const NEAR = 700;
 
@@ -134,6 +161,8 @@ export class StructViews {
     for (const id of hide) { const v = this.views.get(id); if (v?.roof) v.roof.visible = false; }
     this.hiddenRoofs = hide;
     if (this.glowMat) this.glowMat.color.setScalar(0.25 + 0.75 * night);
+    poolU.uNight.value = night;
+    poolU.uTime.value += dt;
   }
 
   private keyOf(o: WObj) {
@@ -200,6 +229,8 @@ export class StructViews {
         root.position.set(o.x, o.y, o.z);
         root.rotation.y = o.rot;
         root.add(mesh);
+        const pool = lightPool(o.def);
+        if (pool) root.add(pool);
         if (glow) { root.add(glow); this.glowMat = glow.material as THREE.MeshBasicMaterial; }
         return { root, glow, key };
       }
@@ -210,7 +241,7 @@ export class StructViews {
     v.root.removeFromParent();
     v.root.traverse((c) => {
       const m = c as THREE.Mesh;
-      if (m.isMesh && m.geometry && !Object.values(oreGeo).includes(m.geometry) && m.geometry !== pileGeo) m.geometry.dispose();
+      if (m.isMesh && m.geometry && !Object.values(oreGeo).includes(m.geometry) && m.geometry !== pileGeo && m.geometry !== poolGeo) m.geometry.dispose();
     });
   }
 }
