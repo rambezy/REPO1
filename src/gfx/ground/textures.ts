@@ -864,35 +864,83 @@ function paintLogFace(tr: number, seed: number, S = 64, H = 32): MatTex {
 }
 
 function paintRockFace(tr: number, seed: number, S = 64, H = 16): MatTex {
+  // a short cliff: fractured, angular facets catching the light from the upper
+  // left, a few strata ledges, moss hanging over the lip and damp at the foot
   const { c, g } = surface(S, H, tr);
   const rng = new RNG(seed);
   const gr = g.createLinearGradient(0, 0, 0, H);
-  gr.addColorStop(0, '#8a8680');
-  gr.addColorStop(0.3, '#6e6a64');
-  gr.addColorStop(1, '#3e3c38');
+  gr.addColorStop(0, '#7c786f');
+  gr.addColorStop(0.4, '#645f58');
+  gr.addColorStop(1, '#3a3733');
   g.fillStyle = gr;
   g.fillRect(0, 0, S, H);
-  for (let i = 0; i < 90; i++) {
-    const x = rng.next() * S, w = 1 + rng.next() * 4, y0 = rng.next() * H * 0.4, L = 4 + rng.next() * 10;
-    wrap(S, H, x, y0, w + 1, (X) => {
-      const cg = g.createLinearGradient(X, 0, X + w, 0);
-      cg.addColorStop(0, 'rgba(200,196,188,0.35)');
-      cg.addColorStop(0.4, 'rgba(120,116,110,0.1)');
-      cg.addColorStop(1, 'rgba(20,18,16,0.45)');
-      g.fillStyle = cg;
-      g.fillRect(X, y0, w, L);
+  // facets: columns of stone split once or twice down their height
+  let x = 0;
+  while (x < S) {
+    const w = 5 + rng.next() * 8;
+    const cuts = [0, H * (0.3 + rng.next() * 0.25), H * (0.62 + rng.next() * 0.2), H];
+    const ed = cuts.map(() => [(rng.next() - 0.5) * 2.4, (rng.next() - 0.5) * 2.4]);
+    const tone = cuts.map(() => rng.next());
+    const X0 = x;
+    wrap(S, H, X0 + w / 2, H / 2, w + 3, (cx) => {
+      const l = cx - w / 2, r = cx + w / 2;
+      for (let k = 0; k < 3; k++) {
+        const y0 = cuts[k], y1 = cuts[k + 1];
+        const pts = [[l + ed[k][0], y0], [r + ed[k][1], y0], [r + ed[k + 1][1], y1], [l + ed[k + 1][0], y1]];
+        const t = tone[k];
+        // lit faces turn left and up, shaded ones away
+        const col = t < 0.35 ? 'rgba(170,164,152,0.45)' : t < 0.7 ? 'rgba(110,106,98,0.3)' : 'rgba(34,32,28,0.4)';
+        g.fillStyle = col;
+        g.beginPath();
+        g.moveTo(pts[0][0], pts[0][1]);
+        for (let q = 1; q < 4; q++) g.lineTo(pts[q][0], pts[q][1]);
+        g.closePath();
+        g.fill();
+        // bright arris down the left edge, dark crack down the right
+        g.lineWidth = 0.35;
+        g.strokeStyle = 'rgba(214,208,196,0.35)';
+        g.beginPath(); g.moveTo(pts[0][0], pts[0][1]); g.lineTo(pts[3][0], pts[3][1]); g.stroke();
+        g.lineWidth = 0.45;
+        g.strokeStyle = 'rgba(18,16,14,0.55)';
+        g.beginPath(); g.moveTo(pts[1][0], pts[1][1]); g.lineTo(pts[2][0], pts[2][1]); g.stroke();
+        // the ledge under each block
+        if (k < 2) {
+          g.lineWidth = 0.3;
+          g.strokeStyle = 'rgba(20,18,16,0.45)';
+          g.beginPath(); g.moveTo(pts[3][0], y1); g.lineTo(pts[2][0], y1); g.stroke();
+          g.strokeStyle = 'rgba(200,194,182,0.25)';
+          g.beginPath(); g.moveTo(pts[3][0], y1 + 0.4); g.lineTo(pts[2][0], y1 + 0.4); g.stroke();
+        }
+      }
     }, false);
+    x += w;
   }
-  for (let i = 0; i < 20; i++) {
-    const x = rng.next() * S;
-    wrap(S, H, x, 1, 3, (X) => ellipse(g, X, 0.8 + rng.next(), 1.5 + rng.next() * 2, 0.8, pick(rng, ['#5a7a34', '#4a6a2c'])), false);
+  // lichen and weathering stains
+  for (let i = 0; i < 16; i++) {
+    const x = rng.next() * S, y = rng.next() * H * 0.8, r = 0.8 + rng.next() * 2;
+    const col = pick(rng, ['#8a8a5a', '#9a9272', '#5a5448']);
+    wrap(S, H, x, y, r, (X, Y) => softSpot(g, X, Y, r, col, 0.3), false);
+  }
+  // moss and grass hanging over the lip
+  for (let i = 0; i < 26; i++) {
+    const x = rng.next() * S, L = 0.8 + rng.next() * 2.4, w = 1.2 + rng.next() * 2.2;
+    const col = pick(rng, ['#4e7030', '#5d7d36', '#3f5e28', '#6a8a3c']);
+    wrap(S, H, x, 0, w + 1, (X) => {
+      ellipse(g, X, 0.3, w, 0.9, col);
+      for (let b2 = 0; b2 < 3; b2++) {
+        g.strokeStyle = col;
+        g.lineWidth = 0.3;
+        const bx = X + (b2 - 1) * w * 0.5;
+        g.beginPath(); g.moveTo(bx, 0.5); g.quadraticCurveTo(bx + 0.4, L * 0.6, bx + 0.2, L + 0.6); g.stroke();
+      }
+    }, false);
   }
   const fg = g.createLinearGradient(0, H - 4, 0, H);
   fg.addColorStop(0, 'rgba(0,0,0,0)');
   fg.addColorStop(1, 'rgba(10,8,6,0.5)');
   g.fillStyle = fg;
   g.fillRect(0, H - 4, S, 4);
-  noiseGrain(c, 9, seed + 1);
+  noiseGrain(c, 8, seed + 1);
   return toTex(c);
 }
 
@@ -921,6 +969,9 @@ function paintRockTop(tr: number, seed: number, S = 96, cave = false): MatTex {
       pts.push(Math.cos(a) * r, Math.sin(a) * r * 0.8);
     }
     const col = pick(rng, cols);
+    // some of the rock stays one unbroken sheet: no slab outline there
+    if (rng.next() < 0.22) continue;
+    const spots = [0, 1].map(() => [(rng.next() - 0.5) * step * 0.6, (rng.next() - 0.5) * step * 0.5, 1 + rng.next() * 2, rng.next() < 0.5 ? 1 : 0]);
     wrap(S, S, cx, cy, step, (X, Y) => {
       const at = (q: number) => [X + pts[q * 2], Y + pts[q * 2 + 1]] as const;
       g.beginPath();
@@ -943,14 +994,30 @@ function paintRockTop(tr: number, seed: number, S = 96, cave = false): MatTex {
         g.lineWidth = 0.4;
         g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke();
       }
-      for (let k = 0; k < 2; k++) softSpot(g, X + (rng.next() - 0.5) * step * 0.6, Y + (rng.next() - 0.5) * step * 0.5, 1 + rng.next() * 2, rng.next() < 0.5 ? dim(col, 0.4) : lit(col, 0.3), 0.3);
+      for (const [dx, dy, r, light] of spots) softSpot(g, X + dx, Y + dy, r, light ? lit(col, 0.3) : dim(col, 0.4), 0.3);
+    });
+  }
+  // long cracks running through the sheet
+  for (let i = 0; i < 7; i++) {
+    const pts: number[] = [];
+    let x = rng.next() * S, y = rng.next() * S, a = rng.next() * Math.PI * 2;
+    for (let k = 0; k < 7; k++) { pts.push(x, y); a += (rng.next() - 0.5) * 0.9; x += Math.cos(a) * 3; y += Math.sin(a) * 3; }
+    wrap(S, S, pts[0], pts[1], 24, (X, Y) => {
+      const dx = X - pts[0], dy = Y - pts[1];
+      g.strokeStyle = cave ? 'rgba(6,5,4,0.6)' : 'rgba(20,18,15,0.5)';
+      g.lineWidth = 0.28;
+      g.beginPath();
+      for (let k = 0; k < pts.length; k += 2) { if (k === 0) g.moveTo(pts[k] + dx, pts[k + 1] + dy); else g.lineTo(pts[k] + dx, pts[k + 1] + dy); }
+      g.stroke();
     });
   }
   if (!cave) {
-    // lichen and moss
-    for (let i = 0; i < 70; i++) {
-      const x = rng.next() * S, y = rng.next() * S, r = 0.6 + rng.next() * 1.6;
-      wrap(S, S, x, y, r, (X, Y) => ellipse(g, X, Y, r, r * 0.7, rgba(pick(rng, ['#a8a868', '#7a8a48', '#c8c490', '#56703a']), 0.55)));
+    // lichen: crusty clusters of tiny flecks rather than round spots
+    for (let i = 0; i < 38; i++) {
+      const x = rng.next() * S, y = rng.next() * S, R = 1 + rng.next() * 1.8;
+      const col = pick(rng, ['#9a9a64', '#7a8448', '#b4ae84', '#5e7040']);
+      const flecks = Array.from({ length: 8 + Math.floor(rng.next() * 8) }, () => [(rng.next() - 0.5) * 2 * R, (rng.next() - 0.5) * 1.6 * R, 0.18 + rng.next() * 0.34]);
+      wrap(S, S, x, y, R + 1, (X, Y) => { for (const [fx, fy, fr] of flecks) ellipse(g, X + fx, Y + fy, fr, fr * 0.8, rgba(col, 0.5)); });
     }
     for (let i = 0; i < 26; i++) {
       const x = rng.next() * S, y = rng.next() * S;

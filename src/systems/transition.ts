@@ -42,9 +42,10 @@ export async function travel(mapId: string, spawn: string | { x: number; y: numb
   try {
     enterMap(mapId, spawn, dir);
     snapCamera();
-    // give the chunk worker a moment so we don't fade into flat colours
+    // stay dark until the ground under the view is painted (slow machines
+    // can take a couple of seconds on a first visit)
     const t0 = performance.now();
-    while (!chunks.ready(G.map, G.cam.x, G.cam.y, G.cam.x + G.viewW, G.cam.y + G.viewH) && performance.now() - t0 < 900) {
+    while (!chunks.ready(G.map, G.cam.x, G.cam.y, G.cam.x + G.viewW, G.cam.y + G.viewH) && performance.now() - t0 < 2200) {
       chunks.prepare(G.map, G.cam.x, G.cam.y, G.cam.x + G.viewW, G.cam.y + G.viewH, 0);
       await new Promise((r) => setTimeout(r, 30));
     }
