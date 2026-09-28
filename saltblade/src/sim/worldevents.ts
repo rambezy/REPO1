@@ -14,6 +14,9 @@ import { DAY } from './clock';
 import { kill, knockOut } from './health';
 import { Site } from '../world/terrain';
 import { shopGrid } from './shops';
+import type { TownInfo } from '../world/towns';
+import type { WObj } from './objects';
+import type { World } from './world';
 
 const rng = new RNG(31337);
 let t = 0;
@@ -49,7 +52,8 @@ export function launchCampaign(key: string) { const c = CAMPAIGNS.find((x) => x.
 
 function launch(c: Campaign) {
   const W = S.W;
-  const targets = c.targets.map(siteBy).filter((s): s is Site => !!s && !!s.faction && W.rel.hostile(c.attacker, s.faction));
+  const lately = (s: Site) => S.clock.t - (W.flags.sacked?.[s.id] ?? -1e12) < DAY * 4; // nothing left to take
+  const targets = c.targets.map(siteBy).filter((s): s is Site => !!s && !!s.faction && W.rel.hostile(c.attacker, s.faction) && !lately(s));
   if (!targets.length) return;
   const target = rng.pick(targets);
   // march from home, or out of the wastes
@@ -158,6 +162,9 @@ export function tickWorldEvents(dt: number) {
   if (t > 0) return;
   t = 6;
   const W = S.W;
+  // towns mend, an hour at a time
+  const hour = Math.floor(S.clock.t / 3600);
+  if (hour !== lastHour) { lastHour = hour; for (const info of W.towns.values()) recover(W, info); }
   let active = 0;
   for (const sq of W.squads.values()) {
     if (!sq.flags.townRaid) continue;
@@ -169,8 +176,8 @@ export function tickWorldEvents(dt: number) {
     const there = Math.hypot((lead?.x ?? sq.x) - site.x, (lead?.z ?? sq.z) - site.z) < site.r + 60;
     if (there && !sq.active) settle(sq, site);
   }
-  // now and then, somebody marches
-  if (active < 2 && rng.chance(0.012)) {
+  // now and then, somebody marches: one or two war parties a day
+  if (active < 2 && rng.chance(0.004)) {
     const list = CAMPAIGNS.filter((c) => !suppressed(c));
     if (list.length) launch(rng.weighted(list.map((c) => [c, c.weight] as const)));
   }
@@ -212,3 +219,112 @@ export function leaderFell(c: Char) {
   }
 }
 
+
+// ---------------------------------------------------------------- recovery
+
+let lastHour = -1;
+const guardRole = (fac: string): Role => (fac === 'mawkin' || fac === 'reavers' || fac === 'blackcomb' ? 'bandit' : 'guard');
+
+function townSquad(W: World, site: Site, kind: 'guard' | 'town') {
+  for (const sq of W.squads.values()) if (sq.site === site.id && sq.kind === kind && sq.faction === site.faction) return sq;
+  return null;
+}
+
+/**
+ * Someone new comes to town: through a gate if your people are near enough
+ * to see them arrive, straight to their place if not.
+ */
+function newcomer(W: World, info: TownInfo, spec: { faction: string; role: Role; level?: number; race?: string; loadout?: string }, sq: Squad, home: [number, number, number]): Char {
+  const c = makePerson(W, spec, rng);
+  W.moveToSquad(c, sq);
+  const site = info.site;
+  const watched = W.playerChars().some((p) => Math.hypot(p.x - site.x, p.z - site.z) < site.r + 400);
+  let x = home[0], z = home[1];
+  if (watched) {
+    const g = info.gates.length ? rng.pick(info.gates) : null;
+    const a = g ? g.a : rng.range(0, Math.PI * 2);
+    x = (g ? g.x : site.x + Math.sin(a) * site.r * 0.85) + Math.sin(a) * 6;
+    z = (g ? g.z : site.z + Math.cos(a) * site.r * 0.85) + Math.cos(a) * 6;
+  }
+  const spot = S.nav.nearestOpen(x, z, 12) ?? [x, z];
+  c.x = spot[0]; c.z = spot[1]; c.y = S.T.heightAt(c.x, c.z);
+  c.homeX = home[0]; c.homeZ = home[1]; c.homeDir = c.dir = home[2];
+  c.site = site.id;
+  return c;
+}
+
+/** Where the leader of a town sits, and what they are called. */
+function seatOf(info: TownInfo): { role: Role; title: string; guard: boolean; b: WObj; back: number; race?: string; level?: number; loadout?: string } | null {
+  const fac = info.site.faction!;
+  const def = SETTLEMENT[info.site.settlement!];
+  if (!def) return null;
+  for (const b of info.buildings) {
+    const use = b.data.use;
+    if (use === 'palace' && fac === 'concord') return { role: 'noble', title: def.key === 'aurum' ? 'Lord of the Gilded Seat' : 'Lord', guard: false, b, back: 0, race: 'valefolk' };
+    if (use === 'temple' && fac === 'ember' && def.capital && !info.shops.some((s) => s.building === b)) return { role: 'priest', title: 'the High Flame', guard: false, b, back: b.data.d / 2 - 3 };
+    if (use === 'boss' || (use === 'hall' && fac === 'karuk')) {
+      const title = fac === 'karuk' ? (def.capital ? 'the Horn King' : 'War Chief') : fac === 'reavers' ? 'Reaver Lord' : 'Chief';
+      return { role: 'boss', title, guard: true, b, back: b.data.d / 2 - 2.5, level: 50, loadout: fac === 'reavers' ? 'reavers_boss' : undefined };
+    }
+  }
+  return null;
+}
+
+const SHOP_TITLE: Record<string, string> = { bar: 'Barkeep', temple: 'Priest', slaves: 'Slave Trader', mercs: 'Company Clerk' };
+
+/** A town makes good its losses: guards for empty posts, traders for dead ones, and in time a new leader. */
+function recover(W: World, info: TownInfo) {
+  const site = info.site;
+  const def = SETTLEMENT[site.settlement!];
+  if (!W.populated.has(site.id) || !site.faction || !def || def.faction !== site.faction) return;
+  if (S.clock.t - (W.flags.sacked?.[site.id] ?? -1e12) < DAY) return; // still counting who is missing
+  const known = W.discovered.has(site.id);
+  // guards
+  const gs = townSquad(W, site, 'guard');
+  if (gs && rng.chance(0.15)) {
+    const up = gs.members.map((id) => W.char(id)).filter((c): c is Char => !!c && c.alive && c.role !== 'boss');
+    const want = gs.flags.size ?? info.plan.guards;
+    if (up.length < want) {
+      const free = info.posts.filter((p) => !up.some((c) => Math.hypot(c.homeX - p.x, c.homeZ - p.z) < 2));
+      const post = free.length ? rng.pick(free) : null;
+      const home: [number, number, number] = post ? [post.x, post.z, post.dir] : [site.x + rng.range(-8, 8), site.z + rng.range(-8, 8), rng.range(0, Math.PI * 2)];
+      newcomer(W, info, { faction: site.faction, role: guardRole(site.faction) }, gs, home);
+    }
+  }
+  // traders
+  const town = townSquad(W, site, 'town');
+  const shut: Record<number, number> = W.flags.shut ?? (W.flags.shut = {});
+  for (const sh of W.shops.values()) {
+    if (sh.site !== site.id) continue;
+    const k = W.char(sh.keeper);
+    if (k && k.status !== 'dead' && k.faction !== 'player') { delete shut[sh.id]; continue; }
+    if (shut[sh.id] === undefined) { shut[sh.id] = S.clock.t; continue; }
+    const spot = info.shops.find((x) => x.counter.id === sh.id);
+    if (S.clock.t - shut[sh.id] < DAY || !spot || !town) continue;
+    const role: Role = sh.kind === 'bar' ? 'barkeep' : sh.kind === 'temple' ? 'priest' : 'shopkeeper';
+    const c = newcomer(W, info, { faction: site.faction === 'mawkin' ? 'drifters' : site.faction, role }, town, spot.spot);
+    c.shop = String(sh.id);
+    c.title = SHOP_TITLE[sh.kind] ?? 'Trader';
+    sh.keeper = c.id;
+    delete shut[sh.id];
+    if (known) W.say(`${c.name} has taken over ${sh.name} in ${site.name}.`, 'info', S.clock.t);
+  }
+  // a new leader, once the old one is mourned or forgotten
+  const since = W.flags.leaderless?.[site.id];
+  if (since !== undefined && S.clock.t - since > DAY * (def.capital ? 10 : 4)) {
+    const clear = () => { const l = { ...W.flags.leaderless }; delete l[site.id]; W.flags.leaderless = l; };
+    const seat = seatOf(info);
+    const sq = seat ? townSquad(W, site, seat.guard ? 'guard' : 'town') : null;
+    if (!seat || !sq) { clear(); return; }
+    const b = seat.b;
+    const home: [number, number, number] = [b.x - Math.sin(b.rot) * seat.back, b.z - Math.cos(b.rot) * seat.back, b.rot];
+    const c = newcomer(W, info, { faction: site.faction, role: seat.role, race: seat.race, level: seat.level, loadout: seat.loadout }, sq, home);
+    c.title = seat.title;
+    c.mem.leaderOf = site.id;
+    clear();
+    if (known || heard(site)) {
+      W.say(`${c.name} is the new ${seat.title.replace(/^the /, '')} of ${site.name}.`, 'story', S.clock.t);
+      S.fx.notice(`${site.name} has a new leader: ${c.name}, ${seat.title}.`, 'info');
+    }
+  }
+}

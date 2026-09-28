@@ -205,6 +205,8 @@ export function populateTown(W: World, info: TownInfo) {
       a.mem.livestock = fac;
     }
   }
+  // how many stand guard, so the town can make good its losses
+  gs.flags.size = gs.members.filter((id) => W.char(id)?.role !== 'boss').length;
   placeUniques(W, info);
   placePitMaster(W, info);
 }
