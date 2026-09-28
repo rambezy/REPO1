@@ -79,7 +79,10 @@ export class GameMap {
   music = 'village';
   /** 0 = lit like outdoors at day; 1 = pitch dark. Interiors use this as a floor. */
   ambient = 0;
+  /** Bumped when objects or collision change (paths are cached against it). */
   version = 0;
+  /** Bumped only when the ground itself changes (painted chunks are cached against it). */
+  groundVersion = 0;
   parent?: string;
   private nextId = 1;
   private buckets = new Map<number, MapObject[]>();
@@ -104,7 +107,11 @@ export class GameMap {
   }
   set(tx: number, ty: number, t: number) {
     if (!this.inBounds(tx, ty)) return;
-    this.ground[ty * this.w + tx] = t;
+    const i = ty * this.w + tx;
+    if (this.ground[i] === t) return;
+    this.ground[i] = t;
+    this.groundVersion++;
+    this.version++;
   }
   fillRect(tx: number, ty: number, w: number, h: number, t: number) {
     for (let y = ty; y < ty + h; y++) for (let x = tx; x < tx + w; x++) this.set(x, y, t);

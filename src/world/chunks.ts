@@ -10,7 +10,7 @@ import { T } from './terrain';
 import { G } from '../G';
 import ChunkWorker from '../gfx/chunkWorker?worker&inline';
 
-interface Entry { canvas: HTMLCanvasElement | null; version: number; pending: boolean; lastUsed: number }
+interface Entry { canvas: HTMLCanvasElement | null; version: number; pending: boolean; lastUsed: number; rough?: HTMLCanvasElement }
 
 const FALLBACK: Record<number, string> = {
   [T.GRASS]: '#4f7632', [T.FOREST]: '#34482a', [T.MEADOW]: '#5a8438', [T.DIRT]: '#76573a', [T.ROAD]: '#957853',
@@ -78,7 +78,7 @@ class ChunkCache {
   }
 
   invalidate(map: GameMap) {
-    map.version++;
+    map.groundVersion++;
   }
 
   /** Drop everything cached for a map (e.g. after it was rebuilt). */
@@ -87,7 +87,7 @@ class ChunkCache {
   }
 
   private request(map: GameMap, cx: number, cy: number, key: number, e: Entry) {
-    const version = map.version;
+    const version = map.groundVersion;
     if (this.workers.length) {
       let wi = 0;
       for (let i = 1; i < this.workers.length; i++) if (this.workers[i].busy < this.workers[wi].busy) wi = i;
@@ -126,7 +126,7 @@ class ChunkCache {
       let e = t.get(key);
       if (!e) { e = { canvas: null, version: -1, pending: false, lastUsed: this.frame }; t.set(key, e); }
       e.lastUsed = this.frame;
-      if (e.version !== map.version && !e.pending) this.request(map, cx, cy, key, e);
+      if (e.version !== map.groundVersion && !e.pending) this.request(map, cx, cy, key, e);
     }
     // evict old chunks
     if (t.size > 70) {
@@ -155,16 +155,29 @@ class ChunkCache {
       if (cx * CHUNK >= map.w || cy * CHUNK >= map.h) continue;
       const e = t.get(cy * 1000 + cx);
       if (e && e.canvas) ctx.drawImage(e.canvas, cx * PX - m, cy * PX - m, PX + 2 * m, PX + 2 * m);
-      else this.drawFallback(ctx, map, cx, cy);
+      else this.drawFallback(ctx, map, cx, cy, e);
     }
     drawWaterFx(ctx, map, x0, y0, x1, y1, time);
   }
 
-  private drawFallback(ctx: CanvasRenderingContext2D, map: GameMap, cx: number, cy: number) {
-    for (let ty = cy * CHUNK; ty < Math.min(map.h, (cy + 1) * CHUNK); ty++) for (let tx = cx * CHUNK; tx < Math.min(map.w, (cx + 1) * CHUNK); tx++) {
-      ctx.fillStyle = FALLBACK[map.get(tx, ty)] || '#0b0807';
-      ctx.fillRect(tx * TS - 0.05, ty * TS - 0.05, TS + 0.1, TS + 0.1);
+  /**
+   * Until a chunk is painted: a soft wash of its ground colours (one texel per
+   * tile, smoothed), so a late chunk reads as out of focus rather than blocky.
+   */
+  private drawFallback(ctx: CanvasRenderingContext2D, map: GameMap, cx: number, cy: number, e?: Entry) {
+    let rough = e?.rough;
+    if (!rough) {
+      const n = CHUNK + 2;
+      rough = newCanvas(n, n);
+      const g = rough.getContext('2d')!;
+      for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+        g.fillStyle = FALLBACK[map.get(cx * CHUNK + i - 1, cy * CHUNK + j - 1)] || '#0b0807';
+        g.fillRect(i, j, 1, 1);
+      }
+      if (e) e.rough = rough;
     }
+    // the ring of neighbour tiles only feeds the smoothing at the edges
+    ctx.drawImage(rough, 1, 1, CHUNK, CHUNK, cx * PX, cy * PX, PX, PX);
   }
 
   private toCanvas(px: Uint32Array): HTMLCanvasElement {
