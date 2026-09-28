@@ -73,6 +73,7 @@ export function attachDebug() {
     },
     log() { return G.W.log.slice(-15).map((l: any) => l.text); },
     save: (slot = '1') => saveGame(slot),
+    emit(...args: any[]) { import('./core/events').then((e) => (e.emit as any)(...args)); return true; },
     select(ids: number[]) { import('./game/control').then((m) => { m.sel.clear(); for (const i of ids) m.sel.add(i); import('./core/events').then((e) => e.emit('sel')); }); return ids.length; },
     raid() { const b = playerBase(); if (!b) return 'no base'; spawnRaid(b.x, b.z, b.n); return b; },
     load: (slot = '1') => loadSlot(slot),

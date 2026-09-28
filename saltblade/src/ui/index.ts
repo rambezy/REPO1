@@ -21,6 +21,7 @@ import { toggleMap } from './map';
 import { toggleFactions } from './factions';
 import { fitProsthetic } from '../sim/health';
 import { setupHints } from './hints';
+import { openBook } from './read';
 import { saveGame, loadSlot } from '../game/session';
 import { G } from '../state';
 
@@ -39,6 +40,7 @@ export function setupUI() {
   on('ui:menu', () => openGameMenu());
   on('ui:map', () => toggleMap());
   on('ui:factions', () => toggleFactions());
+  on('ui:read', (key: string, cid?: number) => openBook(key, cid));
   on('ui:prosthetic', (cid: number, uid: number) => {
     const c = S.W.char(cid);
     if (!c) return;

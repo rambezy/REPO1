@@ -163,10 +163,10 @@ export const UNIQUES: UniqueChar[] = [
     skills: { science: 54, engineering: 46, robotics: 42, perception: 32, toughness: 34 },
     look: { scars: 1 },
     price: 0, needs: 'strong_squad',
-    story: "Lumen kept the lamps in a Maker house, lighting the rooms at dusk and dimming them at dawn for a family whose names it still says every night. It woke in the Rustwastes with no house and no family, and for eighty years it has heard a faint call from the Maker's Heart that sounds like its own name. It has tried to reach the Heart alone four times, and four times the Wardens sent it back in pieces.",
+    story: "Lumen kept the lamps in a Maker house, lighting the rooms at dusk and dimming them at dawn for a family whose names it still says every night. It woke in the Rustwastes with no house and no family, and for eighty years it has heard a faint call from the Maker's Heart, speaking its name in the voice of the woman who built it. It has tried to reach the Heart alone four times, and four times the Wardens sent it back in pieces.",
     lines: {
       greet: "Good evening. Correction: it is not evening. I apologise. It is always evening, somewhere in me.",
-      about: "I kept the lamps in a house of the Makers. There were four of them, and a dog. I do not know what the dog was for, but I remember it fondly. Something in the Maker's Heart calls my name at night, and I would like to know who.",
+      about: "I kept the lamps in a house of the Makers: four of them, and a dog I remember fondly without knowing what it was for. Something in the Maker's Heart calls my name at night, in the voice of the woman who made me. She has been dust for a thousand years. I would like to know who is using her voice.",
       rumour: "Every Hollow in Rustward hears the calling from the Heart. The Custodians have decided that none of us will answer. I have decided otherwise. The way runs past Glassfall, and the Wardens stand thickest around the crater itself.",
       ask: "I do not need chits. I do not eat, and there is nothing I want to buy. I need companions strong enough to reach the Heart, because alone I have failed four times. Bring me a strong band, and I will light your way.",
       join: "Thank you. I will keep the lamps. I have always kept the lamps.",

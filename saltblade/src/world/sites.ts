@@ -8,6 +8,7 @@ import { placeBuilding } from './towns';
 import { Grid } from '../sim/inventory';
 import { REGIONS } from './regions';
 import { ObjKind } from '../sim/objects';
+import { BOOKS } from '../content/lore';
 
 const RELICS: [string, number, number, number][] = [
   ['machine_parts', 4, 1, 3], ['elec_parts', 3, 1, 2], ['ancient_coin', 3, 1, 4], ['memory_shard', 2, 1, 2], ['foodcube', 2, 1, 3], ['maker_tablet', 2, 1, 1],
@@ -48,6 +49,7 @@ export function buildSite(W: World, T: Terrain, site: Site, rng: RNG) {
             if (rng.chance(0.12 * rich)) { const [id] = rng.weighted(OLD_GEAR.map((g) => [g, g[1]] as const)); f.inv.add(id, 1, rng.int(3, 5)); }
             if (k === 'ruin_lab' && rng.chance(0.5)) f.inv.add('relic_core', 1);
             if (k === 'ruin_lab') f.inv.add('old_codex', 1);
+            if (rng.chance(0.18 * rich)) { const rare = BOOKS.filter((bk) => bk.rare || bk.kind === 'journal' || bk.kind === 'technical'); f.inv.add('book_' + rng.pick(rare).key, 1); }
             if (k === 'glass_ruin' && rng.chance(0.4)) f.inv.add('old_codex', 1);
           }
         }

@@ -39,9 +39,12 @@ export function hostile(a: Char, b: Char): boolean {
     return d.diet === 'predator' || d.diet === 'machine' || (d.diet === 'scavenger' && !!b.mem.provoked) || !!b.mem.provoked;
   }
   if (a.animal || b.animal) return W.rel.hostile(a.faction, b.faction) || (!!a.mem.enemies && a.mem.enemies.includes(b.id));
+  // named people will talk before they fight
+  if (a.unique && b.faction === 'player' && !(a.mem.enemies && a.mem.enemies.includes(b.id))) return false;
+  if (b.unique && a.faction === 'player' && !(b.mem.enemies && b.mem.enemies.includes(a.id)) && b.lastHitBy !== a.id) return false;
   if (W.rel.hostile(a.faction, b.faction)) return true;
   // the Covenant does not suffer machines, and hunts other peoples on its own land
-  if (a.faction === 'ember' && a.role !== 'slave') {
+  if (a.faction === 'ember' && a.role !== 'slave' && !a.unique) {
     if (b.robot) return true;
     const br = RACE[b.look.race]?.race;
     if ((br === 'karuk' || br === 'thrum') && a.mem.zealous !== false) {

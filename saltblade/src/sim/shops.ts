@@ -6,6 +6,7 @@ import { Grid } from './inventory';
 import { ITEM, itemValue, ItemDef } from '../content/items';
 import { RNG } from '../core/rng';
 import { Item } from './inventory';
+import { BOOKS } from '../content/lore';
 
 export interface Shop {
   id: number; // the counter object that holds the stock
@@ -67,13 +68,27 @@ export function shopGrid(sh: Shop): Grid | null {
   return S.W.objs.get(sh.id)?.inv ?? null;
 }
 
+/** Books a shop might carry: its own faction's, the common ones, and Maker texts at relic traders. */
+function bookEntries(sh: Shop): Entry[] {
+  if (sh.kind !== 'general' && sh.kind !== 'tech' && sh.kind !== 'temple' && sh.kind !== 'travel') return [];
+  const out: Entry[] = [];
+  for (const b of BOOKS) {
+    if (b.rare && sh.kind !== 'tech') continue;
+    const mine = b.factions?.includes(sh.faction);
+    if (sh.kind === 'temple' && !mine) continue;
+    if (b.factions?.length && !mine && sh.kind !== 'tech') continue;
+    out.push(['book_' + b.key, mine ? 0.5 : b.rare ? 0.25 : 0.2, 1, 1]);
+  }
+  return out;
+}
+
 export function restock(sh: Shop) {
   const g = shopGrid(sh);
   if (!g) return;
   const rng = new RNG((sh.id * 7919 + (S.clock?.day ?? 0) * 104729) >>> 0);
   // keep a little of the old stock, clear the rest
   g.items = g.items.filter(() => rng.chance(0.25));
-  const table = [...(TABLES[sh.kind] ?? TABLES.general), ...(FLAVOUR[sh.faction]?.[sh.kind] ?? [])];
+  const table = [...(TABLES[sh.kind] ?? TABLES.general), ...(FLAVOUR[sh.faction]?.[sh.kind] ?? []), ...bookEntries(sh)];
   const picks = 8 + Math.round(sh.wealth * 8);
   for (let i = 0; i < picks; i++) {
     const [id, , a, b] = rng.weighted(table.map((e) => [e, e[1]] as const));

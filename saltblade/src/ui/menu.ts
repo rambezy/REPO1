@@ -101,7 +101,11 @@ async function savePanel(body: HTMLElement) {
     list.appendChild(row);
   }
   const exp = h('button', { class: 'tbtn small' }, 'Download a save file');
-  exp.onclick = () => void exportSave(`${meta.name} day ${meta.day}`, sessionExtra());
+  exp.onclick = async () => {
+    exp.textContent = 'Preparing…';
+    const r = await exportSave(`${meta.name} day ${meta.day}`, sessionExtra());
+    exp.textContent = r === 'saved' ? 'Downloaded' : r === 'declined' ? 'Download a save file' : 'Download not available here';
+  };
   const copy = h('button', { class: 'tbtn small' }, 'Copy save as text');
   copy.onclick = async () => {
     const text = await exportText(sessionExtra());

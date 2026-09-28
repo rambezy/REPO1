@@ -249,17 +249,38 @@ function b64ToBlob(s: string) {
   return new Blob([buf]);
 }
 
-/** Save to a downloadable file. */
-export async function exportSave(name: string, extra: Record<string, any> = {}) {
-  const blob = await gzip(JSON.stringify(serialize(extra)));
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `${name.replace(/[^a-z0-9]+/gi, '_')}.saltblade`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+/**
+ * Offers the game as a file. Inside the claude.ai viewer the file goes
+ * through its downloads capability (the viewer confirms); elsewhere a plain
+ * download link. The file is the same text a copied save is, so either way
+ * it loads back through Open a save file or Paste a save.
+ */
+export async function exportSave(name: string, extra: Record<string, any> = {}): Promise<'saved' | 'declined' | 'failed'> {
+  const text = await exportText(extra);
+  const filename = `${name.replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '') || 'saltblade'}.saltblade.txt`;
+  const host = (window as any).claude;
+  if (host?.use) {
+    try {
+      const dl = await host.use('downloads');
+      if (dl) {
+        try { await dl.save({ filename, data: text }); return 'saved'; }
+        catch (e: any) { if (e?.code === 'declined' || e?.code === 'rate_limited') return 'declined'; }
+      }
+    } catch { /* fall through to a link */ }
+  }
+  try {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    return 'saved';
+  } catch { return 'failed'; }
 }
 
 export async function importSaveFile(f: File): Promise<any> {
+  const head = await f.slice(0, TEXT_TAG.length).text();
+  if (head === TEXT_TAG) return importText(await f.text());
   return JSON.parse(await gunzip(f));
 }
 

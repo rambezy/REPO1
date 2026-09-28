@@ -124,7 +124,7 @@ function itemMenu(c: Char, it: Item, grid: import('../sim/inventory').Grid) {
   }]);
   if (d.med) acts.push(['Treat self', () => { emit('order', c, { k: 'aid', id: c.id }); }]);
   if (d.limb) acts.push(['Fit prosthetic', () => emit('ui:prosthetic', c.id, it.uid)]);
-  if (d.book) acts.push(['Read', () => emit('ui:read', d.book)]);
+  if (d.book) acts.push(['Read', () => emit('ui:read', d.book, c.id)]);
   if (it.n > 1) acts.push(['Split stack', () => {
     const half = Math.floor(it.n / 2);
     const spot = grid.findSpot(d);

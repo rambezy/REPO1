@@ -1,6 +1,7 @@
 // Every item in the waste. Weapons and armour come in quality grades.
 import type { Vis, WeaponVis, WeaponKind, HatStyle, TorsoStyle, ArmourStyle, BackStyle } from '../sim/look';
 import type { Skill } from '../sim/skills';
+import { BOOKS } from './lore';
 
 export type ItemCat =
   | 'weapon' | 'ranged' | 'body' | 'shirt' | 'head' | 'legs' | 'feet' | 'back' | 'food' | 'drink' | 'drug' | 'medical' | 'resource'
@@ -330,6 +331,9 @@ const L: [string, string, 'arm' | 'leg', number, number, number, Partial<Record<
   ['warden_leg', 'Warden Leg', 'leg', 1.4, 16000, 7, { athletics: 16, dodge: 5 }, 'A military leg, fast and sure.'],
 ];
 for (const [id, name, part, quality, value, weight, bonus, desc] of L) def({ id, name, cat: 'robotics', w: part === 'arm' ? 2 : 2, h: part === 'arm' ? 3 : 4, weight, value, stack: 1, desc, limb: { part, quality, bonus }, icon: part });
+
+// books of the waste (see content/lore)
+for (const b of BOOKS) def({ id: 'book_' + b.key, name: b.title, cat: 'book', w: 2, h: 2, weight: 0.6, value: b.value, stack: 1, desc: `${b.kind[0].toUpperCase() + b.kind.slice(1)}${b.author && b.author !== 'Unknown' ? ' by ' + b.author : ''}. Right-click to read.`, icon: 'book', book: b.key });
 
 export const ITEMS: ItemDef[] = I;
 export const ITEM: Record<string, ItemDef> = Object.fromEntries(I.map((d) => [d.id, d]));

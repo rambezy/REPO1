@@ -386,7 +386,7 @@ export async function renderLoadList(el: HTMLElement, onLoad: (slot: string) => 
     rowEl.append(load, del);
     list.appendChild(rowEl);
   }
-  const file = h('input', { type: 'file', accept: '.saltblade,.json,.gz', style: { display: 'none' } }) as HTMLInputElement;
+  const file = h('input', { type: 'file', accept: '.txt,.saltblade,.json,.gz', style: { display: 'none' }, id: 'save-file' }) as HTMLInputElement;
   file.onchange = async () => {
     const f = file.files?.[0];
     if (!f) return;

@@ -15,6 +15,7 @@ import { freeFromCage } from './orders';
 import { strengthOf } from './combat';
 import { bountiesFor, claimValue, claimBounty } from './bounties';
 import { taxFor } from './raids';
+import { UNIQUE_BY_KEY, uniqueReady } from './uniques';
 
 export interface DCtx { p: Char; n: Char; vars: Record<string, any>; }
 export interface DChoice { t: string | ((c: DCtx) => string); next?: string; if?: (c: DCtx) => boolean; fx?: (c: DCtx) => void | string; end?: boolean; }
@@ -296,7 +297,41 @@ export function treeFor(n: Char, p: Char): [Tree, string] {
   return [TREES.generic, 'start'];
 }
 
-export const UNIQUE_TREES: Record<string, Tree> = {};
+// ---------------------------------------------------------------- named people
+const U = (c: DCtx) => UNIQUE_BY_KEY[c.n.unique];
+const uniqueJoinable = (c: DCtx) => !!U(c) && c.n.faction !== 'player' && uniqueReady(U(c), c.p, c.n) && S.W.money >= (U(c).price ?? 0);
+export const UNIQUE_TREES: Record<string, Tree> = {
+  unique: {
+    start: {
+      t: (c) => (c.n.faction === 'player' ? S.rng.pick(['What now?', 'I\'m listening.', 'Say it.']) : U(c)?.lines.greet ?? greeting(c.n, c.p)),
+      ch: [
+        { t: 'Who are you?', next: 'about' },
+        { t: 'Heard anything worth knowing?', next: 'rumour' },
+        { t: 'Would you come with us?', if: (c) => c.n.faction !== 'player', next: 'ask' },
+        BYE,
+      ],
+    },
+    about: { t: (c) => U(c)?.lines.about ?? aboutMe(c.n), ch: [{ t: 'Anything else?', next: 'start' }, BYE] },
+    rumour: { t: (c) => U(c)?.lines.rumour ?? rumour(c.n), ch: [{ t: 'Something else.', next: 'start' }, BYE] },
+    ask: {
+      t: (c) => U(c)?.lines.ask ?? 'Maybe.',
+      ch: [
+        { t: (c) => (U(c).price ? `Here are your ${U(c).price.toLocaleString()} chits.` : 'Then come with us.'), if: uniqueJoinable, fx: (c) => {
+          const u = U(c);
+          S.W.money -= u.price;
+          recruit(c);
+          c.n.title = u.title;
+          c.n.dialogue = 'unique';
+          S.W.say(`${c.n.name}, ${u.title}, joined ${S.W.factionName}.`, 'good', S.clock.t);
+        }, next: 'joined' },
+        { t: 'What would it take?', if: (c) => !uniqueJoinable(c), next: 'refused' },
+        { t: 'Another time.', next: 'start' },
+      ],
+    },
+    joined: { t: (c) => U(c)?.lines.join ?? 'Let\'s go.', ch: [BYE] },
+    refused: { t: (c) => U(c)?.lines.refuse ?? 'Not yet.', ch: [{ t: 'We\'ll see.', next: 'start' }, BYE] },
+  },
+};
 
 /** Runs a choice's effect; returns the next node key or null to end. */
 export function choose(tree: Tree, ch: DChoice, c: DCtx): string | null {

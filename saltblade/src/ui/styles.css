@@ -411,3 +411,14 @@ p.small { font-size: 12.5px; }
   .fline { grid-template-columns: 14px 1fr auto; }
   .fbar { grid-column: 1 / -1; }
 }
+
+/* ---------------- books ---------------- */
+.bookwin .winbody { max-height: 72vh; overflow: auto; padding: 18px 26px 22px; background: linear-gradient(180deg, rgba(40,34,26,.4), rgba(24,21,17,0)); }
+.bookhead { text-align: center; margin-bottom: 14px; }
+.bookkind { font: 600 12px var(--cond); letter-spacing: .24em; text-transform: uppercase; color: var(--accent); }
+.booktitle { font: 600 24px/1.2 var(--title); margin: 4px 0; text-wrap: balance; }
+.bookauthor { font: italic 14px var(--font); color: var(--ink-dim); }
+.booktext { font: 15.5px/1.62 Georgia, 'Iowan Old Style', serif; color: #ddd3bd; max-width: 62ch; margin: 0 auto; }
+.booktext p { margin: 0 0 .9em; }
+.booktext.poem p { white-space: pre-line; font-style: italic; text-align: center; }
+.booklearn { margin-top: 12px; text-align: center; color: var(--good); font: 600 14px var(--cond); }

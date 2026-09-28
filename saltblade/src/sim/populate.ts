@@ -15,6 +15,7 @@ import type { Site } from '../world/terrain';
 import { SHOP_NAMES } from '../content/buildings';
 import { recruitStory } from '../content/stories';
 import { bountyAt, markWanted } from './bounties';
+import { placeUniques } from './uniques';
 
 function squad(W: World, faction: string, kind: SquadKind, name: string, site: number): Squad {
   const s = new Squad();
@@ -200,6 +201,7 @@ export function populateTown(W: World, info: TownInfo) {
       a.mem.livestock = fac;
     }
   }
+  placeUniques(W, info);
 }
 
 /** Camps, nests, ruins and other lesser sites. */
