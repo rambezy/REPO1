@@ -117,6 +117,48 @@ export const ANIMALS: AnimalDef[] = [
     loot: [['glass_beads', 1, 3], ['chitin', 0, 1]], skills: { melee_atk: 34, melee_def: 22, toughness: 26, strength: 24, dexterity: 30, dodge: 14 },
     colors: [0x2e4a44, 0x6a9a84, 0x9ae0ff], eatsDowned: true,
   },
+  {
+    key: 'scrapcrawler', name: 'Scrapcrawler', plural: 'Scrapcrawlers', shape: 'spider', size: 0.8,
+    desc: 'Small Maker repair machines on eight thin legs. They still look for faults to mend, and find them in people.',
+    hp: 0.9, armour: [0.4, 0.15], attack: bite(12, 8, 1.1, 1.2), walk: 2.2, run: 6.6, power: 32, diet: 'machine', aggro: 40, pack: [3, 6],
+    loot: [['iron_plates', 0, 1], ['machine_parts', 0, 1]], skills: { melee_atk: 16, melee_def: 12, toughness: 12, strength: 8, dexterity: 18, dodge: 10 },
+    colors: [0x6a5e52, 0x9a7a52, 0xffa020], robot: true,
+  },
+  {
+    key: 'capgrazer', name: 'Capgrazer', plural: 'Capgrazers', shape: 'shellback', size: 1.15,
+    desc: 'Squat, shelled grazers that crop the spore-caps of the Thrumwood and the Mire. Slow, placid and good eating.',
+    hp: 1.8, armour: [0.3, 0.18], attack: bite(0, 18, 1.4, 0.7), walk: 1.2, run: 3.4, power: 30, diet: 'grazer', aggro: 0, pack: [2, 6],
+    loot: [['raw_meat', 2, 3], ['chitin', 1, 1], ['hide', 0, 1]], skills: { melee_atk: 6, melee_def: 3, toughness: 16, strength: 18, dexterity: 4, dodge: 1 },
+    colors: [0x6a6a38, 0xa8a060, 0x1a1410],
+  },
+  {
+    key: 'ashjackal', name: 'Ash Jackal', plural: 'Ash Jackals', shape: 'hound', size: 0.85,
+    desc: 'Lean grey dogs that trail Mawkin hunts for the scraps. When there are no scraps, they make some.',
+    hp: 0.7, armour: [0.08, 0.04], attack: bite(12, 4, 1.2, 1.25), walk: 1.8, run: 6.6, power: 18, diet: 'scavenger', aggro: 35, pack: [3, 6],
+    loot: [['raw_meat', 1, 1], ['hide', 0, 1], ['bone', 0, 1]], skills: { melee_atk: 10, melee_def: 5, toughness: 7, strength: 6, dexterity: 14, dodge: 12 },
+    colors: [0x6a6660, 0x9a948c, 0xd8a040], eatsDowned: true,
+  },
+  {
+    key: 'cragram', name: 'Crag Ram', plural: 'Crag Rams', shape: 'goat', size: 1.05,
+    desc: 'Big-horned rams of the red mesas. Shy until cornered, and then they charge. Young Karuk hunt them to prove they can.',
+    hp: 1.1, armour: [0.1, 0.08], attack: bite(4, 22, 1.2, 0.95, { knock: 0.25 }), walk: 1.5, run: 6.4, power: 24, diet: 'grazer', aggro: 0, pack: [2, 5],
+    loot: [['raw_meat', 2, 3], ['hide', 1, 1], ['bone', 0, 1]], skills: { melee_atk: 12, melee_def: 6, toughness: 12, strength: 16, dexterity: 10, dodge: 10 },
+    colors: [0x8a5a3e, 0xc8a078, 0x1a1410],
+  },
+  {
+    key: 'sandclaw', name: 'Sandclaw', plural: 'Sandclaws', shape: 'crab', size: 1.3,
+    desc: 'Sand-coloured crabs that lie buried in the dunes and come up under your feet.',
+    hp: 1.6, armour: [0.45, 0.25], attack: bite(14, 24, 1.4, 0.85), walk: 1.4, run: 4.6, power: 48, diet: 'predator', aggro: 20, pack: [1, 3],
+    loot: [['raw_meat', 1, 3], ['chitin', 1, 2]], skills: { melee_atk: 20, melee_def: 14, toughness: 24, strength: 24, dexterity: 8, dodge: 2 },
+    colors: [0xc89c62, 0xe0c090, 0x1a1a1a],
+  },
+  {
+    key: 'tidegrazer', name: 'Tidegrazer', plural: 'Tidegrazers', shape: 'bovine', size: 1.5,
+    desc: 'Fat grey beasts that graze the seagrass at low tide and bellow in the fog. Lowtide hunts them for meat and hide.',
+    hp: 2.2, armour: [0.12, 0.1], attack: bite(2, 22, 1.7, 0.75, { knock: 0.2 }), walk: 1.2, run: 4.8, power: 34, diet: 'grazer', aggro: 0, pack: [2, 5],
+    loot: [['raw_meat', 4, 6], ['hide', 1, 2], ['bone', 0, 1]], skills: { melee_atk: 8, melee_def: 3, toughness: 18, strength: 22, dexterity: 4, dodge: 1 },
+    colors: [0x6a6e6e, 0x9aa0a0, 0x1a1a1a],
+  },
 ];
 
 export const ANIMAL: Record<string, AnimalDef> = Object.fromEntries(ANIMALS.map((a) => [a.key, a]));
