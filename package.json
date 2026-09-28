@@ -1,0 +1,22 @@
+{
+  "name": "of-bread-and-iron",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Of Bread and Iron — a top-down medieval RPG of family, grief and hope.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview",
+    "lint:content": "tsx tools/validate-content.ts",
+    "test:smoke": "node tools/smoke-test.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1",
+    "tsx": "^4.20.0",
+    "typescript": "5.9.3",
+    "vite": "7.3.6",
+    "vite-plugin-singlefile": "2.3.2"
+  }
+}
