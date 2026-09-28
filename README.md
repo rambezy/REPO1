@@ -4,7 +4,6 @@ A top-down medieval role-playing game about a smith's son, a burned village,
 and a little sister somewhere out in the dark. Bohemia, 1409. No magic, no
 chosen ones: just bread, iron, grief, and stubborn hope.
 
-
 It is inspired by *Kingdom Come: Deliverance*: a grounded world with a
 day-night cycle, skills that grow by use, hunger and fatigue, reputation
 and crime, and hard, readable sword fights. Everything, from the pixel art
