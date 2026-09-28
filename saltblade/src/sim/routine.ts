@@ -5,6 +5,7 @@ import { Char } from './char';
 import { S } from './ctx';
 import { goTo, stop, near } from './move';
 import { ANIMAL } from '../content/animals';
+import { isRouted } from './squads';
 
 /** Formation offset behind a leader for squad member i. */
 function slot(i: number): [number, number] {
@@ -34,6 +35,7 @@ export function runRoutine(c: Char, dt: number, think: boolean) {
       return;
     }
   }
+  if (sq && sq.leader === c.id && isRouted(sq)) return;
   if (!think) return;
   const night = S.clock.isNight;
   const h = S.clock.hour;

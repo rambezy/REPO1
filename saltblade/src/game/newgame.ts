@@ -10,6 +10,7 @@ import { SETTLEMENT } from '../content/layout';
 import { WORLD } from '../world/consts';
 import { SK } from '../sim/skills';
 import { Char } from '../sim/char';
+import { buildStructures } from './world';
 
 export function placeOres() {
   for (const o of G.T.ores) {
@@ -39,6 +40,7 @@ export function newGame(scenario: string) {
   const W = G.W;
   const rng = new RNG(S.rng.next() * 1e9);
   placeOres();
+  buildStructures();
   const cr = SETTLEMENT.crossroad;
   const cx = cr.u * WORLD, cz = cr.v * WORLD;
   const sq = playerSquad();

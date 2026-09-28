@@ -27,6 +27,23 @@ export function attachDebug() {
       return true;
     },
     speed(s: number) { G.speed = s; return s; },
+    tp(x: number, z: number) { const c = G.W.playerChars()[0]; c.x = x; c.z = z; c.path = null; c.hasGoal = false; return true; },
+    bld(use: string, near = 'crossroad') {
+      const site = G.T.sites.find((s: any) => s.key === near);
+      const bs = [...G.W.objs.values()].filter((o: any) => o.kind === 'building' && o.data.use === use && (!site || o.site === site.id));
+      const b: any = bs[0];
+      if (!b) return null;
+      return { id: b.id, x: b.x, z: b.z, rot: b.rot, name: b.data.name, shop: b.data.shop };
+    },
+    into(use: string, near = 'crossroad') {
+      const b = (window as any).__sb.bld(use, near);
+      if (!b) return 'none';
+      const c = G.W.playerChars()[0];
+      c.x = b.x; c.z = b.z; c.path = null; c.hasGoal = false;
+      (window as any).__sb.cam(b.x, b.z, 16, b.rot + 0.5, 1.0);
+      import('./game/control').then((m) => { m.sel.clear(); m.sel.add(c.id); });
+      return b;
+    },
     log() { return G.W.log.slice(-15).map((l: any) => l.text); },
     info() {
       const r = G.R.gl.info.render;

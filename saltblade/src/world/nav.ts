@@ -16,8 +16,9 @@ const TN = WORLD / TILE; // tiles per side
 export const F_BLOCK = 0, F_OPEN = 1, F_SHALLOW = 2, F_DEEP = 6;
 
 export interface StructPrim {
-  kind: 'rect' | 'circle' | 'open';
-  // rect: centre, half extents, rotation. circle: centre and r. open: forces cells walkable (doorways, floors)
+  kind: 'rect' | 'circle' | 'open' | 'floor';
+  // rect: centre, half extents, rotation. circle: centre and r.
+  // floor: walkable area stamped first (building interiors); open: doorways stamped last
   x: number; z: number; hx?: number; hz?: number; rot?: number; r?: number;
 }
 
@@ -88,6 +89,7 @@ export class Nav {
     }
     // structures
     const prims = this.structures(x0, z0, x0 + TILE, z0 + TILE);
+    for (const p of prims) if (p.kind === 'floor') this.stampRect(cells, x0, z0, p, F_OPEN);
     for (const p of prims) {
       if (p.kind === 'rect') this.stampRect(cells, x0, z0, p, F_BLOCK);
       else if (p.kind === 'circle') this.stampCircle(cells, x0, z0, p.x, p.z, p.r!, F_BLOCK);

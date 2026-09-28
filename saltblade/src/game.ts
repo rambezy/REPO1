@@ -24,6 +24,10 @@ import { attachControl, sel, hoverId } from './game/control';
 import { RNG } from './core/rng';
 import { setupFx } from './game/fx';
 import { newGame } from './game/newgame';
+import { setupUI } from './ui/index';
+import { StructViews } from './render/structView';
+import { tickPopulation } from './game/world';
+import { tickSquads } from './sim/squads';
 
 function loadingScreen() {
   const el = document.createElement('div');
@@ -78,8 +82,11 @@ export async function boot() {
   G.charViews = new CharViews();
   G.R.scene.add(G.charViews.group, G.charViews.rings);
   G.overlay = new Overlay(document.getElementById('app')!);
+  G.structViews = new StructViews(G.W);
+  G.R.scene.add(G.structViews.group);
   setupFx();
   attachControl();
+  setupUI();
   const cr = SETTLEMENT.crossroad;
   G.cam.lookAt(cr.u * WORLD, cr.v * WORLD, 120);
   newGame(location.hash.includes('fight') ? 'fight' : 'wanderer');
@@ -106,8 +113,10 @@ function step(dt: number) {
   while (left > 1e-6) {
     const h = Math.min(left, 0.05);
     simStep(h, focus);
+    tickSquads(h);
     left -= h;
   }
+  tickPopulation(dt);
   G.cam.update(dt, G.T);
   G.cam.apply(G.R.camera, G.T);
   const t = G.cam.target;
@@ -121,6 +130,7 @@ function step(dt: number) {
   G.R.shadowSize = Math.min(160, Math.max(40, G.cam.dist * 1.2));
   G.R.shadowsOn = G.cam.dist < 400;
   G.charViews.update(dt * (G.speed ? 1 : 0.0001), G.W, G.R.camera.position, G.cam.target, sel, hoverId);
+  G.structViews.update(dt, G.R.camera.position, G.cam.target, [...sel].map((id) => G.W.char(id)).filter(Boolean) as any, G.daylight.night);
   G.terrainR.update(G.R.camera.position);
   G.props.update(G.R.camera.position);
   windUniform.value = G.realTime;

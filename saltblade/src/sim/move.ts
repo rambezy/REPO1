@@ -6,6 +6,7 @@ import { planPath, refine, F_BLOCK, F_DEEP } from '../world/nav';
 import { SEA, WADE_DEPTH } from '../world/consts';
 import { train } from './train';
 import { turnToward } from '../core/math';
+import { floorAt } from './structures';
 
 let plansThisFrame = 0;
 export const PLAN_BUDGET = 10;
@@ -124,7 +125,7 @@ export function tickMove(c: Char, dt: number): number {
 function swimCheck(c: Char) {
   const h = S.T.heightAt(c.x, c.z);
   c.swim = SEA - h > WADE_DEPTH + 0.3;
-  c.y = c.swim ? SEA - 1.25 : Math.max(h, h);
+  c.y = c.swim ? SEA - 1.25 : floorAt(c.x, c.z);
 }
 
 /** Can this character get to (x, z) at all? (cheap fine check) */

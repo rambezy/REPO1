@@ -13,6 +13,7 @@ await page.goto(url);
 const t0 = Date.now();
 await page.waitForFunction(() => window.__sb && window.__sb.G.mode === 'play', null, { timeout: 120000 });
 console.log('loaded in', Date.now() - t0, 'ms');
+await page.waitForTimeout(1200);
 for (let i = 0; i < args.length; i += 2) {
   const name = args[i], js = args[i + 1] || '';
   if (js) { const r = await page.evaluate(js); if (r !== undefined && r !== true) console.log(name, '->', JSON.stringify(r)); }
