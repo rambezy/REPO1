@@ -3,6 +3,7 @@ import { S } from '../sim/ctx';
 import { G } from '../state';
 import { emit } from '../core/events';
 import { Char } from '../sim/char';
+import { leaderFell, creditDefence } from '../sim/worldevents';
 
 export function setupFx() {
   S.fx = {
@@ -19,10 +20,16 @@ export function setupFx() {
     sound(name: string, x: number, z: number, vol = 1) { emit('sound', name, x, z, vol); },
     shot(from: Char, x: number, z: number, hit: boolean) { emit('fx:shot', from, x, z, hit); },
     notice(text: string, kind = 'info') { emit('notice', text, kind); },
-    died(c: Char) { if (c.view) G.overlay.floater(c, 'dead', '#d05040'); emit('fx:died', c); },
+    died(c: Char) {
+      if (c.view) G.overlay.floater(c, 'dead', '#d05040');
+      emit('fx:died', c);
+      if (c.mem.leaderOf) leaderFell(c);
+      creditDefence(c);
+    },
     ko(c: Char) {
       if (c.view) G.overlay.floater(c, 'down', '#e0a050');
       emit('fx:ko', c);
+      creditDefence(c);
       if (c.faction === 'player' && G.mode === 'play') {
         emit('notice', `${c.name} is down!`, 'bad');
         if (G.settings?.pauseOnKO && G.speed) { G.lastSpeed = G.speed; G.speed = 0; emit('speed'); }

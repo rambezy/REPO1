@@ -307,6 +307,7 @@ export function tickWorld(dt: number) {
     for (let k = 0; k < Math.min(4, TARGET - n); k++) {
       const all = [...SPECS, ...BEASTS];
       const spec = rng.weighted(all.map((s) => [s, s.weight] as const));
+      if ((W.flags.quiet?.[spec.faction] ?? 0) > S.clock.t && rng.chance(0.7)) continue; // leaderless, they keep to home
       spawn(spec);
     }
   }

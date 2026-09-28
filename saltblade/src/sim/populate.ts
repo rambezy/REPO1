@@ -155,11 +155,13 @@ export function populateTown(W: World, info: TownInfo) {
       place(n, b.x, b.z, b.rot);
       n.title = def.key === 'aurum' ? 'Lord of the Gilded Seat' : 'Lord';
       n.site = site.id;
+      n.mem.leaderOf = site.id;
       for (let i = 0; i < 2; i++) { const g = makePerson(W, { faction: fac, role: 'guard', level: 45 }, rng); W.moveToSquad(g, gs); place(g, b.x + (i ? 3 : -3), b.z, b.rot); g.site = site.id; }
     }
     if (use === 'temple' && fac === 'ember' && !info.shops.some((s) => s.building === b)) {
       const p = makePerson(W, { faction: fac, role: 'priest' }, rng);
       W.moveToSquad(p, town);
+      if (def.capital) { p.title = 'the High Flame'; p.mem.leaderOf = site.id; }
       place(p, b.x - Math.sin(b.rot) * (b.data.d / 2 - 3), b.z - Math.cos(b.rot) * (b.data.d / 2 - 3), b.rot);
       p.site = site.id;
     }
@@ -169,6 +171,7 @@ export function populateTown(W: World, info: TownInfo) {
       place(bs, b.x - Math.sin(b.rot) * (b.data.d / 2 - 2.5), b.z - Math.cos(b.rot) * (b.data.d / 2 - 2.5), b.rot);
       bs.title = fac === 'karuk' ? (def.capital ? 'the Horn King' : 'War Chief') : fac === 'reavers' ? 'Reaver Lord' : 'Chief';
       bs.site = site.id;
+      bs.mem.leaderOf = site.id;
       const wanted = bountyAt(site.id);
       if (wanted) markWanted(bs, wanted);
     }

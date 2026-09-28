@@ -33,6 +33,7 @@ import { tickBase } from './sim/base';
 import { on } from './core/events';
 import { tickRunaways, tickStealth } from './sim/crime';
 import { tickRaids } from './sim/raids';
+import { tickWorldEvents } from './sim/worldevents';
 import { tickAutosave, startNewGame } from './game/session';
 import { showTitle, tickTitle } from './ui/title';
 import { tickHints } from './ui/hints';
@@ -147,6 +148,7 @@ function step(dt: number) {
     tickRunaways(h);
     tickStealth(h);
     if (G.mode === 'play') tickRaids(h);
+    tickWorldEvents(h);
     S.weather.tick(h);
     left -= h;
   }

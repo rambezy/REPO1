@@ -3,6 +3,7 @@ import { G } from './state';
 import { S } from './sim/ctx';
 import { saveGame, loadSlot, snapshot } from './game/session';
 import { spawnRaid } from './sim/raids';
+import { launchCampaign } from './sim/worldevents';
 import { playerBase } from './sim/base';
 
 export function attachDebug() {
@@ -75,6 +76,7 @@ export function attachDebug() {
     save: (slot = '1') => saveGame(slot),
     emit(...args: any[]) { import('./core/events').then((e) => (e.emit as any)(...args)); return true; },
     select(ids: number[]) { import('./game/control').then((m) => { m.sel.clear(); for (const i of ids) m.sel.add(i); import('./core/events').then((e) => e.emit('sel')); }); return ids.length; },
+    campaign(key: string) { launchCampaign(key); const sq = [...G.W.squads.values()].filter((s: any) => s.flags.townRaid).pop(); return sq ? { name: sq.name, n: sq.members.length, target: G.T.sites.find((s: any) => s.id === sq.flags.townRaid)?.name } : null; },
     raid() { const b = playerBase(); if (!b) return 'no base'; spawnRaid(b.x, b.z, b.n); return b; },
     load: (slot = '1') => loadSlot(slot),
     saveSize() { const j = JSON.stringify(snapshot()); return j.length; },

@@ -43,6 +43,22 @@ export function recruit(c: DCtx) {
   emit('squad');
 }
 
+/** What has happened to a town lately: a sacking, a dead leader. */
+function troubles(c: DCtx): string {
+  const site = S.T.sites.find((s) => s.id === c.n.site);
+  if (!site) return '';
+  const W = S.W;
+  const sacked = W.flags.sacked?.[site.id];
+  const days = (t: number) => Math.max(1, Math.round((S.clock.t - t) / 86400));
+  if (sacked && S.clock.t - sacked < 86400 * 10) {
+    const d = days(sacked);
+    return S.rng.pick([`Raiders came through ${d === 1 ? 'yesterday' : d + ' days ago'}. We're still counting who's missing. `, `We were sacked ${d === 1 ? 'yesterday' : d + ' days ago'}. The shops are bare and the Watch is half what it was. `, `You've come at a bad time. ${d === 1 ? 'Yesterday' : d + ' days ago'} the raiders took everything they could carry. `]);
+  }
+  const fallen = W.flags.leaderless?.[site.id];
+  if (fallen && S.clock.t - fallen < 86400 * 12) return S.rng.pick(['Our leader is dead, and everyone with a sword thinks they should be next. ', 'Nobody rules here right now. Keep your head down. ']);
+  return '';
+}
+
 /** Common farewell and utility choices. */
 const BYE: DChoice = { t: 'Goodbye.', end: true };
 
@@ -63,7 +79,7 @@ const TREES: Record<string, Tree> = {
       ],
     },
     who: { t: (c) => aboutMe(c.n), ch: [{ t: 'What is this place?', next: 'place' }, { t: 'Heard any news?', next: 'news' }, BYE] },
-    place: { t: (c) => aboutPlace(c.n), ch: [{ t: 'Who are you?', next: 'who' }, { t: 'Heard any news?', next: 'news' }, BYE] },
+    place: { t: (c) => troubles(c) + aboutPlace(c.n), ch: [{ t: 'Who are you?', next: 'who' }, { t: 'Heard any news?', next: 'news' }, BYE] },
     news: { t: (c) => rumour(c.n), ch: [{ t: 'Anything else?', next: 'news2' }, BYE] },
     news2: { t: (c) => rumour(c.n), ch: [{ t: 'Who are you?', next: 'who' }, BYE] },
   },
@@ -77,7 +93,7 @@ const TREES: Record<string, Tree> = {
         BYE,
       ],
     },
-    place: { t: (c) => aboutPlace(c.n), ch: [{ t: 'Show me what you have.', fx: (c) => { emit('ui:trade', c.p.id, c.n.id); return 'end'; } }, BYE] },
+    place: { t: (c) => troubles(c) + aboutPlace(c.n), ch: [{ t: 'Show me what you have.', fx: (c) => { emit('ui:trade', c.p.id, c.n.id); return 'end'; } }, BYE] },
     news: { t: (c) => rumour(c.n), ch: [{ t: 'Show me what you have.', fx: (c) => { emit('ui:trade', c.p.id, c.n.id); return 'end'; } }, BYE] },
   },
   recruit: {
@@ -142,7 +158,7 @@ const TREES: Record<string, Tree> = {
       ],
     },
     paid: { t: 'Hm. Behave yourself, or next time it\'s the cage.', ch: [BYE] },
-    place: { t: (c) => aboutPlace(c.n), ch: [{ t: 'Any bounties?', next: 'bounties' }, BYE] },
+    place: { t: (c) => troubles(c) + aboutPlace(c.n), ch: [{ t: 'Any bounties?', next: 'bounties' }, BYE] },
     news: { t: (c) => rumour(c.n), ch: [BYE] },
     bounties: { t: (c) => bountyTalk(c), ch: [BYE] },
     claimed: { t: (c) => `${c.vars.paid} chits. ${S.rng.pick(['Good work. The road is a little safer.', 'Didn\'t think you had it in you.', 'We\'ll take it from here.', 'Count it if you like. It\'s all there.'])}`, ch: [{ t: 'Any other bounties?', next: 'bounties' }, BYE] },
