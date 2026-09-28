@@ -213,6 +213,7 @@ export function fitProsthetic(c: Char, uid: number): string | null {
   if (!help) return 'Fitting a limb needs a robotics bench, a robotics shop nearby, or a squadmate with some skill in robotics standing close.';
   grid.remove(item);
   c.body.prost[l] = item.id;
+  S.W.flags.prosthetics = (S.W.flags.prosthetics ?? 0) + 1;
   c.body.bleed[l] = 0;
   c.dirty = true;
   S.W.say(`${c.name} was fitted with a ${d.name.toLowerCase()}.`, 'good', S.clock.t);

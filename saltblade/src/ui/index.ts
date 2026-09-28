@@ -22,6 +22,7 @@ import { toggleFactions } from './factions';
 import { fitProsthetic } from '../sim/health';
 import { setupHints } from './hints';
 import { openBook } from './read';
+import { DEEDS } from '../sim/deeds';
 import { saveGame, loadSlot } from '../game/session';
 import { G } from '../state';
 
@@ -126,14 +127,40 @@ function inspect(id: number) {
   render();
 }
 
+let logTab: 'log' | 'deeds' = 'log';
 function openLog() {
-  const w = openWindow('log', 'Journal', { w: 460, x: window.innerWidth - 480, y: 80 });
-  const list = h('div', { class: 'loglist' });
-  for (const e of S.W.log.slice().reverse().slice(0, 150)) {
-    const d = Math.floor(e.t / 86400), hr = Math.floor((e.t / 3600) % 24), mn = Math.floor((e.t / 60) % 60);
-    list.appendChild(h('div', { class: 'logrow ' + e.kind }, h('span', { class: 'dim' }, `Day ${d} ${String(hr).padStart(2, '0')}:${String(mn).padStart(2, '0')} `), e.text));
-  }
-  if (!S.W.log.length) list.appendChild(h('div', { class: 'dim' }, 'Nothing has happened yet. Give it time.'));
-  w.body.appendChild(list);
+  const w = openWindow('log', 'Journal', { w: 480, x: window.innerWidth - 500, y: 104 });
+  const render = () => {
+    w.body.innerHTML = '';
+    const tabs = h('div', { class: 'ftabs' });
+    for (const [k, label] of [['log', 'Journal'], ['deeds', 'Deeds']] as const) {
+      const b = h('button', { class: 'ftab' + (logTab === k ? ' on' : '') }, label);
+      b.onclick = () => { logTab = k; render(); };
+      tabs.appendChild(b);
+    }
+    w.body.appendChild(tabs);
+    if (logTab === 'log') {
+      const list = h('div', { class: 'loglist' });
+      for (const e of S.W.log.slice().reverse().slice(0, 200)) {
+        const d = Math.floor(e.t / 86400), hr = Math.floor((e.t / 3600) % 24), mn = Math.floor((e.t / 60) % 60);
+        list.appendChild(h('div', { class: 'logrow ' + e.kind }, h('span', { class: 'dim' }, `Day ${d} ${String(hr).padStart(2, '0')}:${String(mn).padStart(2, '0')} `), e.text));
+      }
+      if (!S.W.log.length) list.appendChild(h('div', { class: 'dim' }, 'Nothing has happened yet. Give it time.'));
+      w.body.appendChild(list);
+    } else {
+      const done: Record<string, number> = S.W.flags.deeds ?? {};
+      const n = DEEDS.filter((d) => done[d.key] !== undefined).length;
+      const list = h('div', { class: 'deedlist' });
+      for (const d of [...DEEDS].sort((a, b) => Number(done[b.key] !== undefined) - Number(done[a.key] !== undefined))) {
+        const when = done[d.key];
+        list.appendChild(h('div', { class: 'deed' + (when !== undefined ? ' done' : '') },
+          h('div', { class: 'deedname' }, d.name, when !== undefined ? h('span', { class: 'dim' }, ` · day ${Math.floor(when / 86400)}`) : null),
+          h('div', { class: 'deeddesc' }, d.desc),
+        ));
+      }
+      w.body.append(h('div', { class: 'dim deedcount' }, `${n} of ${DEEDS.length} deeds`), list);
+    }
+  };
+  render();
   void esc; void Clock;
 }

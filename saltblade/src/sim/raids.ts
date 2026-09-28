@@ -133,6 +133,11 @@ export function tickRaids(dt: number) {
     const up = raiders.filter((c) => c.up);
     const lead = W.char(raid.leader);
     const there = lead && Math.hypot(lead.x - base.x, lead.z - base.z) < 70;
+    if (!up.length && raid.flags.arrived && !raid.flags.counted) {
+      raid.flags.counted = true;
+      W.flags.raidsRepelled = (W.flags.raidsRepelled ?? 0) + 1;
+      S.W.say(`${W.factionName} beat off the ${raid.name}.`, 'good', S.clock.t);
+    }
     if (!up.length || raid.flags.settled || S.clock.t > (raid.task.k === 'raid' ? raid.task.until : 0)) {
       if (up.length && there && (!raid.flags.settled || raid.flags.takeInKind)) lootStores(raid, up);
       sendHome(raid);

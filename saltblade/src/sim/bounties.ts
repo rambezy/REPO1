@@ -88,6 +88,7 @@ export function claimBounty(p: Char, faction: string): number {
   dropCarried(p);
   b.status = t.status === 'dead' ? 'dead' : 'claimed';
   S.W.money += pay;
+  S.W.flags.bounties = (S.W.flags.bounties ?? 0) + 1;
   S.W.rel.add('player', faction, 6);
   if (t.status !== 'dead') {
     const cage = findFreeCage(0, p.x, p.z);

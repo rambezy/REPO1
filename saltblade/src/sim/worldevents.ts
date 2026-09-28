@@ -202,6 +202,7 @@ export function leaderFell(c: Char) {
   W.say(`${c.name}, ${c.title || 'leader'} of ${site.name}, is dead.`, 'story', S.clock.t);
   S.fx.notice(`${c.name}, ${c.title || 'leader'} of ${site.name}, is dead.`, byPlayer ? 'good' : 'info');
   if (byPlayer) {
+    W.flags.leadersKilled = (W.flags.leadersKilled ?? 0) + 1;
     W.rel.add('player', fac, -40);
     // their enemies are glad of it
     for (const f of Object.keys(FACTION)) {

@@ -195,7 +195,16 @@ export function runOrder(c: Char, dt: number) {
           t.dirty = true;
           c.order = null; c.act = null;
           S.fx.notice(`${t.name}'s shackles are off.`, 'good');
-          if (t.faction !== 'player' && t.role === 'slave') emit('sim:freedSlave', c.id, t.id);
+          if (t.faction !== 'player' && t.role === 'slave') {
+            // freeing someone else's slave: a crime if seen, and a friend made
+            const owner = t.mem.enslavedBy ?? t.faction;
+            crime(c, 'freeing', owner, 500, true);
+            t.mem.freedBy = 'player';
+            t.recruitable = true;
+            S.W.flags.freed = (S.W.flags.freed ?? 0) + 1;
+            S.W.rel.add('player', 'unchained', 3);
+            emit('sim:freedSlave', c.id, t.id);
+          }
           else if (t.mem.enslavedBy) crime(t, 'runaway', t.mem.enslavedBy, 1000, true);
         }
       }
