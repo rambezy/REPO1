@@ -73,6 +73,12 @@ export function tickPopulation(dt: number) {
       if (regions.length > 1 || W.log.length > 1) emit('region:enter', r);
     }
   }
+  // named people your people have met
+  const people: string[] = W.flags.peopleMet ?? (W.flags.peopleMet = []);
+  for (const o of W.active) {
+    if (!o.unique || people.includes(o.unique)) continue;
+    if (o.faction === 'player' || mine.some((c: Char) => Math.abs(c.x - o.x) < 14 && Math.abs(c.z - o.z) < 14)) people.push(o.unique);
+  }
   // creatures your people have seen
   const beasts: string[] = W.flags.beastsSeen ?? (W.flags.beastsSeen = []);
   for (const o of W.active) {

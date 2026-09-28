@@ -74,7 +74,7 @@ into a single HTML file.
   Karuk, Hollows and Thrum each talk their own way, and townsfolk gossip as
   you pass. Chatter can be turned off in the options.
 - **Keep a record**: a journal of what happened, 30 deeds to earn, and a
-  Codex of the places, regions, factions, creatures and books you have
+  Codex of the places, regions, factions, people, creatures and books you have
   come across.
 - **Survive the weather**: dust storms, fog, rain, ashfall, spore drift,
   scorching heat, poison gas and acid rain, which burns anyone without a

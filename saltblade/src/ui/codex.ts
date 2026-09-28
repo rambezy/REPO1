@@ -1,6 +1,6 @@
 // The Codex (K): what your people know of the waste. Places found, regions
-// walked, factions met, creatures seen and books read, in the world's own
-// words. And a banner the first time you cross into a region.
+// walked, factions and named people met, creatures seen and books read, in
+// the world's own words. And a banner the first time you cross into a region.
 import { h, ui, openWindow, isOpen, closeWindow } from './dom';
 import { S } from '../sim/ctx';
 import { REGIONS } from '../world/regions';
@@ -8,9 +8,10 @@ import { SETTLEMENT, LANDMARKS } from '../content/layout';
 import { FACTIONS, FACTION } from '../content/factions';
 import { ANIMAL } from '../content/animals';
 import { BOOK } from '../content/lore';
+import { UNIQUES } from '../content/uniques';
 import { on, emit } from '../core/events';
 
-let tab: 'places' | 'regions' | 'factions' | 'creatures' | 'books' = 'places';
+let tab: 'places' | 'regions' | 'factions' | 'people' | 'creatures' | 'books' = 'places';
 
 export function setupCodex() {
   on('region:enter', (r: number) => banner(r));
@@ -37,7 +38,7 @@ export function openCodex() {
     const W = S.W;
     w.body.innerHTML = '';
     const tabs = h('div', { class: 'ftabs' });
-    for (const [k, label] of [['places', 'Places'], ['regions', 'Regions'], ['factions', 'Factions'], ['creatures', 'Creatures'], ['books', 'Books']] as const) {
+    for (const [k, label] of [['places', 'Places'], ['regions', 'Regions'], ['factions', 'Factions'], ['people', 'People'], ['creatures', 'Creatures'], ['books', 'Books']] as const) {
       const b = h('button', { class: 'ftab' + (tab === k ? ' on' : '') }, label);
       b.onclick = () => { tab = k; render(); };
       tabs.appendChild(b);
@@ -62,6 +63,20 @@ export function openCodex() {
     } else if (tab === 'factions') {
       for (const f of FACTIONS) if (f.key !== 'player' && f.key !== 'fauna' && W.rel.met.has(f.key)) entry(f.name, f.short, f.desc);
       if (!W.rel.met.size) body.appendChild(h('p', { class: 'dim' }, 'You have met nobody yet.'));
+    } else if (tab === 'people') {
+      const met: string[] = W.flags.peopleMet ?? [];
+      for (const k of met) {
+        const u = UNIQUES.find((x) => x.key === k);
+        if (!u) continue;
+        const c = [...W.chars.values()].find((x) => x.unique === k);
+        const title = c?.title || u.title;
+        const home = S.T.sites.find((s) => s.settlement === u.settlement);
+        const where = !c || c.status === 'dead' ? 'dead' : c.faction === 'player' ? 'with you' : c.cage ? `caged at ${home?.name ?? 'somewhere'}` : `at ${S.T.siteAt(c.x, c.z, 60)?.name ?? home?.name ?? 'large'}`;
+        entry(`${u.name} ${title}`, where, u.story);
+      }
+      const left = UNIQUES.length - met.length;
+      if (!met.length) body.appendChild(h('p', { class: 'dim' }, 'You have met nobody worth remembering yet. Some people in the bars and cages of the waste have stories of their own.'));
+      else if (left > 0) body.appendChild(h('p', { class: 'dim' }, `${left} more ${left === 1 ? 'person' : 'people'} with a story ${left === 1 ? 'is' : 'are'} out there somewhere.`));
     } else if (tab === 'creatures') {
       const seen: string[] = W.flags.beastsSeen ?? [];
       for (const k of seen) { const a = ANIMAL[k]; if (a) entry(a.name, a.diet, a.desc); }
