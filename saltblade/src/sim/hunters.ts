@@ -62,8 +62,8 @@ export function dispatchHunters(c: Char, faction: string) {
   sq.flags.spec = 'hunters';
   sq.flags.hunt = c.id;
   W.addSquad(sq);
-  const n = Math.round(Math.min(8, 3 + amount / 2500));
-  const level = Math.min(50, 16 + amount / 300);
+  const n = Math.min(8, 2 + Math.round(amount / 2500));
+  const level = Math.min(50, 12 + amount / 400);
   for (let i = 0; i < n; i++) {
     const m = makePerson(W, { faction, role: 'patrol', level: level * rng.range(0.85, 1.1) }, rng);
     m.title = 'Bounty Hunter';
@@ -97,6 +97,12 @@ function follow() {
     const q = W.char(sq.flags.hunt);
     const owed = q ? q.bounty[sq.faction] ?? 0 : 0;
     if (!q || !q.alive || owed <= 0 || q.cage || (q.shackled && q.mem.enslavedBy)) { giveUp(sq); continue; }
+    // beaten: when they can stand again, they go home
+    if (sq.members.every((id) => W.char(id)?.status !== 'up')) {
+      W.say(`The ${sq.name} who came for ${q.name} were beaten.`, 'good', S.clock.t);
+      giveUp(sq);
+      continue;
+    }
     const end = sq.route && sq.route.length >= 2 ? Math.hypot(sq.route[sq.route.length - 2] - q.x, sq.route[sq.route.length - 1] - q.z) : Infinity;
     if (end > 40) { sq.route = [q.x, q.z]; sq.ri = 0; }
     // the first sight of the quarry
@@ -121,7 +127,7 @@ export function tickHunters(dt: number) {
     if (!c.alive || c.animal || c.cage || (c.shackled && c.mem.enslavedBy)) continue;
     for (const [f, amount] of Object.entries(c.bounty)) {
       if (amount < 300 || hunted(c.id, f)) continue;
-      if (rng.chance(Math.min(0.15, amount / 40000))) { dispatchHunters(c, f); return; }
+      if (rng.chance(Math.min(0.12, amount / 60000))) { dispatchHunters(c, f); return; }
     }
   }
 }
