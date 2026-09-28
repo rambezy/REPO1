@@ -4,11 +4,17 @@ A top-down medieval role-playing game about a smith's son, a burned village,
 and a little sister somewhere out in the dark. Bohemia, 1409. No magic, no
 chosen ones: just bread, iron, grief, and stubborn hope.
 
+
 It is inspired by *Kingdom Come: Deliverance*: a grounded world with a
 day-night cycle, skills that grow by use, hunger and fatigue, reputation
 and crime, and hard, readable sword fights. Everything, from the pixel art
 to the music, is generated in code; the whole game builds into a single HTML
 file.
+
+> **Also in this repository: [Saltblade](saltblade/README.md)**, a squad-based
+> open-world sandbox RPG in the spirit of *Kenshi*, set in a 12 km generated
+> wasteland of towns, factions, outlaws, ruins and weather. It lives in
+> `saltblade/` and builds on its own (`cd saltblade && npm install && npm run build`).
 
 ## The story
 

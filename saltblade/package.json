@@ -9,8 +9,8 @@
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
-    "test:sim": "tsx tools/simtest.ts",
-    "test:smoke": "node tools/smoke.mjs",
+    "soak": "node tools/soak.mjs",
+    "map": "tsx tools/mapshot.ts",
     "artifact": "node tools/make-artifact.mjs"
   },
   "dependencies": {
