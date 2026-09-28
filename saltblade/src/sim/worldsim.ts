@@ -236,7 +236,9 @@ function abstractFights() {
     const [win, lose] = sa > sb ? [ca, cb] : [cb, ca];
     for (const c of lose) { if (rng.chance(0.5)) kill(c); else knockOut(c); }
     for (const c of win) if (rng.chance(0.3)) c.body.hp[1] -= c.body.max[1] * 0.4;
-    S.W.say(`Word on the road: ${FACTION[win[0].faction]?.short ?? 'someone'} fought ${FACTION[lose[0].faction]?.short ?? 'someone'} near ${S.T.nearestSite(a.x, a.z)?.name ?? 'the wastes'}.`, 'info', S.clock.t);
+    // news travels only about people, and only from places you know
+    const where = S.T.nearestSite(a.x, a.z);
+    if (!fa && !fb && where && S.W.discovered.has(where.id)) S.W.say(`Word on the road: ${FACTION[win[0].faction]?.short ?? 'someone'} beat ${FACTION[lose[0].faction]?.short ?? 'someone'} in a fight near ${where.name}.`, 'info', S.clock.t);
   }
 }
 
