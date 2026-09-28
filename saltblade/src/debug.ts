@@ -6,6 +6,7 @@ import { spawnRaid } from './sim/raids';
 import { launchCampaign } from './sim/worldevents';
 import { playerBase } from './sim/base';
 import { chatNow } from './sim/chatter';
+import { dispatchHunters } from './sim/hunters';
 
 export function attachDebug() {
   const w = window as unknown as Record<string, unknown>;
@@ -81,6 +82,8 @@ export function attachDebug() {
     raid() { const b = playerBase(); if (!b) return 'no base'; spawnRaid(b.x, b.z, b.n); return b; },
     load: (slot = '1') => loadSlot(slot),
     chat() { chatNow(); return true; },
+    /** Sends bounty hunters after the first of your people with a price on their head. */
+    hunt() { const c = G.W.playerChars().find((p: any) => Object.values(p.bounty).some((v: any) => v > 0)); if (!c) return 'nobody is wanted'; const f = Object.keys(c.bounty).find((k) => c.bounty[k] > 0)!; const sq = dispatchHunters(c, f); return sq ? { name: sq.name, n: sq.members.length, d: Math.round(Math.hypot(sq.x - c.x, sq.z - c.z)) } : 'no start'; },
     saveSize() { const j = JSON.stringify(snapshot()); return j.length; },
     /** Forces the weather in the camera's region. */
     weather(kind: string, i = 1) {
