@@ -7,6 +7,7 @@ import { ITEM, itemValue, ItemDef } from '../content/items';
 import { RNG } from '../core/rng';
 import { Item } from './inventory';
 import { BOOKS } from '../content/lore';
+import { MARKETS, Market, CHEAP_BUY, CHEAP_SELL, DEAR_BUY, DEAR_SELL } from '../content/markets';
 
 export interface Shop {
   id: number; // the counter object that holds the stock
@@ -106,10 +107,25 @@ function relMod(faction: string) {
   return r > 50 ? 0.85 : r > 20 ? 0.93 : r < -20 ? 1.25 : 1;
 }
 
+/** The market of the town a shop stands in, if it has one. */
+export function marketOf(sh: Shop): Market | undefined {
+  const site = sh.site ? S.T.sites.find((s) => s.id === sh.site) : undefined;
+  return site?.settlement ? MARKETS[site.settlement] : undefined;
+}
+const inList = (list: string[], d: ItemDef) => list.includes(d.id) || list.includes(d.cat);
+/** 'cheap', 'dear' or '' for an item at this shop's town. */
+export function marketFor(sh: Shop, d: ItemDef): 'cheap' | 'dear' | '' {
+  const m = marketOf(sh);
+  if (!m) return '';
+  return inList(m.cheap, d) ? 'cheap' : inList(m.dear, d) ? 'dear' : '';
+}
+
 /** Price the shop charges for an item (per unit). */
 export function buyPrice(sh: Shop, it: Item | { id: string; q: number }) {
   const d: ItemDef = ITEM[it.id];
-  return Math.max(1, Math.round(itemValue(d, it.q) * (1.15 + sh.markup) * relMod(sh.faction)));
+  const mk = marketFor(sh, d);
+  const local = mk === 'cheap' ? CHEAP_BUY : mk === 'dear' ? DEAR_BUY : 1;
+  return Math.max(1, Math.round(itemValue(d, it.q) * (1.15 + sh.markup) * relMod(sh.faction) * local));
 }
 
 /** What the shop pays for an item (per unit). */
@@ -118,6 +134,8 @@ export function sellPrice(sh: Shop, it: Item) {
   let k = 0.5 / relMod(sh.faction);
   if (sh.kind === 'tech' && (d.cat === 'artifact' || d.research)) k = 0.8;
   if (sh.kind === 'robotics' && (d.cat === 'robotics' || d.id === 'machine_parts' || d.id === 'elec_parts')) k = 0.7;
+  const mk = marketFor(sh, d);
+  if (mk === 'cheap') k *= CHEAP_SELL; else if (mk === 'dear') k *= DEAR_SELL;
   if (it.stolen === sh.faction) k *= 0.3;
   if (d.illegal?.includes(sh.faction)) return 0;
   return Math.max(1, Math.round(itemValue(d, it.q) * k));

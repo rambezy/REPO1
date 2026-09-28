@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "soak": "node tools/soak.mjs",
+    "test:sim": "tsx tools/simtest.ts",
     "map": "tsx tools/mapshot.ts",
     "artifact": "node tools/make-artifact.mjs"
   },

@@ -3,7 +3,7 @@
 import { h, openWindow, getWindow } from './dom';
 import { GridView, hideTip } from './grid';
 import { S } from '../sim/ctx';
-import { Shop, buyPrice, sellPrice, shopGrid } from '../sim/shops';
+import { Shop, buyPrice, sellPrice, shopGrid, marketOf } from '../sim/shops';
 import { Item } from '../sim/inventory';
 import { ITEM } from '../content/items';
 import { fmt } from '../core/math';
@@ -97,6 +97,7 @@ export function openTrade(pid: number, nid: number) {
       h('div', {},
         h('div', { class: 'ititle' }, n.name),
         h('div', { class: 'dim' }, `${f?.name ?? ''} · standing ${rel > 30 ? 'friendly' : rel < -20 ? 'poor' : 'neutral'} · prices ${rel > 30 ? 'good' : rel < -20 ? 'high' : 'fair'}`),
+        marketLine(sh),
       ),
       h('div', { class: 'purses' },
         h('div', {}, 'Your chits: ', h('b', { class: 'gold' }, fmt(S.W.money))),
@@ -154,6 +155,17 @@ function slaveMarket(p: Char, sh: Shop, rerender: () => void) {
     box.appendChild(h('div', { class: 'mrow' }, h('img', { class: 'mate', src: portrait(s) }), h('span', {}, `${s.name}, ${s.raceDef?.name ?? ''}`), b));
   }
   return box;
+}
+
+const nameOf = (k: string) => ITEM[k]?.name.toLowerCase() ?? ({ food: 'food', drink: 'drink', medical: 'medicine', weapon: 'weapons', artifact: 'relics', book: 'books' } as Record<string, string>)[k] ?? k;
+/** What this town has plenty of and what it pays well for. */
+function marketLine(sh: Shop) {
+  const m = marketOf(sh);
+  if (!m) return null;
+  return h('div', { class: 'market-line' },
+    m.cheap.length ? h('span', {}, h('b', { class: 'good' }, 'Cheap here: '), m.cheap.map(nameOf).join(', ')) : null,
+    m.dear.length ? h('span', {}, h('b', { class: 'gold' }, 'Pays well for: '), m.dear.map(nameOf).join(', ')) : null,
+  );
 }
 
 /** Beasts for sale: pack animals to carry loads, hounds to fight at your side. */

@@ -359,8 +359,8 @@ body.mode-title #hud, body.mode-title #overlay { display: none !important; }
 .sqtab small { color: var(--ink-faint); }
 .sqtab.on { border-color: #9ce07a; color: #d8f0c8; }
 .sqtab.add { color: var(--accent); border-style: dashed; }
-.hintbox { position: absolute; right: 14px; top: 110px; width: 330px; z-index: 30; background: rgba(24,21,17,.95); border: 1px solid var(--accent-2); border-left: 3px solid var(--accent); border-radius: 4px; padding: 10px 12px; box-shadow: 0 8px 24px rgba(0,0,0,.5); pointer-events: auto; animation: hintin .25s ease; }
-@keyframes hintin { from { transform: translateX(20px); opacity: 0; } to { transform: none; opacity: 1; } }
+.hintbox { position: absolute; left: 10px; top: 72px; width: 320px; z-index: 30; background: rgba(24,21,17,.95); border: 1px solid var(--accent-2); border-left: 3px solid var(--accent); border-radius: 4px; padding: 10px 12px; box-shadow: 0 8px 24px rgba(0,0,0,.5); pointer-events: auto; animation: hintin .25s ease; }
+@keyframes hintin { from { transform: translateX(-20px); opacity: 0; } to { transform: none; opacity: 1; } }
 .hinttitle { font: 600 16px var(--cond); color: var(--accent); letter-spacing: .06em; margin-bottom: 4px; }
 .hinttext { font-size: 13.5px; line-height: 1.45; color: var(--ink-dim); }
 .hinttext b { color: var(--ink); }
@@ -434,3 +434,4 @@ p.small { font-size: 12.5px; }
 .gonames { font: 14px var(--cond); }
 .gobtns { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
 @media (prefers-reduced-motion: reduce) { #gameover, .hintbox { animation: none; } }
+.market-line { display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: 12.5px; color: var(--ink-dim); margin-top: 2px; }
