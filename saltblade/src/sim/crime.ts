@@ -89,3 +89,20 @@ export function tickRunaways(dt: number) {
     if (d > site.r + 130 || !c.shackled) crime(c, 'runaway', fac, 1000, true);
   }
 }
+
+let sneakT = 0;
+/** Marks your sneaking people as seen or hidden, so the view can show it. */
+export function tickStealth(dt: number) {
+  sneakT -= dt;
+  if (sneakT > 0) return;
+  sneakT = 0.4;
+  for (const c of S.W.playerChars()) {
+    if (c.move !== 'sneak' || c.status !== 'up') { if (c.mem.seenBy !== undefined) delete c.mem.seenBy; continue; }
+    let by = 0;
+    S.W.hash.near(c.x, c.z, 48, (o) => {
+      if (by || o.faction === 'player' || o.animal || !o.awake) return;
+      if (canSee(o, c)) by = o.id;
+    });
+    c.mem.seenBy = by;
+  }
+}

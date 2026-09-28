@@ -109,7 +109,7 @@ function statusOf(c: Char): string {
   if (c.cage) icons.push('<b class="bad">CAGED</b>');
   if (c.shackled) icons.push('<i class="ic chain" title="Shackled"></i>');
   if (totalBounty(c) > 0) icons.push(`<i class="ic wanted" title="Wanted: ${totalBounty(c)}c"></i>`);
-  if (c.move === 'sneak') icons.push('<i class="ic sneak" title="Sneaking"></i>');
+  if (c.move === 'sneak') icons.push(c.mem.seenBy ? '<b class="warn" title="Someone can see them">SEEN</b>' : '<i class="ic sneak" title="Sneaking, unseen"></i>');
   if (c.load() > 1) icons.push('<i class="ic heavy" title="Overloaded"></i>');
   return icons.join('');
 }

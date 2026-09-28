@@ -109,6 +109,23 @@ export class Overlay {
         }
         y -= 16;
       }
+      if (c.faction === 'player' && c.move === 'sneak' && c.status === 'up' && c.mem.seenBy !== undefined) {
+        const seen = !!c.mem.seenBy;
+        const ex = sx, ey = y - 8;
+        g.lineWidth = 1.6;
+        g.strokeStyle = seen ? '#f0a050' : '#9cd080';
+        g.fillStyle = 'rgba(0,0,0,0.55)';
+        g.beginPath(); g.ellipse(ex, ey, 9, 5.5, 0, 0, Math.PI * 2); g.fill();
+        g.beginPath();
+        g.moveTo(ex - 7, ey); g.quadraticCurveTo(ex, ey - (seen ? 6 : 1), ex + 7, ey);
+        g.quadraticCurveTo(ex, ey + (seen ? 6 : 3), ex - 7, ey);
+        g.stroke();
+        if (seen) { g.fillStyle = '#f0a050'; g.beginPath(); g.arc(ex, ey, 2, 0, Math.PI * 2); g.fill(); }
+        g.font = '600 10px "Barlow Condensed", sans-serif';
+        g.fillStyle = seen ? '#f0b070' : '#a8d890';
+        g.fillText(seen ? 'SEEN' : 'HIDDEN', ex, ey - 9);
+        y -= 20;
+      }
       if (c.sleeping && c.status === 'up') {
         g.font = 'italic 600 12px Barlow, sans-serif';
         g.fillStyle = '#c8d0e8';

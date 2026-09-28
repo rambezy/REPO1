@@ -422,3 +422,4 @@ p.small { font-size: 12.5px; }
 .booktext p { margin: 0 0 .9em; }
 .booktext.poem p { white-space: pre-line; font-style: italic; text-align: center; }
 .booklearn { margin-top: 12px; text-align: center; color: var(--good); font: 600 14px var(--cond); }
+.pst b.warn { color: var(--warn); }
