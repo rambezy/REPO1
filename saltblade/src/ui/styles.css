@@ -333,7 +333,6 @@ body.mode-title #hud, body.mode-title #overlay { display: none !important; }
 .fname:hover { border-color: var(--edge); }
 .fstats { font: 13px var(--cond); padding-left: 4px; }
 .ftabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--edge); margin-bottom: 8px; }
-}
 .ftab { background: transparent; border: 1px solid transparent; border-bottom: none; padding: 5px 14px; font: 600 15px var(--cond); border-radius: 4px 4px 0 0; }
 .ftab.on { background: rgba(60,50,36,.8); border-color: var(--edge); }
 .flist { display: flex; flex-direction: column; gap: 3px; max-height: 60vh; overflow: auto; }
@@ -422,6 +421,7 @@ p.small { font-size: 12.5px; }
   .hud-sel { top: 150px; }
   .hud-notices { top: auto; bottom: 112px; width: calc(100vw - 16px); flex-direction: column-reverse; }
   .notice { max-width: 100%; font-size: 13px; }
+}
 
 /* ---------------- books ---------------- */
 .bookwin .winbody { max-height: 72vh; overflow: auto; padding: 18px 26px 22px; background: linear-gradient(180deg, rgba(40,34,26,.4), rgba(24,21,17,0)); }
