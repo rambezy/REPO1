@@ -3,7 +3,7 @@
 // crossroads.
 
 import { G } from '../../G';
-import { S, flag, setFlag, hourF } from '../../state';
+import { S, flag, setFlag, hourF, dayIndex } from '../../state';
 import { Actor } from '../../world/actor';
 import { findActor, getMap, removeActor, here } from '../../world/world';
 import { defineQuest, startQuest, setStage, completeQuest, qAt, qActive, qDone, qVar } from '../../systems/quests';
@@ -149,6 +149,7 @@ function registerCast() {
 const isDruggedNight = () => { const h = hourF(); return (h >= 21.5 || h < 5) && Math.floor((S.minutes - 5 * 60) / 1440) === (flag('drug_day') ?? -1); };
 
 function registerDecor() {
+  groundItem('foreman_spare_key', 'sd_foreman', 'key_foreman', 3, 3, { when: () => !!flag('anna_key_told') && !has('key_foreman') });
   groundItem('camp_smock', 'overworld', 'servant_clothes', 154, 51, { when: () => ACT() >= 2 && !flag('warcamp_broken') });
   decor({ key: 'cage_lock', map: 'overworld', when: () => ACT() >= 2 && !!flag('pavel_prisoner') && !flag('pavel_freed'), make: () => markerObj(173, 53, { type: 'script', script: 'cage', label: 'The cage lock' }) });
 }
@@ -239,6 +240,27 @@ function registerTalks() {
         kuba sad: Anna's husband went to fight for Sir Bertram in the spring. She's heard nothing since. She's not been herself.
       `);
       setFlag('anna_key_hint');
+    },
+  });
+  topic('kuba', {
+    id: 'a2_kuba_key', text: 'Could you get me Vilém\'s key?', if: () => !!flag('anna_key_hint') && !has('foreman_ledger') && !has('key_foreman') && !flag('kuba_key_day'),
+    run: async () => {
+      await talk(`
+        kuba: Me? Steal from the foreman? ...Aye. Why not. He's stolen enough from me.
+        kuba: He drinks at the alehouse every evening till the bell, and he takes the key off his neck when he plays at dice, so it won't rattle. Come back tomorrow. I'll have it.
+      `);
+      S.flags.kuba_key_day = dayIndex();
+    },
+  });
+  topic('kuba', {
+    id: 'a2_kuba_key2', text: 'Did you get the key?', if: () => flag('kuba_key_day') !== undefined && !has('key_foreman') && !has('foreman_ledger'),
+    run: async () => {
+      if (dayIndex() <= (flag('kuba_key_day') as number)) { await say('kuba', 'neutral', 'Tomorrow, I said. The alehouse isn\'t even open yet.'); return; }
+      await talk(`
+        kuba smirk: He never even noticed. Four beers and a lucky throw, and he was singing to the barmaid about his mother. Here.
+        kuba: Put it back when you're done. Or don't. I'd like to see his face either way.
+      `);
+      addItem('key_foreman', 1);
     },
   });
   topic('anna', {
