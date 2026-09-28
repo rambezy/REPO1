@@ -20,12 +20,14 @@ import { openMenu as openGameMenu } from './menu';
 import { toggleMap } from './map';
 import { toggleFactions } from './factions';
 import { fitProsthetic } from '../sim/health';
+import { setupHints } from './hints';
 import { saveGame, loadSlot } from '../game/session';
 import { G } from '../state';
 
 export function setupUI() {
   buildHUD();
   setupBuild();
+  setupHints();
   on('ui:char', () => { if (isOpen('char')) closeWindow('char'); else openCharWindow(); });
   on('ui:loot', (looter: number, target: any) => openLoot(looter, target));
   on('world:drop', (x: number, z: number, items: any[]) => dropOnGround(x, z, items));
@@ -57,6 +59,18 @@ export function setupUI() {
       case 'Escape':
         closeMenu();
         if (!closeTop()) emit('ui:menu');
+        return true;
+      case 'Tab': {
+        import('./hud').then((m) => {
+          const ids = S.W.playerSquads.filter((id) => (S.W.squads.get(id)?.members.length ?? 0) > 0);
+          if (ids.length < 2) return;
+          const i = ids.indexOf(G.activeSquad);
+          m.switchSquad(ids[(i + 1) % ids.length]);
+        });
+        return true;
+      }
+      case 'F3':
+        import('./hud').then((m) => m.togglePerf());
         return true;
       case 'F5':
         if (G.mode === 'play') void saveGame('quick');

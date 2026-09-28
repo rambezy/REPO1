@@ -14,6 +14,7 @@ import { ITEM } from '../content/items';
 import { freeFromCage } from './orders';
 import { strengthOf } from './combat';
 import { bountiesFor, claimValue, claimBounty } from './bounties';
+import { taxFor } from './raids';
 
 export interface DCtx { p: Char; n: Char; vars: Record<string, any>; }
 export interface DChoice { t: string | ((c: DCtx) => string); next?: string; if?: (c: DCtx) => boolean; fx?: (c: DCtx) => void | string; end?: boolean; }
@@ -157,6 +158,18 @@ const TREES: Record<string, Tree> = {
     paid: { t: () => S.rng.pick(['Smart. Move along.', 'Pleasure doing business.', 'See? Nobody had to bleed.']), ch: [BYE] },
     intim: { t: (c) => c.vars.backed ? S.rng.pick(['...Not worth it. Go on, then.', 'Tch. Another day.']) : 'Big words! Get them!', ch: [BYE] },
   },
+  demand_tax: {
+    start: {
+      t: (c) => `By order of the Lords of the Gilded Concord, every holding on Concord land owes its tithe. Yours comes to ${taxFor()} chits.`,
+      ch: [
+        { t: (c) => `Pay the ${taxFor()} chits.`, if: () => S.W.money >= taxFor(), fx: (c) => { S.W.money -= taxFor(); settle(c); S.W.rel.add('player', 'concord', 4); S.W.say(`${S.W.factionName} paid ${taxFor()} chits in Concord tax.`, 'trade', S.clock.t); }, next: 'paid' },
+        { t: 'We have nothing to give.', if: () => S.W.money < taxFor(), next: 'broke' },
+        { t: 'The Concord gets nothing from us. (Fight)', fx: (c) => { S.W.rel.add('player', 'concord', -20); fightNow(c); return 'end'; } },
+      ],
+    },
+    paid: { t: () => S.rng.pick(['Your contribution is noted. The Lords are generous to those who pay.', 'Good. We will see you again next season.', 'A pleasure doing the Lords\' business.']), ch: [BYE] },
+    broke: { t: 'Then the Lords will take it in kind. Stand aside while we inventory your stores.', ch: [{ t: 'Fine. Take what you need.', fx: (c) => { settle(c); const sq = S.W.squadOf(c.n); if (sq) sq.flags.takeInKind = true; }, next: 'paid' }, { t: 'Touch our things and you die. (Fight)', fx: (c) => { S.W.rel.add('player', 'concord', -20); fightNow(c); return 'end'; } }] },
+  },
   demand_food: {
     start: {
       t: () => S.rng.pick(LINES.hungry),
@@ -274,6 +287,7 @@ export function treeFor(n: Char, p: Char): [Tree, string] {
   if (sq && !sq.flags.settled && f?.demands === 'tribute' && (f.attitude === 'bandit' || n.faction === 'scorched') && n.role !== 'shopkeeper' && n.role !== 'barkeep' && !S.W.populated.has(-1)) {
     if (n.faction === 'reavers' || (n.faction === 'scorched' && sq.kind !== 'town')) return [TREES.demand_tribute, 'start'];
   }
+  if (sq?.flags.demand === 'tax' && !sq.flags.settled) return [TREES.demand_tax, 'start'];
   if (n.faction === 'starvelings') return [TREES.demand_food, 'start'];
   if (n.faction === 'ember' && guardish(n) && RACE[p.look.race]?.race !== 'human') return [TREES.inquisitor, 'start'];
   if (n.recruitable) return [TREES.recruit, 'start'];

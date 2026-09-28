@@ -19,6 +19,7 @@ export function wantsToTalk(c: Char): boolean {
   if (sq.flags.settled && S.clock.t - sq.flags.settled < 86400) return false;
   const f = FACTION[c.faction];
   if (!f) return false;
+  if (sq.flags.demand === 'tax') return true;
   if (c.faction === 'reavers' || c.faction === 'starvelings') return sq.kind !== 'town' || c.faction === 'reavers';
   if (c.faction === 'ember' && (c.role === 'patrol' || c.role === 'guard') && playerHasNonHumans()) return true;
   if (c.faction === 'chainhouse' && sq.kind !== 'town' && playerLooksWeak()) return true;

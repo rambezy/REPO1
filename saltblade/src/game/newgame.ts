@@ -69,6 +69,24 @@ function siteBy(key: string): Site | undefined {
 /** Finds the spot a start begins at. */
 function startPoint(sc: Scenario, rng: RNG): [number, number] {
   const st = sc.start;
+  if (st.region && (st.settlement || st.landmark)) {
+    // the nearest good ground of that region to a place
+    const s0 = siteBy(st.settlement ?? st.landmark!);
+    if (s0) {
+      const [ox, oz] = st.off ?? [0, 0];
+      const cx = s0.x + ox, cz = s0.z + oz;
+      for (let r = 0; r < 3000; r += 40) {
+        for (let k = 0; k < 16; k++) {
+          const a = (k / 16) * Math.PI * 2 + r * 0.01;
+          const x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
+          if (G.T.regionAt(x, z).key !== st.region || G.T.siteAt(x, z, 150)) continue;
+          if (G.T.heightAt(x, z) < 1 || G.T.slopeAt(x, z) > 0.3) continue;
+          const p = G.nav.nearestOpen(x, z, 8);
+          if (p) return p;
+        }
+      }
+    }
+  }
   if (st.region) {
     for (let i = 0; i < 4000; i++) {
       const x = rng.range(400, WORLD - 400), z = rng.range(400, WORLD - 400);

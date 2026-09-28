@@ -28,16 +28,17 @@ export function hostile(a: Char, b: Char): boolean {
   if (a === b || !b.alive) return false;
   if (a.faction === b.faction) return false;
   const W = S.W;
-  // beasts
-  if (a.animal) {
+  // wild beasts (tame ones take their owner's side, below)
+  if (a.animal && a.faction !== 'player') {
     const d = ANIMAL[a.animal];
     if (b.animal) return false;
     return d.diet === 'predator' || d.diet === 'machine' || d.diet === 'scavenger' ? true : !!a.mem.provoked;
   }
-  if (b.animal) {
+  if (b.animal && b.faction !== 'player') {
     const d = ANIMAL[b.animal];
     return d.diet === 'predator' || d.diet === 'machine' || (d.diet === 'scavenger' && !!b.mem.provoked) || !!b.mem.provoked;
   }
+  if (a.animal || b.animal) return W.rel.hostile(a.faction, b.faction) || (!!a.mem.enemies && a.mem.enemies.includes(b.id));
   if (W.rel.hostile(a.faction, b.faction)) return true;
   // the Covenant does not suffer machines, and hunts other peoples on its own land
   if (a.faction === 'ember' && a.role !== 'slave') {

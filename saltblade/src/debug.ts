@@ -2,6 +2,8 @@
 import { G } from './state';
 import { S } from './sim/ctx';
 import { saveGame, loadSlot, snapshot } from './game/session';
+import { spawnRaid } from './sim/raids';
+import { playerBase } from './sim/base';
 
 export function attachDebug() {
   const w = window as unknown as Record<string, unknown>;
@@ -71,6 +73,8 @@ export function attachDebug() {
     },
     log() { return G.W.log.slice(-15).map((l: any) => l.text); },
     save: (slot = '1') => saveGame(slot),
+    select(ids: number[]) { import('./game/control').then((m) => { m.sel.clear(); for (const i of ids) m.sel.add(i); import('./core/events').then((e) => e.emit('sel')); }); return ids.length; },
+    raid() { const b = playerBase(); if (!b) return 'no base'; spawnRaid(b.x, b.z, b.n); return b; },
     load: (slot = '1') => loadSlot(slot),
     saveSize() { const j = JSON.stringify(snapshot()); return j.length; },
     /** Forces the weather in the camera's region. */

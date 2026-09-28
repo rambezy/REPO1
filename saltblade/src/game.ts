@@ -32,8 +32,10 @@ import { tickWorld, hireMercs } from './sim/worldsim';
 import { tickBase } from './sim/base';
 import { on } from './core/events';
 import { tickRunaways } from './sim/crime';
+import { tickRaids } from './sim/raids';
 import { tickAutosave, startNewGame } from './game/session';
 import { showTitle, tickTitle } from './ui/title';
+import { tickHints } from './ui/hints';
 import { loadSettings, applySettings } from './game/settings';
 import { setupAudio, tickAudio } from './game/audiohook';
 import { Weather, WEATHER_NAME } from './sim/weather';
@@ -123,7 +125,12 @@ export async function boot() {
   requestAnimationFrame(frame);
 }
 
+const perf = { sim: 0, views: 0, render: 0, frame: 0, fps: 60, pop: 0, chars: 0, structs: 0, terrain: 0, props: 0, misc: 0 };
+const ema = (a: number, b: number) => a + (b - a) * 0.05;
+
 function step(dt: number) {
+  const t0 = performance.now();
+  G.perf = perf;
   G.realTime += dt;
   const simDt = dt * G.speed;
   G.simTime += simDt;
@@ -138,13 +145,20 @@ function step(dt: number) {
     tickWorld(h);
     tickBase(h);
     tickRunaways(h);
+    if (G.mode === 'play') tickRaids(h);
     S.weather.tick(h);
     left -= h;
   }
+  const t1 = performance.now();
+  perf.sim = ema(perf.sim, t1 - t0);
+  let tp = performance.now();
+  const lap = (k: 'pop' | 'chars' | 'structs' | 'terrain' | 'props' | 'misc') => { const n = performance.now(); perf[k] = ema(perf[k], n - tp); tp = n; };
   tickPopulation(dt);
+  lap('pop');
   tickAutosave(dt);
   if (G.mode === 'title') tickTitle(dt);
   tickAudio(dt);
+  tickHints(dt);
   G.cam.update(dt, G.T);
   G.cam.apply(G.R.camera, G.T);
   const t = G.cam.target;
@@ -162,11 +176,22 @@ function step(dt: number) {
   G.R.shadowFocus.copy(t);
   G.R.shadowSize = Math.min(160, Math.max(40, G.cam.dist * 1.2));
   G.R.shadowsOn = (G.settings?.shadows ?? true) && G.cam.dist < 400;
+  lap('misc');
   G.charViews.update(dt * (G.speed ? 1 : 0.0001), G.W, G.R.camera.position, G.cam.target, sel, hoverId);
+  lap('chars');
   G.structViews.update(dt, G.R.camera.position, G.cam.target, [...sel].map((id) => G.W.char(id)).filter(Boolean) as any, G.daylight.night);
+  lap('structs');
   G.terrainR.update(G.R.camera.position);
+  lap('terrain');
   G.props.update(G.R.camera.position);
+  lap('props');
   windUniform.value = G.realTime;
+  const t2 = performance.now();
+  perf.views = ema(perf.views, t2 - t1);
   G.R.render();
+  const t3 = performance.now();
+  perf.render = ema(perf.render, t3 - t2);
   G.overlay.draw(G.W, G.R.camera, sel, hoverId, dt);
+  perf.frame = ema(perf.frame, performance.now() - t0);
+  if (dt > 0) perf.fps = ema(perf.fps, 1 / dt);
 }

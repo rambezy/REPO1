@@ -45,7 +45,7 @@ export const SCENARIOS: Scenario[] = [
   {
     key: 'freeholders', name: 'Freeholders', diff: 'Easy',
     blurb: 'Four settlers with a claim in the Vale, a shack and a field.',
-    desc: 'The four of you pooled everything for a patch of green country near Dustwell. There is a shack, a wheat field, a well and a food store. There is also a Reaver camp a morning\'s walk away, and they will want their share.',
+    desc: 'The four of you pooled everything for a patch of green country on the edge of the Vale, a long day\'s walk from Aurum. There is a shack, a wheat field, a well and a food store. The Concord taxes everything that grows on its land, and the Reavers want their share too.',
     squad: 'Freeholders', money: 1500,
     people: [
       { level: 6, loadout: 'drifters_resident', kit: [['dustbread', 3]] },
@@ -53,7 +53,7 @@ export const SCENARIOS: Scenario[] = [
       { level: 6, loadout: 'drifters_resident', kit: [['dustbread', 3]] },
       { level: 6, loadout: 'drifters_resident', kit: [['dustbread', 3]] },
     ],
-    start: { settlement: 'dustwell', off: [320, -140] },
+    start: { settlement: 'aurum', region: 'vale', off: [-900, 500] },
     homestead: true,
     items: [['building_mats', 30], ['wheat', 20], ['dustbread', 10], ['bandages', 6]],
   },

@@ -7,6 +7,7 @@ import { on, emit } from '../core/events';
 import { sel, selected, setSpeed } from '../game/control';
 import { portrait } from '../render/portrait';
 import { Char } from '../sim/char';
+import { Squad } from '../sim/squad';
 import { fmt } from '../core/math';
 import { totalBounty } from '../sim/crime';
 import { FACTION } from '../content/factions';
@@ -14,10 +15,12 @@ import { FACTION } from '../content/factions';
 let root: HTMLDivElement;
 let topL: HTMLDivElement, speedBox: HTMLDivElement, squadBar: HTMLDivElement, selBox: HTMLDivElement, notices: HTMLDivElement;
 let squadKey = '';
+let squadTabs: HTMLDivElement;
+let tabsKey = '';
 const cards = new Map<number, { el: HTMLDivElement; hp: HTMLElement; bl: HTMLElement; st: HTMLElement; img: HTMLImageElement; key: string }>();
 
 export function buildHUD() {
-  on('world:reset', () => { squadKey = ''; });
+  on('world:reset', () => { squadKey = ''; tabsKey = ''; G.activeSquad = 0; });
   root = h('div', { id: 'hud' });
   topL = h('div', { class: 'hud-topl' });
   speedBox = h('div', { class: 'hud-speed' });
@@ -42,11 +45,13 @@ export function buildHUD() {
   btn('Menu', 'Esc', 'ui:menu');
   const topR = h('div', { class: 'hud-topr' }, speedBox, menuBar);
   squadBar = h('div', { class: 'hud-squad' });
+  squadTabs = h('div', { class: 'hud-sqtabs' });
   selBox = h('div', { class: 'hud-sel' });
   notices = h('div', { class: 'hud-notices' });
-  root.append(topL, topR, squadBar, selBox, notices);
+  root.append(topL, topR, squadTabs, squadBar, selBox, notices);
   ui().appendChild(root);
-  for (const el of [topL, topR, squadBar, selBox]) shield(el);
+  for (const el of [topL, topR, squadBar, selBox, squadTabs]) shield(el);
+  on('squad', () => { tabsKey = ''; squadKey = ''; });
   on('notice', (text: string, kind: string) => notify(text, kind));
   on('sel', () => { refreshSelBox(); refreshCards(true); });
   on('speed', refreshSpeed);
@@ -68,8 +73,20 @@ export function notify(text: string, kind = 'info') {
   setTimeout(() => n.remove(), 6200);
 }
 
+let perfEl: HTMLDivElement | null = null;
+/** F3: frame timings. */
+export function togglePerf() {
+  if (perfEl) { perfEl.remove(); perfEl = null; return; }
+  perfEl = h('div', { class: 'perf' });
+  root.appendChild(perfEl);
+}
+
 function tickHUD() {
   if (!G.W) return;
+  if (perfEl && G.perf) {
+    const p = G.perf, r = G.R.gl.info.render;
+    perfEl.textContent = `${Math.round(p.fps)} fps · frame ${p.frame.toFixed(1)} ms (sim ${p.sim.toFixed(1)} · world ${p.views.toFixed(1)} · draw ${p.render.toFixed(1)}) · ${r.calls} calls · ${Math.round(r.triangles / 1000)}k tris · ${S.W.active.length}/${S.W.chars.size} people`;
+  }
   const reg = G.T.regionAt(G.cam.target.x, G.cam.target.z);
   const site = G.T.siteAt(G.cam.target.x, G.cam.target.z, 30);
   const place = site && (site.kind === 'town' || site.landmark || S.W.discovered.has(site.id)) ? site.name : reg.name;
@@ -97,9 +114,75 @@ function statusOf(c: Char): string {
   return icons.join('');
 }
 
+/** The squad whose people fill the bar (when there is more than one). */
+export function activeSquad(): Squad | null {
+  const W = S.W;
+  const ids = W.playerSquads.filter((id) => (W.squads.get(id)?.members.length ?? 0) > 0);
+  if (ids.length < 2) return null;
+  if (!ids.includes(G.activeSquad)) G.activeSquad = ids[0];
+  return W.squads.get(G.activeSquad) ?? null;
+}
+
+export function switchSquad(id: number, select = true) {
+  G.activeSquad = id;
+  const sq = S.W.squads.get(id);
+  if (select && sq) {
+    sel.clear();
+    for (const m of sq.members) { const c = S.W.char(m); if (c?.alive) sel.add(m); }
+    emit('sel');
+  }
+  tabsKey = ''; squadKey = '';
+}
+
+/** Moves the selected people into a squad of their own. */
+function splitSquad() {
+  const who = selected().filter((c) => c.faction === 'player');
+  if (!who.length) { notify('Select the people for the new squad first.'); return; }
+  const W = S.W;
+  const n = W.playerSquads.length + 1;
+  const sq = new Squad();
+  sq.faction = 'player'; sq.kind = 'player'; sq.name = `Squad ${n}`;
+  W.addSquad(sq);
+  W.playerSquads.push(sq.id);
+  for (const c of who) W.moveToSquad(c, sq);
+  // squads left empty are folded away
+  W.playerSquads = W.playerSquads.filter((id) => { const q = W.squads.get(id); if (q && !q.members.length) { W.squads.delete(id); return false; } return !!q; });
+  switchSquad(sq.id);
+  emit('squad');
+}
+
+function refreshTabs() {
+  const W = S.W;
+  const list = W.playerSquads.map((id) => W.squads.get(id)).filter((q): q is Squad => !!q && q.members.length > 0);
+  const act = activeSquad();
+  const key = list.map((q) => `${q.id}:${q.name}:${q.members.length}`).join('|') + '/' + (act?.id ?? 0) + '/' + sel.size;
+  if (key === tabsKey) return;
+  tabsKey = key;
+  squadTabs.innerHTML = '';
+  if (list.length > 1) for (const q of list) {
+    const alive = q.members.filter((m) => W.char(m)?.alive).length;
+    const t = h('button', { class: 'sqtab' + (act?.id === q.id ? ' on' : ''), title: 'Click to switch · double-click to rename' }, q.name, h('small', {}, ` ${alive}`));
+    t.onclick = () => switchSquad(q.id);
+    t.ondblclick = () => {
+      const nm = prompt('Name this squad', q.name);
+      if (nm && nm.trim()) { q.name = nm.trim().slice(0, 24); tabsKey = ''; }
+    };
+    squadTabs.appendChild(t);
+  }
+  const mine = selected().filter((c) => c.faction === 'player');
+  const whole = act ? mine.length === act.members.length : mine.length === W.playerChars().length;
+  if (mine.length && !whole) {
+    const b = h('button', { class: 'sqtab add', title: 'Make a new squad of the selected people' }, '+ New squad');
+    b.onclick = () => splitSquad();
+    squadTabs.appendChild(b);
+  }
+}
+
 function refreshCards(force: boolean) {
-  const chars = S.W.playerChars();
-  const key = chars.map((c) => c.id).join(',');
+  refreshTabs();
+  const act = activeSquad();
+  const chars = act ? act.members.map((id) => S.W.char(id)).filter((c): c is Char => !!c) : S.W.playerChars();
+  const key = (act?.id ?? 0) + ':' + chars.map((c) => c.id).join(',');
   if (key !== squadKey || force) {
     if (key !== squadKey) {
       squadKey = key;

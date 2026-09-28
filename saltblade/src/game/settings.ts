@@ -11,6 +11,7 @@ export interface Settings {
   uiScale: number;
   names: 'always' | 'hover';
   pauseOnKO: boolean;
+  hints: boolean;
   master: number;
   music: number;
   sfx: number;
@@ -18,7 +19,7 @@ export interface Settings {
 }
 
 export const DEFAULTS: Settings = {
-  quality: 'high', shadows: true, viewDist: 1, autosave: 8, edgeScroll: false, uiScale: 1, names: 'always', pauseOnKO: true,
+  quality: 'high', shadows: true, viewDist: 1, autosave: 8, edgeScroll: false, uiScale: 1, names: 'hover', pauseOnKO: true, hints: true,
   master: 0.8, music: 0.5, sfx: 0.8, ambience: 0.6,
 };
 
@@ -43,6 +44,7 @@ export function applySettings() {
   if (G.cam) G.cam.edgeScroll = s.edgeScroll;
   if (G.charViews) G.charViews.range = 420 * s.viewDist;
   if (G.props) G.props.distMul = s.viewDist;
+  if (G.overlay) G.overlay.showAllNames = s.names === 'always';
   document.documentElement.style.setProperty('--ui-scale', String(s.uiScale));
   setVolumes({ master: s.master, music: s.music, sfx: s.sfx, ambience: s.ambience });
 }

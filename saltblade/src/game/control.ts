@@ -161,7 +161,7 @@ export function charActions(t: Char): MenuItem[] {
   if (mine && t.status === 'up') {
     out.push({ label: 'Follow', run: () => who.filter((c) => c !== t).forEach((c) => issue(c, { k: 'follow', id: t.id })) });
     if (t.body.needsAid()) out.push({ label: t.robot ? 'Repair' : 'First aid', run: one({ k: 'aid', id: t.id }) });
-    if (t.shackled) out.push({ label: 'Pick their shackles', run: one({ k: 'free', id: t.id }) });
+    if (t.shackled) out.push({ label: t === lead ? 'Pick my shackles' : 'Pick their shackles', run: one({ k: 'free', id: t.id }) });
   }
   if (t.cage && t.status !== 'dead') out.push({ label: 'Pick the cage lock', run: one({ k: 'lockpick', obj: t.cage, id: t.id }), danger: !mine });
   return out;

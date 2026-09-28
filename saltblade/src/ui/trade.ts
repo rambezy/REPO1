@@ -13,6 +13,10 @@ import { portrait } from '../render/portrait';
 import { recruit } from '../sim/dialogue';
 import { Char } from '../sim/char';
 import { uiSound } from '../audio';
+import { makeAnimal } from '../sim/spawn';
+import { ANIMAL } from '../content/animals';
+import { RNG } from '../core/rng';
+import { Grid } from '../sim/inventory';
 
 let views: GridView[] = [];
 
@@ -99,7 +103,7 @@ export function openTrade(pid: number, nid: number) {
         h('div', {}, 'Shop chits: ', h('b', {}, fmt(sh.money))),
       ),
     );
-    const extra = sh.kind === 'slaves' ? slaveMarket(p, sh, render) : sh.kind === 'mercs' ? mercHall(p, sh, render) : null;
+    const extra = sh.kind === 'slaves' ? slaveMarket(p, sh, render) : sh.kind === 'mercs' ? mercHall(p, sh, render) : sh.kind === 'animals' ? beastMarket(p, sh, render) : null;
     w.body.append(head, h('div', { class: 'loot' }, mine, shopSide), extra ?? '', h('div', { class: 'lootfoot' }, h('span', { class: 'dim' }, msg || 'Drag items across to buy or sell. Right-click to buy or sell a whole stack.'), h('span')));
   };
   const buy = (it: Item) => {
@@ -148,6 +152,38 @@ function slaveMarket(p: Char, sh: Shop, rerender: () => void) {
       rerender();
     };
     box.appendChild(h('div', { class: 'mrow' }, h('img', { class: 'mate', src: portrait(s) }), h('span', {}, `${s.name}, ${s.raceDef?.name ?? ''}`), b));
+  }
+  return box;
+}
+
+/** Beasts for sale: pack animals to carry loads, hounds to fight at your side. */
+const BEASTS_FOR_SALE: [string, number, string][] = [
+  ['shellback', 3600, 'A slow, patient pack beast. Carries a great deal and bites anyone who tries to steal it.'],
+  ['dunehound', 1800, 'A hound pup, raised to the leash. Fights for you, eats a lot.'],
+  ['goatling', 700, 'A hardy goatling. Mostly good for meat and company.'],
+];
+function beastMarket(p: Char, sh: Shop, rerender: () => void) {
+  const box = h('div', { class: 'market' }, h('div', { class: 'lhead' }, 'Beasts for sale'));
+  for (const [sp, price, desc] of BEASTS_FOR_SALE) {
+    const a = ANIMAL[sp];
+    if (!a) continue;
+    const b = h('button', { class: 'tog' }, `Buy (${fmt(price)}c)`);
+    b.onclick = () => {
+      if (S.W.money < price) { emit('notice', 'Not enough chits.'); return; }
+      S.W.money -= price;
+      sh.money += price;
+      uiSound('coin');
+      const beast = makeAnimal(S.W, sp, new RNG(Date.now() & 0xffffff));
+      if (sp === 'shellback') beast.inv = new Grid(10, 10);
+      recruit({ p, n: beast, vars: {} });
+      beast.name = `${p.name.split(' ')[0]}'s ${a.name}`;
+      const spot = S.nav.nearestOpen(p.x + 2, p.z + 2, 8) ?? [p.x, p.z];
+      beast.x = spot[0]; beast.z = spot[1]; beast.y = S.T.heightAt(beast.x, beast.z);
+      beast.order = { k: 'follow', id: p.id };
+      emit('notice', `The ${a.name.toLowerCase()} is yours. It will follow ${p.name}.`, 'good');
+      rerender();
+    };
+    box.appendChild(h('div', { class: 'mrow' }, h('span', {}, h('b', {}, a.name), h('div', { class: 'dim' }, desc)), b));
   }
   return box;
 }

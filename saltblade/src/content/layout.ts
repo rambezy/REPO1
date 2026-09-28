@@ -33,7 +33,7 @@ export const SETTLEMENTS: SettlementDef[] = [
   },
   {
     key: 'dustwell', name: 'Dustwell', faction: 'drifters', tmpl: 'village', u: 0.318, v: 0.6, r: 90, pop: 14,
-    shops: ['bar', 'general', 'travel'], desc: 'An oasis village of mud-brick and palm-shade, where caravans water their beasts.',
+    shops: ['bar', 'general', 'travel', 'animals'], desc: 'An oasis village of mud-brick and palm-shade, where caravans water their beasts.',
   },
   {
     key: 'aurum', name: 'Aurum', faction: 'concord', tmpl: 'concord_city', u: 0.8, v: 0.355, r: 230, pop: 60, walls: true, capital: true,
@@ -76,7 +76,7 @@ export const SETTLEMENTS: SettlementDef[] = [
   },
   {
     key: 'redmesa', name: 'Redmesa', faction: 'karuk', tmpl: 'karuk_fort', u: 0.19, v: 0.385, r: 110, pop: 20, walls: true,
-    shops: ['bar', 'weapons'], desc: 'A Karuk war-camp on the southern edge of the highlands.',
+    shops: ['bar', 'weapons', 'animals'], desc: 'A Karuk war-camp on the southern edge of the highlands.',
   },
   {
     key: 'humminghollow', name: 'Humming Hollow', faction: 'thrum', tmpl: 'hive', u: 0.11, v: 0.49, r: 120, pop: 26,

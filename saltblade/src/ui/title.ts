@@ -444,6 +444,7 @@ export function renderOptions(el: HTMLElement) {
     h('h3', {}, 'Game'),
     opt('Autosave', choice<number>([[0, 'Off'], [4, '4 min'], [8, '8 min'], [15, '15 min']], s.autosave, (v) => change({ autosave: v }))),
     opt('Pause when someone falls', choice<boolean>([[true, 'Yes'], [false, 'No']], s.pauseOnKO, (v) => change({ pauseOnKO: v })), 'one of yours knocked out'),
+    opt('Hints', choice<boolean>([[true, 'Show'], [false, 'Hide']], s.hints, (v) => { change({ hints: v }); if (v) { try { localStorage.removeItem('sb-hints'); } catch { /* ignore */ } } }), 'first-time tips'),
     opt('Names over heads', choice<Settings['names']>([['always', 'Always'], ['hover', 'On hover']], s.names, (v) => change({ names: v }))),
     opt('Edge scrolling', choice<boolean>([[false, 'Off'], [true, 'On']], s.edgeScroll, (v) => change({ edgeScroll: v }))),
     opt('Interface size', range('uiScale', 0.8, 1.3, (v) => Math.round(v * 100) + '%')),
