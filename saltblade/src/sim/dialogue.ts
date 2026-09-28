@@ -60,6 +60,14 @@ function troubles(c: DCtx): string {
   return '';
 }
 
+/** Tunde's sister Ama, in the east paddy: she asks after her brother. */
+function sisterLine(c: DCtx): string {
+  const withYou = S.W.playerChars().some((m) => m.unique === c.n.mem.sister && m.alive);
+  return withYou
+    ? 'That man with you. That\'s Tunde. That\'s my brother. Don\'t let the overseer see me looking.'
+    : 'Keep your voice down. If you ever pass Brokenchain, in the reeds, ask for a runaway called Tunde. Tell him his sister is still in the east paddy. Tell him Ama is still counting.';
+}
+
 /** Common farewell and utility choices. */
 const BYE: DChoice = { t: 'Goodbye.', end: true };
 
@@ -135,7 +143,7 @@ const TREES: Record<string, Tree> = {
   },
   slave: {
     start: {
-      t: () => S.rng.pick(['Don\'t talk to me. The overseer is watching.', 'Please... if you have a lockpick...', 'Keep walking, stranger. There\'s nothing here but the lash.', 'The Chainhouse took my whole village. Every one of us.']),
+      t: (c) => c.n.mem.sister ? sisterLine(c) : S.rng.pick(['Don\'t talk to me. The overseer is watching.', 'Please... if you have a lockpick...', 'Keep walking, stranger. There\'s nothing here but the lash.', 'The Chainhouse took my whole village. Every one of us.']),
       ch: [
         { t: 'I could get those shackles off you.', fx: (c) => { emit('order', c.p, { k: 'free', id: c.n.id }); return 'end'; } },
         { t: 'You\'re free. Come with me.', if: (c) => !c.n.shackled, fx: (c) => { recruit(c); }, next: 'joined' },
