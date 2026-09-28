@@ -22,7 +22,7 @@ import { rand, TILE } from '../../engine/util';
 import { enterMap } from '../../world/world';
 import { snapCamera } from '../../engine/renderer';
 import { fadeTo } from '../../systems/transition';
-import { trigger, topic, greet, farewell, waitUntil, put, putAt, nearTile, nearActor, onMap, protectPlayer, addRel, remember, tip, P, skipTo, decor, markerObj, canRunScene } from './lib';
+import { autosaveSoon, trigger, topic, greet, farewell, waitUntil, put, putAt, nearTile, nearActor, onMap, protectPlayer, addRel, remember, tip, P, skipTo, decor, markerObj, canRunScene } from './lib';
 import { spawnCast, animal, FEAST, castHooks } from './cast';
 import { feast } from './raid';
 
@@ -235,6 +235,7 @@ export async function startPrologue() {
     `);
     forceMusic(null);
   }).then(() => {
+    autosaveSoon();
     tip('controls', 'Move with <b>WASD</b>. Press <b>E</b> to talk and interact. Your journal (<b>B</b>) keeps your tasks, and <b>H</b> shows the controls.', 9000);
   });
 }

@@ -4,7 +4,7 @@
 import { G } from '../../G';
 import { S, flag, setFlag, hourF, dayIndex } from '../../state';
 import { Actor } from '../../world/actor';
-import { findActor, getMap, removeActor, addActor } from '../../world/world';
+import { findActor, getMap, removeActor, addActor, enterMap } from '../../world/world';
 import { CHARS } from '../characters';
 import { kill } from '../../systems/combat';
 import { emit as fx } from '../../engine/fx';
@@ -23,7 +23,7 @@ import { TILE } from '../../engine/util';
 import { fadeTo } from '../../systems/transition';
 import { crumbJoins, crumbLeaves, makeCrumb } from '../../systems/companion';
 import { readBook } from '../../ui/reader';
-import { trigger, topic, greet, farewell, waitUntil, put, nearTile, onMap, protectPlayer, addRel, remember, chose, tip, P, setHollowbrook, canRunScene, decor, propObj, groundItem, hostiles, rel, refreshDecor, unfire, readAndWait } from './lib';
+import { autosaveSoon, trigger, topic, greet, farewell, waitUntil, put, nearTile, onMap, protectPlayer, addRel, remember, chose, tip, P, setHollowbrook, canRunScene, decor, propObj, groundItem, hostiles, rel, refreshDecor, unfire, readAndWait } from './lib';
 import { offerTraining } from './sides';
 import { spawnCast, castHooks, npc, fighter, OW, always, ACT, at } from './cast';
 import { startAct2 } from './act2';
@@ -140,6 +140,7 @@ export async function startAct1() {
   S.hunger = Math.max(S.hunger, 35);
   S.energy = Math.max(S.energy, 40);
   spawnCast();
+  if (G.map.id !== 'overworld') enterMap('overworld', { x: 39 * TILE + 8, y: 103 * TILE + 12 }, 0);
   put(p, 'overworld', 39, 103, 0);
   p.pose = 'lie';
   p.poseLock = 9999;
@@ -189,6 +190,7 @@ export async function startAct1() {
     G.cam.lockX = null; G.cam.lockY = null;
     setStage('main_ashes', 'bury', true);
   });
+  autosaveSoon();
   tip('act1', 'Your journal (<b>B</b>) now holds several tasks. The tracked one shows on screen; pick another from the journal at any time.', 8000);
 }
 
@@ -416,6 +418,8 @@ async function burial() {
     setStage('main_ashes', 'forge');
     G.cam.lockX = null; G.cam.lockY = null;
   });
+  // the rain lets up after the burial
+  weather.forced = null;
 }
 
 async function hearthstone() {

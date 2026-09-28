@@ -22,7 +22,7 @@ import { lockpick } from '../../ui/minigames/lockpick';
 import { kill } from '../../systems/combat';
 import { crumbJoins } from '../../systems/companion';
 import { makeCanvas } from '../../gfx/pixel';
-import { trigger, unfire, topic, greet, waitUntil, put, putAt, nearTile, onMap, regionIs, protectPlayer, addRel, rel, remember, chose, tip, P, canRunScene, decor, markerObj, hostiles, readAndWait, refreshDecor, skipTo, setHollowbrook } from './lib';
+import { autosaveSoon, trigger, unfire, topic, greet, waitUntil, put, putAt, nearTile, onMap, regionIs, protectPlayer, addRel, rel, remember, chose, tip, P, canRunScene, decor, markerObj, hostiles, readAndWait, refreshDecor, skipTo, setHollowbrook } from './lib';
 import { spawnCast, castHooks, npc, fighter, person, OW, always, ACT, at } from './cast';
 
 // ---------------------------------------------------------------- allies
@@ -98,6 +98,7 @@ export async function startAct3() {
   await card('Ravenstone', 'Act III', '', { secs: 5, bg: '#000' });
   startQuest('main_allies', 'gather', true);
   startQuest('main_harrow', 'start', true);
+  autosaveSoon();
   notify('Rally your allies across the valley. The journal (<b>B</b>) shows who might answer your call.', 'quest', 7000);
 }
 
@@ -142,6 +143,8 @@ function registerCast() {
   castHooks.push(() => {
     if (ACT() !== 3) return;
     if (qAt('main_siege', 'bailey')) for (const g of actors) if (g.tags.has('siege')) { g.hostile = true; g.mem.alerted = true; g.mem.aggroRange = 400; }
+    // sneaking in by the postern: the garrison attacks whoever it sees
+    if (qAt('main_siege', 'postern')) for (const g of actors) if (g.tags.has('rvguard')) { g.hostile = true; g.mem.aggroRange = 130; }
     if (qAt('main_siege', 'dieter')) { S.quests.main_siege.stage = 'bailey'; unfire('a3_bailey_clear'); }
     if (qAt('main_siege', 'hall')) unfire('a3_hall');
     if (qAt('main_siege', 'lida')) unfire('a3_kitchen');
@@ -380,6 +383,7 @@ async function councilOfWar() {
       await say('bertram', 'tender', 'God go with you, Sir {name}. We\'ll be waiting for the gate.');
       setStage('main_siege', 'postern');
       remember('siege_postern');
+      for (const g of here()) if (g.tags.has('rvguard')) { g.hostile = true; g.mem.aggroRange = 130; }
     } else {
       await say('bertram', 'angry', 'Then let\'s be about it. For Hollowbrook! For Radek! For the valley!');
       setStage('main_siege', 'gate');

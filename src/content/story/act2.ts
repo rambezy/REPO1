@@ -21,7 +21,7 @@ import { fadeTo, travel } from '../../systems/transition';
 import { forge } from '../../ui/minigames/forge';
 import { lockpick } from '../../ui/minigames/lockpick';
 import { kill } from '../../systems/combat';
-import { trigger, unfire, topic, greet, waitUntil, put, putAt, nearTile, onMap, regionIs, protectPlayer, addRel, remember, chose, tip, P, canRunScene, decor, propObj, markerObj, groundItem, hostiles, readAndWait, refreshDecor, skipTo } from './lib';
+import { autosaveSoon, trigger, unfire, topic, greet, waitUntil, put, putAt, nearTile, onMap, regionIs, protectPlayer, addRel, remember, chose, tip, P, canRunScene, decor, propObj, markerObj, groundItem, hostiles, readAndWait, refreshDecor, skipTo } from './lib';
 import { spawnCast, castHooks, npc, fighter, person, OW, always, ACT, at, sched } from './cast';
 import { startAct3 } from './act3';
 
@@ -102,6 +102,7 @@ export async function startAct2() {
   await card("The Raven's Feast", 'Act II', '', { secs: 5, bg: '#000' });
   if (has('unfinished_blade') && !qDone('main_blade')) startQuest('main_blade', 'kovar', true);
   startQuest('main_silver', has('foreman_ledger') ? 'bertram' : 'go', true);
+  autosaveSoon();
   notify('Two roads lie ahead: Father\'s blade, and the stolen silver. Your journal (<b>B</b>) lists both.', 'quest', 7000);
 }
 
@@ -676,9 +677,19 @@ async function cage() {
     await conversation(async () => { await narrate('Too many eyes. There are guards within a stone\'s throw, wide awake. You\'d be seen before the lock gave.'); });
     return;
   }
-  if (!has('lockpick')) { await conversation(async () => { await narrate('The cage is shut with a cheap iron padlock. You would need a lockpick.'); }); return; }
-  const ok = await lockpick(2);
-  if (!ok) return;
+  let how = '';
+  await conversation(async () => {
+    await narrate('The cage is shut with a cheap iron padlock. Pavel watches you through the bars, hardly breathing.');
+    how = await choose([
+      { id: 'pick', text: '[Pick the lock]', if: () => has('lockpick') },
+      { id: 'smash', text: '[Break the padlock with a hard blow]', check: { stat: 'strength', need: 4 }, if: () => drugged || poisoned },
+      { id: 'leave', text: '[Leave it for now]' },
+    ]);
+    if (how === 'smash' && !lastCheck) { await narrate('You hit it with everything you have. The padlock only dents. Pavel winces at the noise. Nobody stirs, thank God.'); how = ''; }
+    else if (how === 'smash') await narrate('One blow, two. On the third the hasp snaps, loud as a church bell in the quiet. Nobody stirs. Ilse\'s stew has seen to that.');
+  });
+  if (how === 'pick') { const ok = await lockpick(2); if (!ok) return; }
+  else if (how !== 'smash') return;
   setFlag('pavel_freed');
   setStage('main_pavel', 'escape');
   await cutscene(async () => {

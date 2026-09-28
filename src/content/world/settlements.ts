@@ -431,7 +431,7 @@ export function ravenstone(b: MapBuilder) {
   b.prop('flag', R.x0 + 17, R.y0 + 10, { opt: CLOTH.black });
   for (const [x, y] of [[R.x0 + 9, R.y1 - 1], [R.x0 + 14, R.y1 - 1]]) b.prop('torch', x, y, { solid: false });
   // postern on the east wall (a way in for the careful)
-  b.marker((R.x1) * TILE + 8, (R.y0 + 12) * TILE + 10, { type: 'door', to: 'overworld', spawn: 'rv_postern_in', label: 'The postern gate', locked: 3 }, { key: 'rv_postern' });
+  b.marker((R.x1) * TILE + 8, (R.y0 + 12) * TILE + 10, { type: 'door', to: 'overworld', spawn: 'rv_postern_in', label: 'The postern gate', locked: 2 }, { key: 'rv_postern' });
   b.spawn('rv_postern_in', R.x1 - 3, R.y0 + 12, 1);
   b.spawn('rv_postern_out', R.x1 + 1, R.y0 + 13, 2);
   b.spawn('ravenstone', R.x0 + 12, R.y1 + 8, 3);

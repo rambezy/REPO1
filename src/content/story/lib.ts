@@ -22,7 +22,7 @@ import { UI } from '../../ui/ui';
 import { isTraveling } from '../../systems/transition';
 import { settleSchedules } from '../../systems/ai';
 import { applyNeeds } from '../../systems/survival';
-import { on } from '../../engine/events';
+import { on, emit } from '../../engine/events';
 import { card } from '../../ui/cine';
 import { charName } from '../characters';
 import { rumorFor } from '../rumors';
@@ -369,6 +369,17 @@ export async function readAndWait(id: string) {
   await waitUntil(() => !UI.screen, 600);
 }
 
+/** Saves to the autosave slot as soon as the player is back in free play. */
+let autosavePending = false;
+export function autosaveSoon() {
+  if (autosavePending) return;
+  autosavePending = true;
+  waitUntil(() => canRunScene(), 600).then((ok) => {
+    autosavePending = false;
+    if (ok) emit('autosave', 'story');
+  });
+}
+
 /** True when a character has a quest scene waiting (used to wake them up for it). */
 export function hasUrgentTopic(charId: string) {
   return (TOPICS[charId] || []).some((t) => (t.auto || t.urgent) && available(charId, t));
@@ -376,6 +387,9 @@ export function hasUrgentTopic(charId: string) {
 
 export function initLib() {
   talkHooks.urgent = hasUrgentTopic;
+  // a finished task or a new chapter is a good moment to keep the player's progress
+  on('quest:done', () => autosaveSoon());
+  on('quest', (_id: string, stage: string) => { if (stage === 'start' || stage === 'failed') autosaveSoon(); });
   mapBuiltHooks.push(applyDecor);
   renderHooks.overlay.push(drawGlints);
 }
