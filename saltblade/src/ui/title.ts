@@ -477,7 +477,8 @@ export function renderHelp(el: HTMLElement) {
     ['H', 'Hold position'],
     ['I', 'Character: gear, skills, health'],
     ['B · U', 'Build · research'],
-    ['L', 'Journal'],
+    ['L · K', 'Journal and deeds · Codex'],
+    ['Tab', 'Next squad'],
     ['F5 · F9', 'Quick save · quick load'],
     ['Esc', 'Close the top window, or open the menu'],
   ];

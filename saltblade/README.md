@@ -42,9 +42,14 @@ into a single HTML file.
 - **Recruit** people from bars and cages, including 18 named characters
   with their own stories, prices and conditions. Hire mercenaries, buy
   slaves, or buy a pack beast or a hound.
-- **Trade** in shops that restock with their own stock and prices, sell
-  loot, mine ore, collect bounties on about two dozen named outlaw leaders,
-  or buy a house in town.
+- **Trade** in shops that restock over time. Each town sells some goods
+  cheap and pays well for others (salt from the Barrens, resin from the
+  hives, silk from the Vale, ore from Stonegate), so hauling goods pays.
+  Sell loot, mine ore, collect bounties on about two dozen named outlaw
+  leaders, or buy a house in town.
+- **Fight in the Pit** at Hornspire: pay the Pit Master and take on a
+  novice, a veteran and finally the Champion for the purse and the Karuk's
+  respect.
 - **Break the law** carefully: theft, pickpocketing, lockpicking, sneak
   attacks, freeing slaves. Witnesses report you and guards come for you.
   Prison sentences end; slavers carry the beaten off in chains.
@@ -54,6 +59,13 @@ into a single HTML file.
   collectors come calling.
 - **Read** 26 books: scripture, histories, field guides, journals, ledgers,
   letters and poems, each with its own voice, not all of them honest.
+- **Watch the world move**: war parties march on their enemies' towns and
+  sack the weak ones. Fight at a town's gates and it remembers. When a
+  faction's leader falls, its war parties stop for a while and its enemies
+  warm to whoever did it.
+- **Keep a record**: a journal of what happened, 28 deeds to earn, and a
+  Codex of the places, regions, factions, creatures and books you have
+  come across.
 - **Survive the weather**: dust storms, fog, rain, ashfall, spore drift,
   scorching heat, poison gas and acid rain, which burns anyone without a
   roof or the right gear.
@@ -81,7 +93,7 @@ looks, with a turntable preview.
 | Middle drag or Alt+drag | Turn and tilt the camera |
 | Space, 1 2 3 4 | Pause, game speed |
 | T, R, H, F | Sneak, walk, hold position, camera follows |
-| I, B, U, M, O, L | Character, build, research, map, factions, journal |
+| I, B, U, M, O, L, K | Character, build, research, map, factions, journal and deeds, Codex |
 | Tab | Next squad |
 | F5, F9 | Quick save, quick load |
 | F3 | Frame timings |
