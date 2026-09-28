@@ -19,6 +19,9 @@ class Input {
   wheel = 0;
   rotDX = 0;
   rotDY = 0;
+  panDX = 0; // screen pixels dragged with a finger
+  panDY = 0;
+  touch = false; // a touch screen has been used
   shift = false;
   ctrl = false;
   alt = false;
@@ -98,7 +101,80 @@ class Input {
       }
     });
     canvas.addEventListener('wheel', (e) => { this.wheel += Math.sign(e.deltaY) * Math.min(3, Math.abs(e.deltaY) / 60 + 0.5); e.preventDefault(); }, { passive: false });
+    this.attachTouch(canvas);
   }
+
+  /**
+   * Touch: tap selects, double-tap follows, press-and-hold is a right click,
+   * one finger drags the view, two fingers pinch to zoom and twist to turn.
+   */
+  private attachTouch(canvas: HTMLCanvasElement) {
+    let start: { x: number; y: number; t: number } | null = null;
+    let moved = false, held = false, holdTimer = 0, lastTap = 0;
+    let two: { d: number; a: number; y: number } | null = null;
+    const fake = (x: number, y: number, button = 0) => ({ clientX: x, clientY: y, button, shiftKey: false, ctrlKey: false, altKey: false, metaKey: false, target: canvas, preventDefault() {}, stopPropagation() {} }) as unknown as MouseEvent;
+    const pair = (t: TouchList) => {
+      const a = t[0], b = t[1];
+      return { d: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY), a: Math.atan2(b.clientY - a.clientY, b.clientX - a.clientX), y: (a.clientY + b.clientY) / 2 };
+    };
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      this.touch = true;
+      if (e.touches.length === 1) {
+        const t = e.touches[0];
+        start = { x: t.clientX, y: t.clientY, t: performance.now() };
+        moved = false; held = false;
+        this.mx = t.clientX; this.my = t.clientY;
+        clearTimeout(holdTimer);
+        holdTimer = window.setTimeout(() => {
+          if (!moved && start) { held = true; this.handlers.rclick?.(start.x, start.y, fake(start.x, start.y, 2)); }
+        }, 480);
+      } else if (e.touches.length === 2) {
+        clearTimeout(holdTimer);
+        start = null;
+        two = pair(e.touches);
+      }
+    }, { passive: false });
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      if (e.touches.length === 1 && start) {
+        const t = e.touches[0];
+        if (!moved && Math.hypot(t.clientX - start.x, t.clientY - start.y) > 10) { moved = true; clearTimeout(holdTimer); }
+        if (moved) { this.panDX += t.clientX - this.mx; this.panDY += t.clientY - this.my; }
+        this.mx = t.clientX; this.my = t.clientY;
+      } else if (e.touches.length === 2 && two) {
+        const p = pair(e.touches);
+        if (p.d > 0 && two.d > 0) this.wheel += Math.log(two.d / p.d) * 6;
+        let da = p.a - two.a;
+        if (da > Math.PI) da -= Math.PI * 2;
+        if (da < -Math.PI) da += Math.PI * 2;
+        this.rotDX -= da * 170;
+        this.rotDY += (p.y - two.y) * 0.8;
+        two = p;
+      }
+    }, { passive: false });
+    canvas.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      clearTimeout(holdTimer);
+      if (e.touches.length === 0) {
+        if (start && !moved && !held) {
+          const now = performance.now();
+          if (now - lastTap < 320) this.handlers.dblclick?.(start.x, start.y, fake(start.x, start.y));
+          else this.handlers.click?.(start.x, start.y, fake(start.x, start.y));
+          lastTap = now;
+        }
+        start = null; two = null;
+      } else if (e.touches.length === 1) {
+        two = null;
+        const t = e.touches[0];
+        start = { x: t.clientX, y: t.clientY, t: performance.now() };
+        moved = true; // the rest of this gesture only drags
+        this.mx = t.clientX; this.my = t.clientY;
+      }
+    }, { passive: false });
+    canvas.addEventListener('touchcancel', () => { clearTimeout(holdTimer); start = null; two = null; });
+  }
+  takePan() { const p = [this.panDX, this.panDY]; this.panDX = 0; this.panDY = 0; return p; }
   private mods(e: KeyboardEvent | MouseEvent) {
     this.shift = e.shiftKey; this.ctrl = e.ctrlKey || e.metaKey; this.alt = e.altKey;
   }

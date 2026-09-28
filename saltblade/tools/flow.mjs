@@ -23,6 +23,7 @@ for (const step of process.argv.slice(2)) {
     else if (k === 'key') await page.keyboard.press(v);
     else if (k === 'js') { const r = await page.evaluate(v); if (r !== undefined) console.log('js ->', JSON.stringify(r)); }
     else if (k === 'until') await page.waitForFunction(v, null, { timeout: 120000 });
+    else if (k === 'rclick' || k === 'lclick') { const [x, y] = v.split(',').map(Number); await page.mouse.click(x, y, { button: k === 'rclick' ? 'right' : 'left' }); }
   } catch (e) { console.log('step failed', step, e.message.split('\n')[0]); }
 }
 if (logs.length) console.log(logs.slice(0, 40).join('\n'));

@@ -1,6 +1,6 @@
 // The build menu, placement with a ghost preview, the research window, and
 // windows for machines, benches, storage and fields.
-import { h, openWindow, isOpen, closeWindow, getWindow, esc } from './dom';
+import { h, openWindow, isOpen, closeWindow, getWindow, esc, ask } from './dom';
 import { G } from '../state';
 import { S } from '../sim/ctx';
 import { BUILDABLES, BUILDABLE, Buildable, RECIPES, TECHS, TECH, BuildCat } from '../content/buildables';
@@ -31,7 +31,7 @@ export function setupBuild() {
   on('ui:research', () => { if (isOpen('research')) closeWindow('research'); else openResearch(); });
   on('ui:object', (_c: number, id: number) => openObject(id));
   on('build:cancel', () => stopPlacing());
-  on('build:deconstruct', (id: number) => { const o = S.W.objs.get(id); if (o && confirm(`Tear down the ${o.data?.name ?? o.def}? Half the materials are returned.`)) deconstruct(o); });
+  on('build:deconstruct', (id: number) => { const o = S.W.objs.get(id); if (o) ask(`Tear down the ${o.data?.name ?? o.def}? Half the materials are returned.`, 'Tear it down', () => deconstruct(o), 'Cancel', true); });
   on('build:click', (x: number, y: number) => {
     if (!placing) return;
     const g = groundAt(x, y);
@@ -143,9 +143,7 @@ function openResearch() {
           !done && t.cost ? h('div', { class: 'bcost' }, costStr(t.cost)) : '',
           !done && t.needs?.length ? h('div', { class: 'bcost dim' }, 'After: ' + t.needs.map((n) => TECH[n].name).join(', ')) : '',
         );
-        b.onclick = () => {
-          if (done || !ready) return;
-          if (R.current && R.current !== t.key && !confirm('Switch research? Progress on the current topic is lost.')) return;
+        const start = () => {
           if (t.cost && R.current !== t.key) {
             // relics are consumed from storage or inventories when research starts
             for (const [id, n] of Object.entries(t.cost)) if (countOwned(id) < n) { emit('notice', `You need ${n} ${ITEM[id].name} in storage to research this.`); return; }
@@ -154,6 +152,11 @@ function openResearch() {
           if (R.current !== t.key) R.progress = 0;
           R.current = t.key;
           render();
+        };
+        b.onclick = () => {
+          if (done || !ready) return;
+          if (R.current && R.current !== t.key) ask('Switch research? Progress on the current topic is lost.', 'Switch', start);
+          else start();
         };
         col.appendChild(b);
       }

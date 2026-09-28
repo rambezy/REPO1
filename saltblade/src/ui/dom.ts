@@ -101,3 +101,62 @@ export function bar(frac: number, cls = '') {
   b.appendChild(i);
   return b;
 }
+
+/** An in-page yes/no question (the browser's confirm() is not available everywhere). */
+export function ask(text: string, yes: string, onYes: () => void, no = 'Cancel', danger = false) {
+  const back = h('div', { class: 'askback' });
+  const ok = h('button', { class: 'tbtn small ' + (danger ? 'danger' : 'primary') }, yes);
+  const cancel = h('button', { class: 'tbtn small' }, no);
+  const box = h('div', { class: 'askbox', role: 'dialog' }, h('div', { class: 'asktext' }, text), h('div', { class: 'askbtns' }, cancel, ok));
+  back.appendChild(box);
+  const close = () => { back.remove(); document.removeEventListener('keydown', key, true); };
+  const key = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); close(); }
+    if (e.key === 'Enter') { e.stopPropagation(); e.preventDefault(); close(); onYes(); }
+  };
+  document.addEventListener('keydown', key, true);
+  ok.onclick = () => { close(); onYes(); };
+  cancel.onclick = close;
+  back.addEventListener('mousedown', (e) => { e.stopPropagation(); if (e.target === back) close(); });
+  for (const ev of ['click', 'wheel', 'contextmenu', 'mouseup']) back.addEventListener(ev, (e) => e.stopPropagation());
+  ui().appendChild(back);
+  ok.focus();
+}
+
+/** An in-page text prompt. */
+export function askText(title: string, value: string, onOk: (v: string) => void, max = 28) {
+  const back = h('div', { class: 'askback' });
+  const input = h('input', { class: 'tin', value, maxlength: String(max), spellcheck: 'false', id: 'ask-text' }) as HTMLInputElement;
+  const ok = h('button', { class: 'tbtn small primary' }, 'OK');
+  const cancel = h('button', { class: 'tbtn small' }, 'Cancel');
+  const box = h('div', { class: 'askbox', role: 'dialog' }, h('div', { class: 'asktext' }, title), input, h('div', { class: 'askbtns' }, cancel, ok));
+  back.appendChild(box);
+  const close = () => back.remove();
+  const done = () => { const v = input.value.trim(); close(); if (v) onOk(v); };
+  input.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') done(); if (e.key === 'Escape') close(); });
+  ok.onclick = done;
+  cancel.onclick = close;
+  back.addEventListener('mousedown', (e) => { e.stopPropagation(); if (e.target === back) close(); });
+  for (const ev of ['click', 'wheel', 'contextmenu', 'mouseup']) back.addEventListener(ev, (e) => e.stopPropagation());
+  ui().appendChild(back);
+  input.focus();
+  input.select();
+}
+
+/** An in-page box to paste text into. */
+export function askPaste(title: string, onText: (v: string) => void) {
+  const back = h('div', { class: 'askback' });
+  const area = h('textarea', { class: 'tin pastearea', id: 'ask-paste', spellcheck: 'false', placeholder: 'Paste here' }) as HTMLTextAreaElement;
+  const ok = h('button', { class: 'tbtn small primary' }, 'Load');
+  const cancel = h('button', { class: 'tbtn small' }, 'Cancel');
+  const box = h('div', { class: 'askbox', role: 'dialog' }, h('div', { class: 'asktext' }, title), area, h('div', { class: 'askbtns' }, cancel, ok));
+  back.appendChild(box);
+  const close = () => back.remove();
+  area.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Escape') close(); });
+  ok.onclick = () => { const v = area.value.trim(); close(); if (v) onText(v); };
+  cancel.onclick = close;
+  back.addEventListener('mousedown', (e) => { e.stopPropagation(); if (e.target === back) close(); });
+  for (const ev of ['click', 'wheel', 'contextmenu', 'mouseup']) back.addEventListener(ev, (e) => e.stopPropagation());
+  ui().appendChild(back);
+  area.focus();
+}

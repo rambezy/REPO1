@@ -141,6 +141,11 @@ export function drawFurniture(g: GeoBuilder, def: string, x: number, y: number, 
       g.cyl(0.04, 0.05, 2.2, 5, { color: dark });
       if (glow) glow.push().translate(x, y + 2.2, z).box(0.22, 0.28, 0.22, { color: [3.5, 2.4, 1.1] }).pop();
       break;
+    case 'forsale':
+      g.push().translate(0, 0.7, 0).box(0.1, 1.4, 0.1, { color: wood }).pop();
+      g.push().translate(0, 1.25, 0.06).box(0.8, 0.45, 0.05, { color: 0xd8c8a0 }).pop();
+      g.push().translate(0, 1.25, 0.09).box(0.6, 0.08, 0.02, { color: 0x8a2a1a }).pop();
+      break;
     case 'post':
       g.cyl(0.12, 0.14, 1.6, 6, { color: wood });
       g.push().translate(0, 1.2, 0.15).torus(0.08, 0.02, 4, 8, Math.PI * 2, { color: 0x3a3a3a }).pop();

@@ -5,6 +5,7 @@ import { G } from '../state';
 import { S } from '../sim/ctx';
 import { on } from '../core/events';
 import { uiSound } from '../audio';
+import { input } from '../core/input';
 
 const seen = new Set<string>();
 let box: HTMLDivElement | null = null;
@@ -45,7 +46,10 @@ function showNext() {
 export function setupHints() {
   load();
   on('game:start', () => {
-    setTimeout(() => hint('start', 'Your people', 'Your people are the portraits at the bottom. <b>Left-click</b> to select (drag a box for several), <b>right-click the ground</b> to move, <b>right-click someone</b> for things to do. <b>Space</b> pauses; <b>1–4</b> set the speed.'), 1500);
+    setTimeout(() => {
+      if (input.touch || matchMedia('(pointer: coarse)').matches) hint('start_touch', 'Your people', 'Your people are the portraits at the bottom. <b>Tap</b> to select, <b>press and hold</b> the ground to move there or on someone for things to do. Drag to look around, pinch to zoom, twist with two fingers to turn. Saltblade plays best with a mouse and keyboard.');
+      else hint('start', 'Your people', 'Your people are the portraits at the bottom. <b>Left-click</b> to select (drag a box for several), <b>right-click the ground</b> to move, <b>right-click someone</b> for things to do. <b>Space</b> pauses; <b>1–4</b> set the speed.');
+    }, 1500);
   });
   on('ui:talk', () => hint('talk', 'Talking', 'People you talk to remember how you treat them. Recruits drink in bars; some join for free, some want paying.'));
   on('ui:trade', () => hint('trade', 'Trading', 'Drag items between your pack and the shop. Prices depend on the trader and your standing with their faction.'));

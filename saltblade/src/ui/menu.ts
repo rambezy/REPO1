@@ -1,10 +1,10 @@
 // The in-game menu (Esc): save, load, options, help, back to the title.
-import { h, ui } from './dom';
+import { h, ui, ask } from './dom';
 import { G } from '../state';
 import { S } from '../sim/ctx';
 import { input } from '../core/input';
 import { saveGame, loadSlot, loadData, saveMeta, sessionExtra } from '../game/session';
-import { listSaves, exportSave, SaveMeta } from '../sim/save';
+import { listSaves, exportSave, exportText, SaveMeta } from '../sim/save';
 import { renderLoadList, renderOptions, renderHelp, showTitle } from './title';
 import { setSpeed } from '../game/control';
 import { uiSound } from '../audio';
@@ -87,17 +87,35 @@ async function savePanel(body: HTMLElement) {
       m ? h('div', { class: 'svinfo' }, h('b', {}, m.name), h('div', { class: 'dim' }, `Day ${m.day} · ${m.place} · ${new Date(m.savedAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}`)) : h('div', { class: 'svinfo dim' }, 'Empty'),
     );
     const b = h('button', { class: 'tbtn small primary' }, m ? 'Overwrite' : 'Save here');
-    b.onclick = async () => {
-      if (m && m.name !== meta.name && !confirm(`Overwrite "${m.name}, day ${m.day}"?`)) return;
+    const doSave = async () => {
       b.textContent = 'Saving…';
       const ok = await saveGame(slot);
       if (ok) uiSound('build');
       savePanel(body);
     };
+    b.onclick = () => {
+      if (m && m.name !== meta.name) ask(`Overwrite "${m.name}, day ${m.day}"?`, 'Overwrite', () => void doSave());
+      else void doSave();
+    };
     row.appendChild(b);
     list.appendChild(row);
   }
-  const exp = h('button', { class: 'tbtn small' }, 'Export to a file…');
+  const exp = h('button', { class: 'tbtn small' }, 'Download a save file');
   exp.onclick = () => void exportSave(`${meta.name} day ${meta.day}`, sessionExtra());
-  body.append(h('h2', {}, 'Save the game'), h('p', { class: 'dim' }, `${meta.name} · day ${meta.day} · ${meta.place}`), list, h('div', { class: 'svfoot' }, exp));
+  const copy = h('button', { class: 'tbtn small' }, 'Copy save as text');
+  copy.onclick = async () => {
+    const text = await exportText(sessionExtra());
+    try { await navigator.clipboard.writeText(text); copy.textContent = 'Copied'; }
+    catch {
+      // no clipboard here: show it to select by hand
+      const area = h('textarea', { class: 'tin pastearea', readonly: 'true', id: 'save-text' }) as HTMLTextAreaElement;
+      area.value = text;
+      body.appendChild(area);
+      area.select();
+      copy.textContent = 'Select the text below and copy it';
+    }
+  };
+  body.append(h('h2', {}, 'Save the game'), h('p', { class: 'dim' }, `${meta.name} · day ${meta.day} · ${meta.place}`), list,
+    h('div', { class: 'svfoot' }, copy, exp),
+    h('p', { class: 'dim small' }, 'Saves live in this browser. To move a game to another browser, copy it as text and paste it into Load game there.'));
 }

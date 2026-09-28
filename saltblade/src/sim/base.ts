@@ -25,7 +25,11 @@ const rng = new RNG(777);
 export function canPlace(b: Buildable, x: number, z: number, rot: number): { ok: boolean; why: string } {
   const T = S.T;
   const town = T.siteAt(x, z, 30);
-  if (town && town.kind === 'town') return { ok: false, why: `You can't build inside ${town.name}.` };
+  if (town && town.kind === 'town') {
+    // only furniture, and only inside a house of your own
+    const home = buildingAt(x, z);
+    if (!home || home.owner !== 'player' || b.kind === 'building' || b.kind === 'farm' || b.wall) return { ok: false, why: home?.owner === 'player' ? 'Only furniture fits in there.' : `You can't build inside ${town.name}, except in a house of your own.` };
+  }
   const c = Math.cos(rot), s = Math.sin(rot);
   let minH = Infinity, maxH = -Infinity;
   for (const [lx, lz] of [[-1, -1], [1, -1], [1, 1], [-1, 1], [0, 0]]) {
@@ -505,7 +509,8 @@ function genOutput(g: WObj) {
 /** Where the player's base is, if they have one. */
 export function playerBase(): { x: number; z: number; n: number } | null {
   let x = 0, z = 0, n = 0;
-  for (const o of S.W.objs.values()) if (o.owner === 'player' && o.kind !== 'pile' && o.kind !== 'site') { x += o.x; z += o.z; n++; }
+  // houses bought in towns are not a base: the town keeps the raiders off
+  for (const o of S.W.objs.values()) if (o.owner === 'player' && o.kind !== 'pile' && o.kind !== 'site' && !o.site) { x += o.x; z += o.z; n++; }
   return n >= 4 ? { x: x / n, z: z / n, n } : null;
 }
 

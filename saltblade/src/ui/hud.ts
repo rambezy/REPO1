@@ -1,6 +1,6 @@
 // The heads-up display: purse and clock, time controls, the squad bar with
 // portraits, the selected character's stance toggles, and notices.
-import { h, ui, shield, esc } from './dom';
+import { h, ui, shield, esc, askText } from './dom';
 import { G } from '../state';
 import { S } from '../sim/ctx';
 import { on, emit } from '../core/events';
@@ -163,10 +163,7 @@ function refreshTabs() {
     const alive = q.members.filter((m) => W.char(m)?.alive).length;
     const t = h('button', { class: 'sqtab' + (act?.id === q.id ? ' on' : ''), title: 'Click to switch · double-click to rename' }, q.name, h('small', {}, ` ${alive}`));
     t.onclick = () => switchSquad(q.id);
-    t.ondblclick = () => {
-      const nm = prompt('Name this squad', q.name);
-      if (nm && nm.trim()) { q.name = nm.trim().slice(0, 24); tabsKey = ''; }
-    };
+    t.ondblclick = () => askText('Name this squad', q.name, (nm) => { q.name = nm.slice(0, 24); tabsKey = ''; }, 24);
     squadTabs.appendChild(t);
   }
   const mine = selected().filter((c) => c.faction === 'player');

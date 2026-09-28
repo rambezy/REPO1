@@ -275,3 +275,15 @@ export async function takeReloadStash(): Promise<any | null> {
   if (!blob) return null;
   return JSON.parse(await gunzip(blob));
 }
+
+const TEXT_TAG = 'SALTBLADE-SAVE:';
+/** The whole game as one line of text, for copying between browsers. */
+export async function exportText(extra: Record<string, any> = {}): Promise<string> {
+  const blob = await gzip(JSON.stringify(serialize(extra)));
+  return TEXT_TAG + (await blobToB64(blob));
+}
+export async function importText(text: string): Promise<any> {
+  const t = text.trim();
+  const b64 = t.startsWith(TEXT_TAG) ? t.slice(TEXT_TAG.length) : t;
+  return JSON.parse(await gunzip(b64ToBlob(b64.replace(/\s+/g, ''))));
+}

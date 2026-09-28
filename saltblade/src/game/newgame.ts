@@ -21,6 +21,7 @@ import { Site } from '../world/terrain';
 import { ITEM } from '../content/items';
 import { World } from '../sim/world';
 import { postBounties } from '../sim/bounties';
+import { markHousesForSale } from '../sim/property';
 
 export function placeOres() {
   for (const o of G.T.ores) {
@@ -176,6 +177,7 @@ export function newGame(setup: NewGameSetup | string) {
   placeOres();
   buildStructures();
   postBounties();
+  markHousesForSale();
   S.clock.t = DAY + 7.5 * HOUR;
   W.factionName = su.faction.trim() || sc.squad;
   W.money = sc.money;

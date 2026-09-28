@@ -13,6 +13,7 @@ import { dropCarried } from '../sim/health';
 import { ANIMAL } from '../content/animals';
 import { FACTION } from '../content/factions';
 import { ITEM } from '../content/items';
+import { buyHouse, houseOf } from '../sim/property';
 
 const ray = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
@@ -205,11 +206,17 @@ export function objActions(o: WObj): MenuItem[] {
     case 'stool': case 'throne':
       out.push({ label: 'Sit', run: one({ k: 'use', obj: o.id }) });
       break;
+    case 'sign':
+      if (o.def === 'forsale' && o.data?.price) {
+        const house = houseOf(o);
+        out.push({ label: `Buy this ${house?.data?.use === 'shack' ? 'shack' : 'house'} (${o.data.price.toLocaleString()} chits)`, run: () => { const err = buyHouse(o); if (err) S.fx.notice(err, 'bad'); } });
+      }
+      break;
     default:
       if (mine && o.data?.job) out.push({ label: o.data.jobLabel ?? 'Work here', run: () => who.forEach((c) => issue(c, { k: 'operate', obj: o.id })) });
       if (mine) out.push({ label: 'Inspect', run: () => emit('ui:object', lead.id, o.id) });
   }
-  if (mine && o.kind !== 'site') out.push({ label: 'Deconstruct', run: () => emit('build:deconstruct', o.id), danger: true });
+  if (mine && o.kind !== 'site' && !(o.parent && S.W.objs.get(o.parent)?.site)) out.push({ label: 'Deconstruct', run: () => emit('build:deconstruct', o.id), danger: true });
   return out;
 }
 

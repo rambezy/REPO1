@@ -1,6 +1,6 @@
 // The title screen over a slowly drifting view of the world, and the
 // screens behind it: new game (start and people), load, options and help.
-import { h, ui } from './dom';
+import { h, ui, ask, askPaste } from './dom';
 import { G } from '../state';
 import { S } from '../sim/ctx';
 import { SCENARIOS, SCENARIO, Scenario } from '../content/scenarios';
@@ -14,7 +14,7 @@ import { Char } from '../sim/char';
 import { Look } from '../sim/look';
 import { makePlayerPerson, NewGameSetup } from '../game/newgame';
 import { startNewGame, loadSlot, loadData, backdropWorld } from '../game/session';
-import { listSaves, deleteSave, importSaveFile, SaveMeta } from '../sim/save';
+import { listSaves, deleteSave, importSaveFile, importText, SaveMeta } from '../sim/save';
 import { input } from '../core/input';
 import { DAY, HOUR } from '../sim/clock';
 import { SK, SKILL_INFO, SKILLS } from '../sim/skills';
@@ -382,7 +382,7 @@ export async function renderLoadList(el: HTMLElement, onLoad: (slot: string) => 
     const load = h('button', { class: 'tbtn small primary' }, 'Load');
     load.onclick = () => onLoad(m.slot);
     const del = h('button', { class: 'tbtn small' }, 'Delete');
-    del.onclick = async () => { if (confirm(`Delete the save "${m.name}, day ${m.day}"?`)) { await deleteSave(m.slot); renderLoadList(el, onLoad, onData); } };
+    del.onclick = () => ask(`Delete the save "${m.name}, day ${m.day}"? This cannot be undone.`, 'Delete', async () => { await deleteSave(m.slot); renderLoadList(el, onLoad, onData); }, 'Keep it', true);
     rowEl.append(load, del);
     list.appendChild(rowEl);
   }
@@ -392,9 +392,13 @@ export async function renderLoadList(el: HTMLElement, onLoad: (slot: string) => 
     if (!f) return;
     try { onData(await importSaveFile(f)); } catch { toast('That file is not a Saltblade save.'); }
   };
-  const imp = h('button', { class: 'tbtn small' }, 'Import a save file…');
+  const imp = h('button', { class: 'tbtn small' }, 'Open a save file');
   imp.onclick = () => file.click();
-  el.append(list, h('div', { class: 'svfoot' }, imp, file));
+  const paste = h('button', { class: 'tbtn small' }, 'Paste a save');
+  paste.onclick = () => askPaste('Paste a save you copied as text.', async (text) => {
+    try { onData(await importText(text)); } catch { toast('That text is not a Saltblade save.'); }
+  });
+  el.append(list, h('div', { class: 'svfoot' }, paste, imp, file));
 }
 
 function loadScreen() {

@@ -49,6 +49,15 @@ export class RTSCamera {
       if (input.mx < m) px -= 1; else if (input.mx > window.innerWidth - m) px += 1;
       if (input.my < m) pz -= 1; else if (input.my > window.innerHeight - m) pz += 1;
     }
+    // a finger dragging the ground along
+    const [tdx, tdy] = input.takePan();
+    if (tdx || tdy) {
+      this.follow = null;
+      const k = (this.dist * 1.6) / window.innerHeight;
+      const s = Math.sin(this.yaw), c = Math.cos(this.yaw);
+      this.target.x -= (tdx * c + tdy * s) * k;
+      this.target.z -= (-tdx * s + tdy * c) * k;
+    }
     if (px || pz) {
       this.follow = null;
       const sp = (12 + this.dist * 1.25) * (input.shift ? 2.5 : 1) * dt;
