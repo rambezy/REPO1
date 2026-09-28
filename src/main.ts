@@ -12,23 +12,37 @@ import { attachDebug } from './debug';
 let lowRes = false;
 
 /** Drops to one device pixel per CSS pixel if a high-density screen can't keep up. */
+/**
+ * Watches the frame rate while playing and, on a machine that can't keep up,
+ * steps down one rung at a time: device resolution first, then swaying
+ * trees, ground cover and mist, then sun shadows.
+ */
 function watchFrameRate() {
+  const rungs: (() => boolean)[] = [
+    () => {
+      if (lowRes || (window.devicePixelRatio || 1) <= 1) return false;
+      lowRes = true;
+      resize();
+      return true;
+    },
+    () => { for (const k of ['sway', 'foliage', 'mist']) G.skip.add(k); return true; },
+    () => { G.skip.add('shadows'); return true; },
+  ];
+  let rung = 0;
   const times: number[] = [];
   let last = performance.now();
   const tick = (now: number) => {
-    times.push(now - last);
+    if (G.mode === 'play') times.push(now - last);
     last = now;
     if (times.length >= 150) {
       const sorted = [...times].sort((a, b) => a - b);
       const median = sorted[times.length >> 1];
       times.length = 0;
-      if (median > 24 && !lowRes && (window.devicePixelRatio || 1) > 1 && G.mode === 'play') {
-        lowRes = true;
-        resize();
-        return;
+      if (median > 26) {
+        while (rung < rungs.length && !rungs[rung++]());
       }
     }
-    requestAnimationFrame(tick);
+    if (rung < rungs.length) requestAnimationFrame(tick);
   };
   requestAnimationFrame(tick);
 }
@@ -52,7 +66,9 @@ function resize() {
   c.style.width = w + 'px';
   c.style.height = h + 'px';
   G.ctx.imageSmoothingEnabled = true;
-  G.ctx.imageSmoothingQuality = 'high';
+  // art is painted at 4 texels per unit: plain bilinear holds up down to 2 px
+  // per unit and costs a fraction of mipmapped or bicubic sampling
+  G.ctx.imageSmoothingQuality = scale * dpr >= 2 ? 'low' : 'medium';
   input.setScale(scale);
 }
 
@@ -70,7 +86,8 @@ function start() {
   boot(ui);
   if (import.meta.env.DEV || location.hash.includes('debug')) attachDebug();
   startLoop();
-  watchFrameRate();
+  // scripted play-tests run in a slow headless browser: keep full quality there
+  if (!location.hash.includes('debug')) watchFrameRate();
 }
 
 start();

@@ -4,7 +4,7 @@
 
 import { RNG, clamp } from '../engine/util';
 import { Sprite, cachedSprite } from './sprite';
-import { artCanvas, ART, rim, lit, dim, rgba, ellipse, blob, blade, poly, lin, rad, newCanvas, jitter } from './paint';
+import { artCanvas, ART, rim, lit, dim, rgba, ellipse, blob, blade, poly, lin, rad, newCanvas, jitter, trimCanvas } from './paint';
 
 export type TreeKind = 'oak' | 'linden' | 'birch' | 'pine' | 'apple' | 'dead' | 'burnt' | 'willow';
 
@@ -176,7 +176,13 @@ function layered(W: number, H: number, ox: number, oy: number, pivot: number, sw
   const fg = full.getContext('2d')!;
   fg.drawImage(b.c, 0, 0);
   fg.drawImage(t.c, 0, 0);
-  return { canvas: full, ox, oy, w: W, h: H, parts: { base: b.c, top: t.c, pivot, sway } };
+  // crop each layer to its paint: most of a tree's box is empty air
+  const bt = trimCanvas(b.c), tt = trimCanvas(t.c);
+  const k = b.c.width / W;
+  return {
+    canvas: full, ox, oy, w: W, h: H,
+    parts: { base: bt.c, top: tt.c, pivot, sway, b: [bt.x / k, bt.y / k, bt.w / k, bt.h / k], t: [tt.x / k, tt.y / k, tt.w / k, tt.h / k] },
+  };
 }
 
 export function treeSprite(kind: TreeKind, variant: number): Sprite {

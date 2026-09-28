@@ -82,6 +82,9 @@ export function drawGroundFoliage(ctx: CanvasRenderingContext2D, map: GroundMap,
   const tx0 = Math.max(0, Math.floor(x0 / 16)), ty0 = Math.max(0, Math.floor(y0 / 16) - 1);
   const tx1 = Math.min(map.w - 1, Math.floor(x1 / 16)), ty1 = Math.min(map.h - 1, Math.floor(y1 / 16) + 1);
   const amp = 0.08 + wind * 0.22;
+  // hundreds of tufts: set each one's transform outright instead of save/restore
+  const m = ctx.getTransform();
+  const k = m.a, e0 = m.e, f0 = m.f;
   for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) {
     const t = map.get(tx, ty);
     let set: Tuft[] | null = null, n = 0;
@@ -95,12 +98,10 @@ export function drawGroundFoliage(ctx: CanvasRenderingContext2D, map: GroundMap,
       const x = tx * 16 + 2 + (hh % 12), y = ty * 16 + 3 + ((hh >>> 8) % 12);
       const tf = set[(hh >>> 16) % set.length];
       const bend = Math.sin(time * 1.7 + x * 0.045 + y * 0.03) * amp + Math.sin(time * 3.3 + x * 0.1) * amp * 0.3;
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.transform(1, 0, bend, 1, 0, 0);
-      if ((hh >>> 24) & 1) ctx.scale(-1, 1);
+      const fl = (hh >>> 24) & 1 ? -k : k;
+      ctx.setTransform(fl, 0, k * bend, k, e0 + k * x, f0 + k * y);
       ctx.drawImage(tf.c, -tf.w / 2, -tf.h + 1, tf.w, tf.h);
-      ctx.restore();
     }
   }
+  ctx.setTransform(m);
 }

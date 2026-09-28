@@ -229,6 +229,35 @@ export function grain(c: HTMLCanvasElement, amount = 10, seed = 1) {
 }
 
 /** A soft, low-resolution silhouette for cast shadows (1 texel per world unit). */
+/**
+ * Crops a canvas to its painted pixels (plus a texel of margin for smooth
+ * edges). Returns the crop and where it sat, in texels.
+ */
+export function trimCanvas(c: HTMLCanvasElement): { c: HTMLCanvasElement; x: number; y: number; w: number; h: number } {
+  const W = c.width, H = c.height;
+  const d = c.getContext('2d')!.getImageData(0, 0, W, H).data;
+  let x0 = W, y0 = H, x1 = -1, y1 = -1;
+  for (let y = 0; y < H; y++) {
+    let row = y * W * 4 + 3;
+    for (let x = 0; x < W; x++, row += 4) {
+      if (d[row] > 2) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        y1 = y;
+      }
+    }
+  }
+  if (x1 < 0) return { c: newCanvas(1, 1), x: 0, y: 0, w: 1, h: 1 };
+  x0 = Math.max(0, x0 - 1); y0 = Math.max(0, y0 - 1);
+  x1 = Math.min(W - 1, x1 + 1); y1 = Math.min(H - 1, y1 + 1);
+  const w = x1 - x0 + 1, h = y1 - y0 + 1;
+  if (w * h > W * H * 0.9) return { c, x: 0, y: 0, w: W, h: H };
+  const out = newCanvas(w, h);
+  out.getContext('2d')!.drawImage(c, -x0, -y0);
+  return { c: out, x: x0, y: y0, w, h };
+}
+
 export function shadowOf(s: Sprite): HTMLCanvasElement {
   if (s.shadow) return s.shadow;
   const pad = 3;

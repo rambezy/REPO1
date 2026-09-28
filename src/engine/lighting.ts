@@ -99,11 +99,20 @@ function flick(l: Light, clock: number) {
   return l.flicker ? 1 + Math.sin(clock * 11 + l.x * 0.7) * 0.05 + Math.sin(clock * 17.3 + l.y) * 0.035 + Math.sin(clock * 3.1 + l.x) * 0.03 : 1;
 }
 
+export interface LightExtras {
+  /** darkness of drifting cloud shadows, 0 for none */
+  clouds?: number;
+  /** darkening towards the screen edges */
+  vignette?: number;
+}
+
 /**
- * Multiplies the scene by ambient light plus every light source. The context
- * is in screen space measured in world units (0..w, 0..h).
+ * Multiplies the scene by ambient light plus every light source. Cloud
+ * shadows dim the ambient part and the vignette is folded in too, so the
+ * whole screen is touched once. The context is in screen space measured in
+ * world units (0..w, 0..h).
  */
-export function applyLightMap(ctx: CanvasRenderingContext2D, w: number, h: number, camX: number, camY: number, ambient: RGB, lights: Light[], clock: number) {
+export function applyLightMap(ctx: CanvasRenderingContext2D, w: number, h: number, camX: number, camY: number, ambient: RGB, lights: Light[], clock: number, extras: LightExtras = {}) {
   const lw = Math.ceil(w / 2) + 1, lh = Math.ceil(h / 2) + 1; // half a texel per unit: light is soft anyway
   if (!lmap || lmap.width !== lw || lmap.height !== lh) {
     lmap = newCanvas(lw, lh);
@@ -116,6 +125,16 @@ export function applyLightMap(ctx: CanvasRenderingContext2D, w: number, h: numbe
   L.fillStyle = `rgb(${Math.round(ambient[0] * 255)},${Math.round(ambient[1] * 255)},${Math.round(ambient[2] * 255)})`;
   L.fillRect(0, 0, lw, lh);
   L.setTransform(0.5, 0, 0, 0.5, 0, 0);
+  if (extras.clouds && extras.clouds > 0.02) {
+    // clouds shade the sunlight, not the fires: drawn before the lights
+    const tex = cloudTexture();
+    const size = 256 * 5; // five world units per texel
+    const ox = (clock * 7) % size, oy = (clock * 2.5) % size;
+    L.globalAlpha = extras.clouds;
+    const x0 = Math.floor((camX - ox) / size) * size + ox, y0 = Math.floor((camY - oy) / size) * size + oy;
+    for (let y = y0; y < camY + h; y += size) for (let x = x0; x < camX + w; x += size) L.drawImage(tex, x - camX, y - camY, size, size);
+    L.globalAlpha = 1;
+  }
   L.globalCompositeOperation = 'lighter';
   for (const l of lights) {
     const r = l.r * flick(l, clock);
@@ -126,6 +145,13 @@ export function applyLightMap(ctx: CanvasRenderingContext2D, w: number, h: numbe
   }
   L.globalAlpha = 1;
   L.globalCompositeOperation = 'source-over';
+  if (extras.vignette && extras.vignette > 0.01) {
+    const vg = L.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.45, w / 2, h / 2, Math.max(w, h) * 0.75);
+    vg.addColorStop(0, 'rgba(10,6,4,0)');
+    vg.addColorStop(1, `rgba(10,6,4,${extras.vignette})`);
+    L.fillStyle = vg;
+    L.fillRect(0, 0, w + 2, h + 2);
+  }
   ctx.save();
   ctx.imageSmoothingEnabled = true;
   ctx.globalCompositeOperation = 'multiply';
@@ -229,20 +255,6 @@ function cloudTexture(): HTMLCanvasElement {
   }
   g.putImageData(img, 0, 0);
   return clouds;
-}
-
-/** Cloud shadows drifting over the land by day (world space). */
-export function drawCloudShadows(ctx: CanvasRenderingContext2D, camX: number, camY: number, w: number, h: number, clock: number, strength: number) {
-  if (strength < 0.02) return;
-  const tex = cloudTexture();
-  const scale = 5; // world units per texel
-  const size = 256 * scale;
-  const ox = (clock * 7) % size, oy = (clock * 2.5) % size;
-  ctx.save();
-  ctx.globalAlpha = strength;
-  const x0 = Math.floor((camX - ox) / size) * size + ox, y0 = Math.floor((camY - oy) / size) * size + oy;
-  for (let y = y0; y < camY + h; y += size) for (let x = x0; x < camX + w; x += size) ctx.drawImage(tex, x, y, size, size);
-  ctx.restore();
 }
 
 /** Morning mist and rain haze (screen space). */

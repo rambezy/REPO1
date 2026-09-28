@@ -10,7 +10,7 @@ import { drawSprite, drawSwaying, isPainted, paintNow } from '../gfx/sprite';
 import { drawGroundFoliage } from '../gfx/ground/foliage';
 import { drawAmbient, drawAmbientShadows } from './ambient';
 import { drawParticles, drawFloats, drawDecals, particleLights, emit } from './fx';
-import { applyLightMap, drawGlows, drawSunShadows, drawCloudShadows, drawMist, grade, skyLight, roomLight, sunAt, Light, Caster } from './lighting';
+import { applyLightMap, drawGlows, drawSunShadows, drawMist, grade, skyLight, roomLight, sunAt, Light, Caster } from './lighting';
 import { S, darkness, hourF } from '../state';
 import { clamp, TILE, rand } from './util';
 import { drawText } from '../gfx/font';
@@ -277,7 +277,7 @@ export function renderWorld() {
   const x0 = cx, y0 = cy, x1 = cx + W, y1 = cy + H;
   chunks.prepare(map, x0, y0, x1, y1);
   chunks.draw(ctx, map, x0, y0, x1, y1, G.clock);
-  drawGroundFoliage(ctx, map, x0, y0, x1, y1, G.clock, weather.wind);
+  if (!G.skip.has('foliage')) drawGroundFoliage(ctx, map, x0, y0, x1, y1, G.clock, weather.wind);
   drawDecals(ctx);
 
   const objs = map.queryObjects(x0 - 64, y0 - 16, x1 + 64, y1 + 180);
@@ -309,7 +309,7 @@ export function renderWorld() {
   const outdoor = map.outdoor;
   const rain = outdoor ? weather.rain : 0;
   const sun = sunAt(hour, rain);
-  if (outdoor && sun.strength > 0.02) {
+  if (outdoor && sun.strength > 0.02 && !G.skip.has('shadows')) {
     const casters: Caster[] = [];
     for (const d of list) {
       if (d.o) {
@@ -333,7 +333,7 @@ export function renderWorld() {
         ctx.rotate(G.clock * 0.8);
         ctx.drawImage(s.canvas, -s.w / 2, -s.h / 2, s.w, s.h);
         ctx.restore();
-      } else if (o.sprite!.parts) {
+      } else if (o.sprite!.parts && !G.skip.has('sway')) {
         const ph = o.x * 0.013 + o.y * 0.007;
         const gust = Math.sin(G.clock * 0.37 + o.x * 0.002) * 0.5 + 0.5;
         const bend = (Math.sin(G.clock * 1.25 + ph) * 0.8 + Math.sin(G.clock * 2.9 + ph * 1.7) * 0.2) * (0.35 + weather.wind * 1.4) * (0.6 + gust * 0.6);
@@ -366,8 +366,6 @@ export function renderWorld() {
   }
   drawParticles(ctx);
   drawAmbient(ctx);
-  // clouds drifting over the land by day
-  if (outdoor) drawCloudShadows(ctx, cx, cy, W, H, G.clock, sun.strength * 0.2);
 
   // ---------- light (screen space) ----------
   screenTransform(ctx);
@@ -386,16 +384,18 @@ export function renderWorld() {
   for (const fn of renderHooks.lights) lights.push(...fn());
   lights.push(...particleLights());
   const dim = Math.min(ambient[0], ambient[1], ambient[2]);
-  if (dim < 0.97 || lights.length) applyLightMap(ctx, W, H, cx, cy, ambient, lights, G.clock);
+  // one multiply pass carries the ambient light, every lamp and fire, the
+  // cloud shadows and the vignette
+  applyLightMap(ctx, W, H, cx, cy, ambient, lights, G.clock, { clouds: outdoor ? sun.strength * 0.2 : 0, vignette: 0.35 });
   // light that lives on after the light map: glowing windows, sunbeams, fire glow
   drawWindowLight(ctx, objs, cx, cy, W, H, hour, outdoor, dk);
   drawGlows(ctx, W, H, cx, cy, lights, G.clock, Math.max(0.25, 1 - dim));
   // morning mist
-  if (outdoor) {
+  if (outdoor && !G.skip.has('mist')) {
     const mist = hour > 4 && hour < 9 ? Math.sin(((hour - 4) / 5) * Math.PI) * 0.16 : 0;
     drawMist(ctx, cx, cy, W, H, G.clock, mist + rain * 0.06);
   }
-  grade(ctx, W, H, hour, outdoor, rain);
+  if (!G.skip.has('grade')) grade(ctx, W, H, hour, outdoor, rain);
 
   // markers, emotes and floating text stay readable above the light
   worldTransform(ctx, cx, cy);
@@ -421,12 +421,6 @@ export function renderWorld() {
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
   }
-  // subtle permanent vignette
-  const vg = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.45, W / 2, H / 2, Math.max(W, H) * 0.75);
-  vg.addColorStop(0, 'rgba(0,0,0,0)');
-  vg.addColorStop(1, 'rgba(10,6,4,0.35)');
-  ctx.fillStyle = vg;
-  ctx.fillRect(0, 0, W, H);
   if (G.fade > 0) {
     ctx.globalAlpha = Math.min(1, G.fade);
     ctx.fillStyle = G.fadeColor;

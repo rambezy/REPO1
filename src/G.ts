@@ -44,6 +44,8 @@ export const G = {
   /** while true, the player cannot be controlled (cutscenes) */
   controlLocked: false,
   debug: false,
+  /** render features switched off on slow machines: 'sway', 'foliage', 'mist', 'shadows', 'grade' */
+  skip: new Set<string>(),
   paused: false,
   /** incremented when a save/load happens; systems can reset caches */
   epoch: 0,

@@ -15,8 +15,12 @@ export interface Sprite {
   shadow?: HTMLCanvasElement | null;
   /** Fraction of the sprite's height that casts a shadow from its base (default: all). */
   shadowFrom?: number;
-  /** Split layers for wind sway: `top` bends around `pivot` (world units from the top). */
-  parts?: { base: HTMLCanvasElement; top: HTMLCanvasElement; pivot: number; sway: number };
+  /**
+   * Split layers for wind sway: `top` bends around `pivot` (world units from
+   * the top). Each layer is cropped to its paint; `b` and `t` give where it
+   * sits inside the sprite as [x, y, w, h] in world units.
+   */
+  parts?: { base: HTMLCanvasElement; top: HTMLCanvasElement; pivot: number; sway: number; b: number[]; t: number[] };
 }
 
 const cache = new Map<string, Sprite>();
@@ -76,27 +80,31 @@ export function drawSwaying(ctx: CanvasRenderingContext2D, s: Sprite, x: number,
   const p = s.parts;
   if (!p) { drawSprite(ctx, s, x, y, alpha, flip); return; }
   if (alpha <= 0) return;
-  ctx.save();
+  // transforms are set outright (no save/restore: it costs more than the draw)
+  const m = ctx.getTransform();
   if (alpha < 1) ctx.globalAlpha = alpha;
-  ctx.translate(x - s.ox + (flip ? s.w : 0), y - s.oy);
-  if (flip) ctx.scale(-1, 1);
-  ctx.drawImage(p.base, 0, 0, s.w, s.h);
+  const X = x - s.ox + (flip ? s.w : 0), Y = y - s.oy, fx = flip ? -1 : 1;
+  const A = m.a * fx, B = m.b * fx, C = m.c, D = m.d;
+  const E = m.a * X + m.c * Y + m.e, F = m.b * X + m.d * Y + m.f;
+  ctx.setTransform(A, B, C, D, E, F);
+  ctx.drawImage(p.base, p.b[0], p.b[1], p.b[2], p.b[3]);
   // shear the crown about its pivot line
   const k = (flip ? -bend : bend) * p.sway;
-  ctx.transform(1, 0, k, 1, -k * p.pivot, 0);
-  ctx.drawImage(p.top, 0, 0, s.w, s.h);
-  ctx.restore();
+  ctx.setTransform(A, B, A * k + C, B * k + D, E - A * k * p.pivot, F - B * k * p.pivot);
+  ctx.drawImage(p.top, p.t[0], p.t[1], p.t[2], p.t[3]);
+  ctx.setTransform(m);
+  if (alpha < 1) ctx.globalAlpha = 1;
 }
 
 export function drawSprite(ctx: CanvasRenderingContext2D, s: Sprite, x: number, y: number, alpha = 1, flip = false) {
   if (alpha <= 0) return;
   if (alpha < 1) ctx.globalAlpha = alpha;
   if (flip) {
-    ctx.save();
-    ctx.translate(x - s.ox + s.w, y - s.oy);
-    ctx.scale(-1, 1);
+    const m = ctx.getTransform();
+    const X = x - s.ox + s.w, Y = y - s.oy;
+    ctx.setTransform(-m.a, -m.b, m.c, m.d, m.a * X + m.c * Y + m.e, m.b * X + m.d * Y + m.f);
     ctx.drawImage(s.canvas, 0, 0, s.w, s.h);
-    ctx.restore();
+    ctx.setTransform(m);
   } else {
     ctx.drawImage(s.canvas, x - s.ox, y - s.oy, s.w, s.h);
   }

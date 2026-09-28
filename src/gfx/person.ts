@@ -336,22 +336,29 @@ function drawPersonAt(ctx: CanvasRenderingContext2D, look: Look, st: PersonState
       P(set.head, sway, b.headY + bodyY + breathe * 0.5);
     }
   }
+  frame = ctx.getTransform();
   for (const d of draws) d();
+  frame = null;
   ctx.restore();
 }
 
+/** The person's own frame while its parts are drawn (saves a getTransform per part). */
+let frame: DOMMatrix | null = null;
+
 function blitPart(ctx: CanvasRenderingContext2D, p: Part, x: number, y: number, rot: number, sx: number, sy: number, flash: number) {
-  ctx.save();
-  ctx.translate(x, y);
-  if (rot) ctx.rotate(rot);
-  if (sx !== 1 || sy !== 1) ctx.scale(sx, sy);
+  // set frame * translate * rotate * scale outright: a save/restore pair per
+  // part costs more than the drawing itself
+  const m = frame ?? ctx.getTransform();
+  const c = rot ? Math.cos(rot) : 1, s = rot ? Math.sin(rot) : 0;
+  const la = c * sx, lb = s * sx, lc = -s * sy, ld = c * sy;
+  ctx.setTransform(m.a * la + m.c * lb, m.b * la + m.d * lb, m.a * lc + m.c * ld, m.b * lc + m.d * ld, m.a * x + m.c * y + m.e, m.b * x + m.d * y + m.f);
   ctx.drawImage(p.c, -p.px, -p.py, p.w, p.h);
   if (flash > 0) {
     ctx.globalAlpha = Math.min(1, flash);
     ctx.drawImage(whiteOf(p), -p.px, -p.py, p.w, p.h);
     ctx.globalAlpha = 1;
   }
-  ctx.restore();
+  ctx.setTransform(m);
 }
 
 // feet under long hems
