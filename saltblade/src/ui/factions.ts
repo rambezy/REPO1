@@ -93,6 +93,12 @@ function renderBounties(body: HTMLElement) {
       const parts = Object.entries(c.bounty).filter(([, v]) => v > 0).map(([f, v]) => `${FACTION[f]?.short ?? f} ${v.toLocaleString()}c`);
       body.appendChild(h('div', { class: 'brow' }, h('b', {}, c.name), h('span', { class: 'dim' }, parts.join(' · '))));
     }
+    // who has been sent to collect
+    for (const sq of W.squads.values()) {
+      const q = sq.flags.hunt ? W.char(sq.flags.hunt) : undefined;
+      if (q && sq.members.some((id) => W.char(id)?.alive)) body.appendChild(h('p', { class: 'bad' }, `${sq.name} are on ${q.name}'s trail.`));
+    }
+    body.appendChild(h('p', { class: 'dim' }, 'A price on someone\'s head brings bounty hunters in time. Pay it off with a guard or patrol of the faction that posted it.'));
   }
   body.appendChild(h('h4', { class: 'fsub' }, 'Posted bounties'));
   const known = W.bountyBoard.filter((b) => b.status === 'open' && (W.rel.met.has(b.poster) || W.seenSites.has(b.site)));
