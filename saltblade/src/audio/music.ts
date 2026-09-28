@@ -2,7 +2,7 @@
 // modes, a bowed sine at night, hand drums in town and taiko in combat. Each mood is a
 // layer scheduled a little ahead on the audio clock; moods crossfade.
 import { mix } from './core';
-import { rnd, irnd, pick, clamp, gain, pluck, lead, drum, hiss, tone, Pad, Pluck } from './synth';
+import { rnd, irnd, pick, clamp, own, gain, pluck, lead, drum, hiss, tone, Pad, Pluck } from './synth';
 
 export type Mood = 'explore' | 'combat' | 'town' | 'night' | 'danger' | 'silence';
 
@@ -20,15 +20,16 @@ export function deg(d: number, base = key.root): number {
   const s = key.mode, o = Math.floor(d / s.length);
   return base + s[d - o * s.length] + 12 * o;
 }
+const WARM = [MODES[0], MODES[1], MODES[3]]; // for towns: aeolian, phrygian dominant, dorian
 /** Every few phrases, perhaps move to a related key or another mode. */
-function modulate() {
+function modulate(modes = MODES) {
   if (++key.age < 5 || Math.random() > 0.3) return;
   key.age = 0;
   let r = key.root + pick([5, 7, -5, -7, 3, -2]);
   while (r > 53) r -= 12;
   while (r < 45) r += 12;
   key.root = r;
-  key.mode = pick(MODES);
+  key.mode = pick(modes);
 }
 // chord moves between scale degrees: i, bII, iv, v, VI, VII
 const NEXT: Record<number, number[]> = { 0: [5, 3, 6, 1, 4], 1: [0, 0, 6], 3: [0, 4, 5], 4: [0, 5], 5: [3, 6, 0], 6: [0, 5, 3] };
@@ -125,12 +126,13 @@ const PLAYERS: Record<Exclude<Mood, 'silence'>, (L: Layer, t: number) => void> =
   // warmer: a bourdon, oud tunes with tremolo and a soft hand drum
   town(L, t) {
     let chord = 0, motif: Motif | null = null, bars = 0;
+    if (!WARM.includes(key.mode)) key.mode = pick(WARM);
     const bourdon = () => [deg(0, key.root - 12), deg(4, key.root - 12)];
     const pad = new Pad(L.bed, bourdon(), 0.03, 900, t);
     L.stop = (s) => pad.stop(s);
     L.chunk = (t0) => {
       const beat = 60 / 96;
-      if (bars++ % 4 === 0) { modulate(); pad.set(bourdon(), t0, 2); chord = 0; } else chord = pick(NEXT[chord] || [0]);
+      if (bars++ % 4 === 0) { modulate(WARM); pad.set(bourdon(), t0, 2); chord = 0; } else chord = pick(NEXT[chord] || [0]);
       if (Math.random() < 0.85) handDrum(L.bed, t0, beat);
       if (Math.random() < 0.7) {
         motif = motif && Math.random() < 0.5 ? vary(motif, chord) : compose(6, 0, 9, [0.5, 0.5, 1, 1, 1.5], chord);
@@ -204,7 +206,7 @@ const LEVEL: Record<Mood, number> = { explore: 1.3, town: 1.25, night: 1.2, comb
 const layers = new Map<Mood, Layer>();
 let want: Mood = 'silence', cur: Mood = 'silence';
 
-export function setMood(m: Mood) { if (m in LEVEL) want = m; }
+export function setMood(m: Mood) { if (own(LEVEL, m) !== undefined) want = m; }
 
 function makeLayer(mood: Exclude<Mood, 'silence'>, t: number): Layer {
   const m = mix!, pl = gain(0), bed = gain(0);

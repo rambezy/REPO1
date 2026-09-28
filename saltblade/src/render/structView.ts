@@ -68,6 +68,16 @@ export class StructViews {
     this.indexed = this.W.objs.size;
   }
 
+  /** Drops every mesh (after loading a save). */
+  clear() {
+    for (const v of this.views.values()) this.dispose(v);
+    this.views.clear();
+    this.pending = [];
+    this.hiddenRoofs.clear();
+    this.indexed = -1;
+    this.t = 0;
+  }
+
   /** Forces an object's mesh to be rebuilt. */
   refresh(o: WObj) {
     const v = this.views.get(o.id);

@@ -37,6 +37,8 @@ function makeMat(sway: boolean) {
 }
 
 export class PropRenderer {
+  /** draw-distance multiplier from the options */
+  distMul = 1;
   group = new THREE.Group();
   swayMat = makeMat(true);
   staticMat = makeMat(false);
@@ -75,7 +77,7 @@ export class PropRenderer {
     // per-kind draw distance
     for (const [k, c] of this.chunks) {
       const d = this.chunkDist(k % CHUNKS, (k / CHUNKS) | 0, cam);
-      for (const m of c.meshes) m.mesh.visible = d < m.range;
+      for (const m of c.meshes) m.mesh.visible = d < m.range * this.distMul;
     }
   }
 

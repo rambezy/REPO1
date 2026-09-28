@@ -34,6 +34,7 @@ export function canSee(c: Char, o: Char): boolean {
     if (facing > 1.8) r *= 0.55;
   }
   if (!c.awake) r *= 0.15;
+  if (S.weather) r *= S.weather.sight(c.x, c.z);
   return d <= r;
 }
 
@@ -173,6 +174,7 @@ export function eatSomething(c: Char): boolean {
       it.n--;
       if (it.n <= 0) g.remove(it);
       c.act = 'pickup'; c.actT = 0; c.actDur = 0.8;
+      S.fx.sound('eat', c.x, c.z, 0.6);
       return true;
     }
   }

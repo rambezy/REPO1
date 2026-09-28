@@ -94,7 +94,7 @@ export class Terrain {
   isWater(x: number, z: number) { return this.heightAt(x, z) < SEA; }
   regionIdAt(x: number, z: number) {
     const i = Math.round(x / CELL), j = Math.round(z / CELL);
-    if (i < 0 || j < 0 || i > N || j > N) return 0;
+    if (!(i >= 0 && j >= 0 && i <= N && j <= N)) return 0; // also catches NaN
     return this.reg[j * this.S + i];
   }
   roadAt(x: number, z: number) {

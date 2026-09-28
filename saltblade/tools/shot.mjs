@@ -1,7 +1,8 @@
 // Screenshots of the running dev server at given camera spots.
 // Usage: node tools/shot.mjs <name> "<js to run before shot>" [...more name/js pairs]
 import { chromium } from 'playwright';
-const url = process.env.URL || 'http://localhost:5180/#debug';
+const url = process.env.URL || 'http://localhost:5180/#debug,play';
+const mode = process.env.MODE || 'play';
 const out = process.env.OUT || 'tools/out';
 const args = process.argv.slice(2);
 const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
@@ -11,7 +12,7 @@ page.on('console', (m) => { const t = m.text(); if (!t.includes('[vite]') && !t.
 page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}\n${e.stack}`));
 await page.goto(url);
 const t0 = Date.now();
-await page.waitForFunction(() => window.__sb && window.__sb.G.mode === 'play', null, { timeout: 120000 });
+await page.waitForFunction((m) => window.__sb && window.__sb.G.mode === m, mode, { timeout: 120000 });
 console.log('loaded in', Date.now() - t0, 'ms');
 await page.waitForTimeout(1200);
 for (let i = 0; i < args.length; i += 2) {

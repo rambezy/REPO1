@@ -2,7 +2,7 @@
 // machines, eerie drones, insects, weather, town murmur) with sparse random events,
 // crossfaded over about two seconds as the region, hour and weather change.
 import { mix } from './core';
-import { ac, rnd, irnd, pick, clamp, gain, filt, osc, pan, loop, nsrc, lfo, ramp, run, collect, env, hold, tone, hiss, metal, vox, VOW, whir, lead, texture } from './synth';
+import { ac, rnd, irnd, pick, clamp, own, gain, filt, osc, pan, loop, nsrc, lfo, ramp, run, collect, env, hold, tone, hiss, metal, vox, VOW, whir, lead, texture } from './synth';
 import { L } from './sfx';
 
 export interface AmbState { region: string; hour: number; weather: string; intensity: number; inTown: boolean; underwater?: boolean }
@@ -146,7 +146,7 @@ const BEDS: Record<string, [number, Maker]> = {
     lfo(grit.frequency, 0.13, 900);
     return {
       set(p) {
-        ramp(gb.gain, p.wind * 1.6); ramp(gl.gain, p.roar * 1.1); ramp(gg.gain, p.grit * 0.8); ramp(gw.gain, p.whistle * 0.5);
+        ramp(gb.gain, p.wind * 1.6); ramp(gl.gain, p.roar * 1.1); ramp(gg.gain, p.grit * 0.6); ramp(gw.gain, p.whistle * 0.5);
         ramp(body.frequency, 300 + 450 * p.bright);
         ramp(d1.gain, 0.2 + 0.35 * p.gust); ramp(d2.gain, 0.12 + 0.3 * p.gust);
         ramp(o1.frequency, 0.05 + 0.1 * p.gust); ramp(o2.frequency, 0.12 + 0.25 * p.gust);
@@ -241,10 +241,10 @@ const BEDS: Record<string, [number, Maker]> = {
   }],
   // Ashfields and Glasslands: a dissonant low drone, dry air and glassy tinkles
   eerie: [1, (b) => {
-    const lp = filt('lowpass', 420, 0.9), dg = gain(0.07), R = [1, 1.5, 1.06, 2], bp = filt('bandpass', 1300, 1.2), ag = gain(0.5);
+    const lp = filt('lowpass', 420, 0.9), dg = gain(0.045), R = [1, 1.5, 1.06, 2], bp = filt('bandpass', 1300, 1.2), ag = gain(0.5);
     const os = R.map((r, i) => { const s = osc((['sine', 'sawtooth', 'sine', 'triangle'] as const)[i], 50 * r); s.connect(lp); return run(s, ac().currentTime); });
     lfo(os[2].detune, 0.031, 18);
-    lfo(dg.gain, 0.07, 0.025);
+    lfo(dg.gain, 0.07, 0.016);
     lp.connect(dg).connect(b.out);
     loop(mix!.pink).connect(bp).connect(ag).connect(b.out);
     lfo(ag.gain, 0.05, 0.3);
@@ -280,7 +280,7 @@ const BEDS: Record<string, [number, Maker]> = {
     }
     return {};
   }],
-  cicadas: [5, (b) => {
+  cicadas: [2, (b) => {
     const am = gain(0.5), sw = gain(0.5);
     lfo(am.gain, rnd(70, 95), 0.5);
     lfo(sw.gain, rnd(0.05, 0.09), 0.45);
@@ -348,7 +348,7 @@ export function setAmb(a: AmbState) {
 }
 
 function derive(a: AmbState) {
-  const R = REG[a.region] || REG.flats, k = clamp(+a.intensity || 0, 0, 1), w = a.weather;
+  const R = own(REG, String(a.region)) || REG.flats, k = clamp(+a.intensity || 0, 0, 1), w = a.weather;
   const h = (((+a.hour || 0) % 24) + 24) % 24, night = h < 12 ? 1 - smooth(4.75, 6.25, h) : smooth(18.75, 20.25, h), day = 1 - night;
   const is = (x: string) => (w === x ? k : 0);
   const near = clamp(1 - (L.dist - 60) / 700, 0.2, 1), high = 1 - near; // zoomed out: less ground life, more wind
@@ -373,8 +373,8 @@ function derive(a: AmbState) {
     spores: is('spores') * near,
     town: a.inTown ? (0.4 + 0.6 * day) * near : 0,
   };
-  const own = R[6];
-  if (own) lv[own] = (own === 'swamp' ? 0.8 + 0.2 * night : 1) * (0.5 + 0.5 * near);
+  const special = R[6];
+  if (special) lv[special] = (special === 'swamp' ? 0.8 + 0.2 * night : 1) * (0.5 + 0.5 * near);
   if (a.underwater) { for (const n in lv) lv[n] *= 0.1; lv.under = 1; }
   return { p, lv, cut: a.underwater ? 500 : 18000 * Math.pow(0.25, is('fog')) };
 }

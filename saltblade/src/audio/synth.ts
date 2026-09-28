@@ -8,6 +8,8 @@ export const irnd = (a: number, b: number) => Math.floor(rnd(a, b + 1));
 export const pick = <T>(a: readonly T[]): T => a[Math.floor(Math.random() * a.length)];
 export const clamp = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
 export const hz = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
+/** Own-property lookup, so names like 'toString' never match a table entry. */
+export const own = <T>(o: Record<string, T>, k: string): T | undefined => (Object.prototype.hasOwnProperty.call(o, k) ? o[k] : undefined);
 
 // Sources started while a voice or bed is being built are collected so it can be cut short.
 let bag: AudioScheduledSourceNode[] | null = null;
@@ -233,7 +235,7 @@ function ksRender(midi: number, kind: Pluck) {
   // rendered at half rate: plenty for a warm string, and half the memory
   const c = ac(), sr = Math.round(c.sampleRate / 2), f = hz(midi), [bright, t60b, pos] = PK[kind];
   const t60 = t60b * Math.pow(220 / f, 0.4), N = Math.max(8, Math.round(sr / f - 0.5));
-  const len = Math.floor(sr * Math.min(4.5, t60 * 1.1 + 0.05));
+  const len = Math.floor(sr * Math.min(3.2, t60 * 0.8 + 0.05)); // cut about 48 dB down
   const b = c.createBuffer(1, len, sr), out = b.getChannelData(0), ring = new Float32Array(N);
   let lp = 0, peak = 1e-6;
   for (let i = 0; i < N; i++) { lp += (Math.random() * 2 - 1 - lp) * bright; ring[i] = lp; }

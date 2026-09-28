@@ -4,7 +4,7 @@ const page = await browser.newPage({ viewport: { width: 1280, height: 760 } });
 const errs = [];
 page.on('pageerror', (e) => errs.push(e.message + '\n' + e.stack));
 page.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('ERR_CERT')) errs.push(m.text()); });
-await page.goto('http://localhost:5180/#debug');
+await page.goto('http://localhost:5180/#debug,play');
 await page.waitForFunction(() => window.__sb && window.__sb.G.mode === 'play', null, { timeout: 120000 });
 await page.waitForTimeout(1500);
 const ev = (js) => page.evaluate(js);

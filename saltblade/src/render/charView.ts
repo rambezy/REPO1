@@ -255,6 +255,12 @@ export class CharViews {
   }
 
   get count() { return this.views.size; }
+
+  /** Drops every view (after loading a save the characters are new objects). */
+  clear() {
+    for (const v of this.views.values()) { v.dispose(); v.c.view = null; }
+    this.views.clear();
+  }
 }
 
 export { BONE_COUNT, ITEM };

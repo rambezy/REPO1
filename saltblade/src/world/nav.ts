@@ -139,6 +139,9 @@ export class Nav {
     for (const [k] of old) { this.tiles.delete(k); this.tileUse.delete(k); }
   }
 
+  /** Throws away every cached fine tile. */
+  reset() { this.tiles.clear(); this.tileUse.clear(); }
+
   /** Throws away cached fine tiles over an area (after building or gates). */
   invalidate(x0: number, z0: number, x1: number, z1: number) {
     for (let tj = Math.floor(z0 / TILE); tj <= Math.floor(z1 / TILE); tj++)

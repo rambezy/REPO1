@@ -55,6 +55,7 @@ export class Animator {
   private set(b: number, x: number, y = 0, z = 0) { this.tx[b] = x; this.ty[b] = y; this.tz[b] = z; }
 
   update(dt: number, a: AnimIn, distMoved: number) {
+    dt = dt > 0 ? Math.min(dt, 0.25) : 0;
     this.tx.fill(0); this.ty.fill(0); this.tz.fill(0);
     this.tRootY = 0; this.tRootX = 0; this.tRootZ = 0; this.tHipDrop = 0;
     this.idleT += dt;

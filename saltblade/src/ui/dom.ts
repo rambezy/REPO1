@@ -1,4 +1,5 @@
 // Small DOM helpers and draggable windows.
+import { uiSound } from '../audio';
 
 export function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string, any> = {}, ...kids: (Node | string | null | undefined | false)[]): HTMLElementTagNameMap[K] {
   const el = document.createElement(tag);
@@ -74,8 +75,9 @@ export function openWindow(key: string, title: string, opts: { w?: number; x?: n
     el, body, title: t, key,
     close() { el.remove(); openWins.delete(key); w.onClose?.(); },
   };
-  x.onclick = () => w.close();
+  x.onclick = () => { uiSound('close'); w.close(); };
   openWins.set(key, w);
+  uiSound('open');
   return w;
 }
 const winPos: Record<string, [number, number]> = {};

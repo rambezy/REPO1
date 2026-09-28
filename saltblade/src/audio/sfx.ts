@@ -1,7 +1,7 @@
 // World and interface sound effects. World sounds are placed relative to the camera:
 // quieter, duller and wetter with distance, panned by bearing, rate-limited and voice-capped.
 import { mix } from './core';
-import { ac, rnd, irnd, pick, clamp, hz, collect, gain, filt, pan, nsrc, env, tone, hiss, metal, vox, VOW, horn, creak, whir, pluck, texture } from './synth';
+import { ac, rnd, irnd, pick, clamp, hz, own, collect, gain, filt, pan, nsrc, env, tone, hiss, metal, vox, VOW, horn, creak, whir, pluck, texture } from './synth';
 import { key, deg } from './music';
 
 /** The listener: camera target on the ground, zoom distance and yaw. */
@@ -12,6 +12,7 @@ interface Voice { out: GainNode; srcs: AudioScheduledSourceNode[]; end: number; 
 const MAX_VOICES = 24, REF = 10;
 const voices: Voice[] = [];
 const last = new Map<string, number>();
+let burstAt = 0, burst = 0; // at most 10 new world sounds per 100 ms, whatever their names
 export const voiceCount = () => voices.length;
 
 function click(o: AudioNode, t: number, f: number, pk: number) {
@@ -41,9 +42,9 @@ const W: Record<string, [number, number, Fx]> = {
   }],
   cut: [0.75, 0.08, cut],
   blunt: [0.7, 0.06, (o, t) => {
-    const f = rnd(85, 130);
-    tone(o, t, 'sine', f, f * 0.45, 0.002, rnd(0.12, 0.18), 1);
-    hiss(o, t, 'lowpass', rnd(900, 1400), 180, 0.001, 0.07, 1.3);
+    const f = rnd(110, 160);
+    tone(o, t, 'sine', f, f * 0.45, 0.002, rnd(0.12, 0.18), 0.7);
+    hiss(o, t, 'lowpass', rnd(1300, 2000), 220, 0.001, 0.07, 2);
     hiss(o, t, 'bandpass', rnd(1400, 2200), 1100, 0.001, 0.025, 1.4, 1.2); // slap
     return 0.25;
   }],
@@ -168,7 +169,7 @@ const W: Record<string, [number, number, Fx]> = {
   }],
   fire: [0.4, 0.08, (o, t) => {
     const d = rnd(0.8, 1.2), hp = filt('highpass', 1200, 0.7);
-    nsrc(t, d + 0.1, texture('crackle')).connect(hp).connect(env(t, 0.05, 3, d)).connect(o);
+    nsrc(t, d + 0.1, texture('crackle')).connect(hp).connect(env(t, 0.05, 1.6, d)).connect(o);
     hiss(o, t, 'lowpass', 500, 300, 0.1, d, 0.6); // the roar
     return d + 0.1;
   }],
@@ -183,7 +184,7 @@ const W: Record<string, [number, number, Fx]> = {
     const f = rnd(65, 100), d = rnd(0.8, 1.3);
     return vox(o, t, d, f * 0.9, f * 0.8, VOW.oh, VOW.uh, 1, 0.9, 0.35);
   }],
-  roar: [0.9, 0.3, (o, t) => {
+  roar: [0.6, 0.3, (o, t) => {
     const f = rnd(55, 85), d = rnd(1.3, 2);
     vox(o, t, d, f, f * 0.7, VOW.ah, VOW.oh, 1, 0.7, 0.5);
     vox(o, t + 0.02, d, f * 1.51, f * 1.02, VOW.eh, VOW.ah, 0.5, 0.6, 0.2); // a rougher upper throat
@@ -254,9 +255,10 @@ function play(fx: Fx, g: number, p: number, dry: AudioNode, wet: AudioNode, send
   if (world) voices.push(v);
 }
 
-/** A sound at world position (x, z); unknown names are ignored. */
+/** A sound at world position (x, z). UI names (e.g. 'click') also work, placed in the world;
+ *  unknown names are ignored. */
 export function playWorld(name: string, x: number, z: number, vol: number) {
-  const m = mix, def = W[name];
+  const m = mix, ui = own(UI, name), def = own(W, name) ?? (ui && ([0.6 * (UI_LEVEL[name] ?? 1), 0.05, ui] as [number, number, Fx]));
   if (!m || !def || m.ctx.state !== 'running') return;
   const now = m.ctx.currentTime;
   if (now - (last.get(name) ?? -1) < 0.03) return;
@@ -267,6 +269,8 @@ export function playWorld(name: string, x: number, z: number, vol: number) {
   const v = typeof vol === 'number' && isFinite(vol) ? clamp(vol, 0, 1) : 1;
   const g = def[0] * v * edge * (REF / (REF + 0.6 * Math.max(0, eff - REF))) * rnd(0.9, 1.05);
   if (g < 0.003) return;
+  if (now - burstAt > 0.1) { burstAt = now; burst = 0; }
+  if (++burst > 10) return;
   last.set(name, now);
   const s = Math.sin(L.yaw), c = Math.cos(L.yaw);
   const p = clamp((dx * c - dz * s) / Math.hypot(d, h + 4), -1, 1) * 0.9;
@@ -275,7 +279,7 @@ export function playWorld(name: string, x: number, z: number, vol: number) {
 }
 
 export function playUi(name: string) {
-  const m = mix, fx = UI[name];
+  const m = mix, fx = own(UI, name);
   if (!m || !fx || m.ctx.state !== 'running') return;
   const now = m.ctx.currentTime;
   if (now - (last.get('ui:' + name) ?? -1) < 0.03) return;

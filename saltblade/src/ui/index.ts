@@ -16,6 +16,9 @@ import { Clock } from '../sim/clock';
 import { openDialogue } from './dialogue';
 import { openTrade } from './trade';
 import { setupBuild } from './build';
+import { openMenu as openGameMenu } from './menu';
+import { saveGame, loadSlot } from '../game/session';
+import { G } from '../state';
 
 export function setupUI() {
   buildHUD();
@@ -28,6 +31,8 @@ export function setupUI() {
   on('ui:trade', (pid: number, nid: number) => { import('./dialogue').then((m) => m.closeDialogue()); openTrade(pid, nid); });
   on('ui:log', () => { if (isOpen('log')) closeWindow('log'); else openLog(); });
   on('gear', () => refreshCharWindow());
+  on('ui:menu', () => openGameMenu());
+  on('world:reset', () => { liveKey = ''; });
   on('sel', () => { if (isOpen('char')) { const c = selected()[0]; if (c) openCharWindow(c); } });
   setInterval(() => { if (isOpen('char')) refreshLive(); }, 1000);
   input.onKey((code) => {
@@ -41,6 +46,12 @@ export function setupUI() {
       case 'Escape':
         closeMenu();
         if (!closeTop()) emit('ui:menu');
+        return true;
+      case 'F5':
+        if (G.mode === 'play') void saveGame('quick');
+        return true;
+      case 'F9':
+        if (G.mode === 'play') void loadSlot('quick').then((err) => { if (err) S.fx.notice(err, 'bad'); });
         return true;
     }
     return false;

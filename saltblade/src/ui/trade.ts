@@ -12,6 +12,7 @@ import { FACTION } from '../content/factions';
 import { portrait } from '../render/portrait';
 import { recruit } from '../sim/dialogue';
 import { Char } from '../sim/char';
+import { uiSound } from '../audio';
 
 let views: GridView[] = [];
 
@@ -47,7 +48,7 @@ export function openTrade(pid: number, nid: number) {
         moved: (it, src, dst) => {
           if (src.kind === 'grid' && src.grid === stock && dst.kind === 'grid' && dst.grid === g) {
             const cost = buyPrice(sh, it) * it.n;
-            S.W.money -= cost; sh.money += cost;
+            S.W.money -= cost; sh.money += cost; uiSound('coin');
             it.stolen = undefined;
             msg = `Bought ${ITEM[it.id].name}${it.n > 1 ? ' ×' + it.n : ''} for ${fmt(cost)}c.`;
             emit('sound', 'coin', p.x, p.z, 1);
@@ -74,7 +75,7 @@ export function openTrade(pid: number, nid: number) {
       moved: (it, src, dst) => {
         if (dst.kind === 'grid' && dst.grid === stock && src.kind === 'grid' && src.grid !== stock) {
           const val = sellPrice(sh, it) * it.n;
-          S.W.money += val; sh.money -= val;
+          S.W.money += val; sh.money -= val; uiSound('coin');
           msg = `Sold ${ITEM[it.id].name}${it.n > 1 ? ' ×' + it.n : ''} for ${fmt(val)}c.`;
           emit('sound', 'coin', p.x, p.z, 1);
           it.stolen = undefined;
@@ -106,7 +107,7 @@ export function openTrade(pid: number, nid: number) {
     if (S.W.money < cost) { msg = `You need ${fmt(cost)} chits.`; render(); return; }
     stock.remove(it);
     if (!p.inv.put(it) && !(p.eq.back?.inv?.put(it))) { stock.put(it); msg = 'No room in your pack.'; render(); return; }
-    S.W.money -= cost; sh.money += cost;
+    S.W.money -= cost; sh.money += cost; uiSound('coin');
     msg = `Bought ${ITEM[it.id].name} for ${fmt(cost)}c.`;
     emit('sound', 'coin', p.x, p.z, 1);
     render();
@@ -117,7 +118,7 @@ export function openTrade(pid: number, nid: number) {
     if (sh.money < val) { msg = `${n.name} can't afford it.`; render(); return; }
     g.remove(it);
     if (!stock.put(it)) stock.add(it.id, it.n, it.q);
-    S.W.money += val; sh.money -= val;
+    S.W.money += val; sh.money -= val; uiSound('coin');
     it.stolen = undefined;
     msg = `Sold ${ITEM[it.id].name} for ${fmt(val)}c.`;
     emit('sound', 'coin', p.x, p.z, 1);
@@ -139,6 +140,7 @@ function slaveMarket(p: Char, sh: Shop, rerender: () => void) {
     b.onclick = () => {
       if (S.W.money < price) { emit('notice', 'Not enough chits.'); return; }
       S.W.money -= price;
+      uiSound('coin');
       recruit({ p, n: s, vars: {} });
       s.shackled = true;
       s.dirty = true;
@@ -158,6 +160,7 @@ function mercHall(p: Char, sh: Shop, rerender: () => void) {
   b.onclick = () => {
     if (S.W.money < price * 3) { emit('notice', 'Not enough chits.'); return; }
     S.W.money -= price * 3;
+    uiSound('coin');
     emit('hire:mercs', p.id, 3, 3);
     rerender();
   };

@@ -172,7 +172,7 @@ JOB_HANDLERS.build = (c, job, o, dt, think) => {
   return 'work';
 };
 
-export function finishSite(site: WObj) {
+export function finishSite(site: WObj, quiet = false) {
   const b = BUILDABLE[site.data.bkey];
   S.W.removeObj(site);
   let o: WObj;
@@ -200,8 +200,10 @@ export function finishSite(site: WObj) {
   navDirty(o);
   S.W.rebuildObjHash();
   emit('objs');
-  S.fx.notice(`${b.name} finished.`, 'good');
-  S.fx.sound('build', o.x, o.z, 1);
+  if (!quiet) {
+    S.fx.notice(`${b.name} finished.`, 'good');
+    S.fx.sound('build', o.x, o.z, 1);
+  }
   return o;
 }
 
@@ -458,8 +460,10 @@ export function tickBase(dt: number) {
     let water = 1;
     S.W.objHash.near(o.x, o.z, 40, (w) => { if (w.kind === 'well' && w.owner === 'player') water = 1.35; });
     const tended = S.clock.t - (d.tended ?? -1e9) < 7200 ? 1.2 : 0.75;
+    const sky = S.weather?.at(o.x, o.z);
+    const rain = sky && sky.kind === 'rain' ? 1 + 0.4 * sky.i : sky && sky.kind === 'heat' ? 1 - 0.3 * sky.i : 1;
     const before = d.growth;
-    d.growth = Math.min(1, d.growth + (hours / 44) * Math.max(0.1, cropFit) * water * tended);
+    d.growth = Math.min(1, d.growth + (hours / 44) * Math.max(0.1, cropFit) * water * tended * rain);
     if (Math.floor(before * 5) !== Math.floor(d.growth * 5)) emit('objs');
     if (before < 1 && d.growth >= 1) S.fx.notice(`The ${d.name ?? 'crop'} is ready to harvest.`, 'good');
   }

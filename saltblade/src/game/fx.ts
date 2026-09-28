@@ -20,6 +20,13 @@ export function setupFx() {
     shot(from: Char, x: number, z: number, hit: boolean) { emit('fx:shot', from, x, z, hit); },
     notice(text: string, kind = 'info') { emit('notice', text, kind); },
     died(c: Char) { if (c.view) G.overlay.floater(c, 'dead', '#d05040'); emit('fx:died', c); },
-    ko(c: Char) { if (c.view) G.overlay.floater(c, 'down', '#e0a050'); emit('fx:ko', c); },
+    ko(c: Char) {
+      if (c.view) G.overlay.floater(c, 'down', '#e0a050');
+      emit('fx:ko', c);
+      if (c.faction === 'player' && G.mode === 'play') {
+        emit('notice', `${c.name} is down!`, 'bad');
+        if (G.settings?.pauseOnKO && G.speed) { G.lastSpeed = G.speed; G.speed = 0; emit('speed'); }
+      }
+    },
   };
 }

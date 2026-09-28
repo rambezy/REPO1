@@ -17,6 +17,7 @@ let squadKey = '';
 const cards = new Map<number, { el: HTMLDivElement; hp: HTMLElement; bl: HTMLElement; st: HTMLElement; img: HTMLImageElement; key: string }>();
 
 export function buildHUD() {
+  on('world:reset', () => { squadKey = ''; });
   root = h('div', { id: 'hud' });
   topL = h('div', { class: 'hud-topl' });
   speedBox = h('div', { class: 'hud-speed' });

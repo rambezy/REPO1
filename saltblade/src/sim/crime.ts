@@ -31,7 +31,7 @@ export function crime(c: Char, kind: CrimeKind, faction: string, amount: number,
   if (needWitness && !w) return false;
   c.bounty[faction] = (c.bounty[faction] ?? 0) + amount;
   S.W.rel.add('player', faction, -Math.min(10, amount / 100));
-  if (w) S.fx.say(w, shout(kind));
+  if (w) { S.fx.say(w, shout(kind)); S.fx.sound('alarm', w.x, w.z, 0.7); }
   if (c.faction === 'player') S.W.say(`${c.name} was seen ${NAMES[kind]} by the ${f.short}. Bounty: ${c.bounty[faction]} chits.`, 'crime', S.clock.t);
   S.fx.notice(`${f.short}: ${c.name} is wanted for ${NAMES[kind]} (${c.bounty[faction]}c)`, 'bad');
   return true;
@@ -52,4 +52,28 @@ export function totalBounty(c: Char) {
   let t = 0;
   for (const v of Object.values(c.bounty)) t += v;
   return t;
+}
+
+let slaveT = 0;
+/** Slaves of yours: an unshackled slave in the camp, or any slave outside it, is a runaway if seen. Far enough away, they are free. */
+export function tickRunaways(dt: number) {
+  slaveT -= dt;
+  if (slaveT > 0) return;
+  slaveT = 1;
+  for (const c of S.W.playerChars()) {
+    const fac = c.mem.enslavedBy as string | undefined;
+    if (!fac || !c.alive || !c.mem.slaveSite) continue;
+    const site = S.T.sites.find((s) => s.id === c.mem.slaveSite);
+    if (!site) continue;
+    const d = Math.hypot(c.x - site.x, c.z - site.z);
+    if (d > site.r + 900) {
+      delete c.mem.slaveSite;
+      S.W.say(`${c.name} escaped ${site.name}.`, 'story', S.clock.t);
+      S.fx.notice(`${c.name} has escaped ${site.name}!`, 'good');
+      if (!S.W.flags.escaped) S.W.flags.escaped = S.clock.t;
+      continue;
+    }
+    if ((c.bounty[fac] ?? 0) > 0 || c.status !== 'up') continue;
+    if (d > site.r + 40 || !c.shackled) crime(c, 'runaway', fac, 1000, true);
+  }
 }

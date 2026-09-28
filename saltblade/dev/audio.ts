@@ -89,7 +89,9 @@ slider(s, 'bearing', -180, 180, 5, place.bearing, (v) => (place.bearing = v), (v
 slider(s, 'vol', 0, 1, 0.05, place.vol, (v) => (place.vol = v), (v) => v.toFixed(2));
 
 s = section('Listener', 'Camera zoom distance and yaw; far or zoomed-out sounds are quieter, duller and wetter.');
-slider(s, 'camDist', 3, 1400, 1, lis.dist, (v) => (lis.dist = v), (v) => v + ' m');
+// logarithmic: 0..100 maps to 3..1400 m
+const zoom = (v: number) => Math.round(3 * Math.pow(1400 / 3, v / 100));
+slider(s, 'camDist', 0, 100, 1, Math.round((100 * Math.log(lis.dist / 3)) / Math.log(1400 / 3)), (v) => (lis.dist = zoom(v)), (v) => zoom(v) + ' m');
 slider(s, 'yaw', -180, 180, 5, 0, (v) => (lis.yaw = (v * Math.PI) / 180), (v) => v + '°');
 
 s = section('UI sounds');

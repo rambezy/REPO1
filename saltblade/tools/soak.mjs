@@ -6,7 +6,7 @@ const page = await browser.newPage({ viewport: { width: 1280, height: 760 } });
 const errs = [];
 page.on('pageerror', (e) => errs.push(e.message + '\n' + (e.stack || '').split('\n').slice(0, 6).join('\n')));
 page.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('ERR_CERT')) errs.push(m.text()); });
-await page.goto(process.env.URL || 'http://localhost:5180/#debug');
+await page.goto(process.env.URL || 'http://localhost:5180/#debug,play');
 await page.waitForFunction(() => window.__sb && window.__sb.G.mode === 'play', null, { timeout: 120000 });
 await page.evaluate(() => { __sb.speed(5); });
 const t0 = Date.now();

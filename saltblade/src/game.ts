@@ -23,7 +23,6 @@ import { Overlay } from './render/overlay';
 import { attachControl, sel, hoverId } from './game/control';
 import { RNG } from './core/rng';
 import { setupFx } from './game/fx';
-import { newGame } from './game/newgame';
 import { setupUI } from './ui/index';
 import { StructViews } from './render/structView';
 import { tickPopulation } from './game/world';
@@ -32,6 +31,13 @@ import { tickEncounters } from './sim/encounters';
 import { tickWorld, hireMercs } from './sim/worldsim';
 import { tickBase } from './sim/base';
 import { on } from './core/events';
+import { tickRunaways } from './sim/crime';
+import { tickAutosave, startNewGame } from './game/session';
+import { showTitle, tickTitle } from './ui/title';
+import { loadSettings, applySettings } from './game/settings';
+import { setupAudio, tickAudio } from './game/audiohook';
+import { Weather, WEATHER_NAME } from './sim/weather';
+import { WeatherFx } from './render/weatherFx';
 
 function loadingScreen() {
   const el = document.createElement('div');
@@ -83,6 +89,9 @@ export async function boot() {
   G.nav = new Nav(G.T);
   G.W = new World();
   S.W = G.W; S.T = G.T; S.nav = G.nav; S.clock = G.clock; S.rng = new RNG((Date.now() & 0xffff) + 1);
+  S.weather = new Weather();
+  G.weatherFx = new WeatherFx();
+  G.R.scene.add(G.weatherFx.group);
   G.charViews = new CharViews();
   G.R.scene.add(G.charViews.group, G.charViews.rings);
   G.overlay = new Overlay(document.getElementById('app')!);
@@ -91,16 +100,22 @@ export async function boot() {
   setupFx();
   attachControl();
   setupUI();
+  setupAudio();
   on('hire:mercs', (pid: number, n: number, days: number) => hireMercs(pid, n, days));
+  loadSettings();
+  applySettings();
   const cr = SETTLEMENT.crossroad;
   G.cam.lookAt(cr.u * WORLD, cr.v * WORLD, 120);
-  newGame(location.hash.includes('fight') ? 'fight' : 'wanderer');
+  // #fight, #play or #start=<scenario> skip the title (for testing)
+  const hash = location.hash;
+  const quick = hash.includes('fight') ? 'fight' : hash.match(/start=(\w+)/)?.[1] ?? (hash.includes('play') ? 'wanderer' : '');
+  if (quick) startNewGame({ scenario: quick, faction: '', people: [] });
+  else showTitle();
   ls.done();
-  G.mode = 'play';
   if (import.meta.env.DEV || location.hash.includes('debug')) (await import('./debug')).attachDebug();
   let last = performance.now();
   const frame = (now: number) => {
-    const dt = Math.min(0.1, (now - last) / 1000);
+    const dt = Math.max(0, Math.min(0.1, (now - last) / 1000));
     last = now;
     step(dt);
     requestAnimationFrame(frame);
@@ -122,21 +137,31 @@ function step(dt: number) {
     tickEncounters(h);
     tickWorld(h);
     tickBase(h);
+    tickRunaways(h);
+    S.weather.tick(h);
     left -= h;
   }
   tickPopulation(dt);
+  tickAutosave(dt);
+  if (G.mode === 'title') tickTitle(dt);
+  tickAudio(dt);
   G.cam.update(dt, G.T);
   G.cam.apply(G.R.camera, G.T);
   const t = G.cam.target;
   const reg = G.T.regionAt(t.x, t.z);
   G.daylight.setRegion(reg.haze, reg.fog);
+  const sky = S.weather.at(t.x, t.z);
+  G.weatherFx.update(dt, sky, G.R.camera.position, G.cam.target, G.cam.dist, G.weather, 0.6 + Math.sin(G.simTime * 0.002) * 1.2);
+  G.weatherState = { kind: G.weatherFx.kind, intensity: G.weatherFx.i };
+  G.weatherName = G.weatherFx.kind !== 'clear' && G.weatherFx.i > 0.25 ? WEATHER_NAME[G.weatherFx.kind as keyof typeof WEATHER_NAME] : '';
   G.daylight.update(dt, G.clock.hour, G.clock.day, G.R, G.sky, G.weather, G.waterMat.uniforms);
+  if (G.weatherFx.flash > 0) { G.R.hemi.intensity += G.weatherFx.flash * 2.2; G.R.gl.toneMappingExposure += G.weatherFx.flash * 0.5; }
   G.sky.mesh.position.copy(G.R.camera.position);
   G.sky.u.uTime.value = G.realTime;
   G.waterMat.uniforms.uTime.value = G.realTime;
   G.R.shadowFocus.copy(t);
   G.R.shadowSize = Math.min(160, Math.max(40, G.cam.dist * 1.2));
-  G.R.shadowsOn = G.cam.dist < 400;
+  G.R.shadowsOn = (G.settings?.shadows ?? true) && G.cam.dist < 400;
   G.charViews.update(dt * (G.speed ? 1 : 0.0001), G.W, G.R.camera.position, G.cam.target, sel, hoverId);
   G.structViews.update(dt, G.R.camera.position, G.cam.target, [...sel].map((id) => G.W.char(id)).filter(Boolean) as any, G.daylight.night);
   G.terrainR.update(G.R.camera.position);

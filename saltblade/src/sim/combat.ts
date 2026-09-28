@@ -226,7 +226,7 @@ export function applyDamage(d: Char, limb: number, cut: number, blunt: number, b
   if (limb < 3) b.hp[limb] = Math.max(b.hp[limb], -b.max[limb] * 1.05);
   if (fx) {
     S.fx.hit(d, by ?? d, dmg, false, limb);
-    S.fx.sound(ct > bl ? 'cut' : 'blunt', d.x, d.z, Math.min(1, 0.4 + dmg / 30));
+    S.fx.sound(by?.animal && by.weaponStats().kind === 'claw' ? 'bite' : ct > bl ? 'cut' : 'blunt', d.x, d.z, Math.min(1, 0.4 + dmg / 30));
   }
   if (d.status === 'up' && isKOCondition(d)) {
     knockOut(d);

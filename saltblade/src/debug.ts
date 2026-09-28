@@ -1,10 +1,13 @@
 // Development handle on window.__sb for automated play-testing.
 import { G } from './state';
+import { S } from './sim/ctx';
+import { saveGame, loadSlot, snapshot } from './game/session';
 
 export function attachDebug() {
   const w = window as unknown as Record<string, unknown>;
   w.__sb = {
     G,
+    S,
     cam(x: number, z: number, dist = 80, yaw?: number, pitch?: number) {
       G.cam.lookAt(x, z, dist);
       G.cam.dist = dist;
@@ -67,6 +70,17 @@ export function attachDebug() {
       return b;
     },
     log() { return G.W.log.slice(-15).map((l: any) => l.text); },
+    save: (slot = '1') => saveGame(slot),
+    load: (slot = '1') => loadSlot(slot),
+    saveSize() { const j = JSON.stringify(snapshot()); return j.length; },
+    /** Forces the weather in the camera's region. */
+    weather(kind: string, i = 1) {
+      const S = (window as any).__sb.S;
+      const sp = S.weather.at(G.cam.target.x, G.cam.target.z);
+      sp.kind = kind; sp.i = i; sp.target = i; sp.until = G.clock.t + 3600 * 6;
+      G.weatherFx.kind = kind; G.weatherFx.i = i;
+      return true;
+    },
     info() {
       const r = G.R.gl.info.render;
       return { calls: r.calls, tris: r.triangles, geos: G.R.gl.info.memory.geometries, time: G.clock.str() };

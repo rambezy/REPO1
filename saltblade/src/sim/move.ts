@@ -124,7 +124,9 @@ export function tickMove(c: Char, dt: number): number {
 
 function swimCheck(c: Char) {
   const h = S.T.heightAt(c.x, c.z);
-  c.swim = SEA - h > WADE_DEPTH + 0.3;
+  const swim = SEA - h > WADE_DEPTH + 0.3;
+  if (swim && !c.swim && c.active) S.fx.sound('splash', c.x, c.z, 0.8);
+  c.swim = swim;
   c.y = c.swim ? SEA - 1.25 : floorAt(c.x, c.z);
 }
 
