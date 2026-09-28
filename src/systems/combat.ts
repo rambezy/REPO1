@@ -360,6 +360,7 @@ export function finalDamage(a: Actor, o: Actor, mult = 1) {
   } else {
     m *= 0.75 + (a.mem.skill ?? 3) * 0.05;
     if (isPlayer(o)) {
+      m *= 0.72;
       if (S.difficulty === 'story') m *= 0.6;
       if (S.difficulty === 'hard') m *= 1.3;
       if (hasPerk('iron_skin')) m *= 0.9;

@@ -1,0 +1,104 @@
+// Act II from its opening to the knighting.
+export default async function (g) {
+  await g.newGame('Janek');
+  await g.auto(true);
+  await g.choose('Get off me');
+  await g.waitFor("o.G.mode === 'play' && !o.G.controlLocked", 30000, 'opening');
+  await g.obi(`(() => {
+    const S = o.S; S.flags.raid_started = true; o.quests.completeQuest('main_prologue');
+    S.flags.act = 1; S.flags.hb_state = 'ruined'; S.flags.father_buried = true; S.flags.mother_found = true; S.flags.mother_cured = true; S.flags.mother_moved = true; S.flags.hanka_moved = true; S.flags.crumb_found = true; S.dog.owned = true;
+    for (const q of ['main_ashes','main_mother','main_bertram','main_crowstone']) o.quests.completeQuest(q);
+    o.give('unfinished_blade'); o.give('fathers_letter'); o.give('harrow_orders');
+    o.world.rebuildMap('overworld'); o.world.enterMap('overworld', 'linden');
+    o.acts.startAct2(); return true; })()`);
+  await g.sleep(2500);
+  g.log('act2', JSON.stringify(await g.quests()));
+  // Father's blade
+  await g.obi("o.goto('kovar')"); await g.sleep(500);
+  await g.talk('kovar');
+  await g.drain(60000, ['in Kutná']);
+  g.log(JSON.stringify(await g.quests()));
+  await g.use('forge');
+  await g.sleep(1200);
+  await g.shot('a2-01-kovarforge');
+  await g.key('Escape');
+  await g.sleep(500);
+  await g.drain(60000);
+  g.log(JSON.stringify(await g.quests()), await g.obi("o.S.equip.weapon"));
+  // the silver road
+  await g.tp('overworld', 43, 34);
+  await g.sleep(1500);
+  await g.obi("o.goto('kuba')"); await g.sleep(400);
+  await g.talk('kuba');
+  await g.drain(30000, ['strongbox']);
+  await g.obi("(o.give('foreman_ledger'), true)");
+  await g.sleep(600);
+  g.log(JSON.stringify(await g.quests()));
+  await g.obi("o.goto('vilem')"); await g.sleep(400);
+  await g.talk('vilem');
+  await g.drain(30000, ['Who is "R."']);
+  await g.shot('a2-02-vilem');
+  await g.obi("o.goto('bertram')"); await g.sleep(400);
+  await g.talk('bertram');
+  await g.drain(60000);
+  g.log(JSON.stringify(await g.quests()));
+  // Pavel's folly
+  await g.tp('overworld', 110, 70);
+  await g.sleep(2500);
+  await g.drain(20000);
+  g.log(JSON.stringify(await g.quests()));
+  await g.obi("o.goto('ondrej')"); await g.sleep(400);
+  await g.talk('ondrej');
+  await g.drain(20000);
+  await g.tp('overworld', 150, 46);
+  await g.sleep(2500);
+  await g.drain(30000);
+  await g.shot('a2-03-overlook');
+  g.log(JSON.stringify(await g.quests()));
+  await g.obi("(o.give('servant_clothes'), o.inventory.equip('servant_clothes'), true)");
+  await g.tp('overworld', 163, 50);
+  await g.sleep(1500);
+  await g.shot('a2-04-camp');
+  await g.tp('ilse_tent', 4, 7);
+  await g.sleep(1500);
+  await g.drain(60000, ['from Hollowbrook']);
+  g.log(JSON.stringify(await g.quests()));
+  await g.use('stewpot');
+  await g.drain(20000, ['Valerian']);
+  await g.obi("(o.S.minutes = Math.floor(o.S.minutes / 1440) * 1440 + 23 * 60, true)");
+  await g.tp('overworld', 173, 55);
+  await g.sleep(1500);
+  await g.shot('a2-05-cage');
+  // pick the lock (simulated)
+  await g.obi("(o.S.flags.pavel_freed = true, o.quests.setStage('main_pavel', 'escape'), true)");
+  await g.sleep(300);
+  await g.tp('overworld', 148, 46);
+  await g.sleep(2500);
+  await g.drain(60000, ['Sit beside']);
+  g.log(JSON.stringify(await g.quests()));
+  await g.obi("o.goto('bertram')"); await g.sleep(400);
+  await g.talk('bertram');
+  await g.drain(60000);
+  g.log(JSON.stringify(await g.quests()));
+  // the Raven's Feast
+  await g.sleep(1500);
+  await g.drain(20000);
+  g.log(JSON.stringify(await g.quests()));
+  await g.tp('overworld', 122, 134);
+  await g.sleep(2000);
+  await g.drain(30000);
+  await g.obi("(o.S.minutes = Math.floor(o.S.minutes / 1440) * 1440 + 22.5 * 60, true)");
+  await g.sleep(2500);
+  await g.drain(30000);
+  await g.sleep(1500);
+  await g.shot('a2-06-battle');
+  await g.obi("(o.world.here().filter(a => a.tags.has('feastraid')).forEach(a => { a.hp = 0; a.dead = true; a.pose = 'dead'; }), true)");
+  await g.sleep(1500);
+  await g.drain(60000, ['finish it for you']);
+  g.log(JSON.stringify(await g.quests()));
+  await g.obi("o.goto('bertram')"); await g.sleep(400);
+  await g.talk('bertram');
+  await g.drain(90000);
+  await g.shot('a2-07-knight');
+  g.log(JSON.stringify(await g.quests()), 'act', await g.obi('o.S.flags.act'), 'knighted', await g.obi('o.S.flags.knighted'));
+}

@@ -14,13 +14,20 @@ type Handler = (a: Actor) => Promise<void>;
 const handlers = new Map<string, Handler>();
 
 export function registerTalk(charId: string, fn: Handler) { handlers.set(charId, fn); }
+/** Story hook: true if this character has something urgent to say (a quest scene), even asleep. */
+export const talkHooks = { urgent: null as null | ((charId: string) => boolean) };
 export function hasTalk(charId: string) { return handlers.has(charId); }
 
 export async function talkTo(a: Actor) {
   const id = a.charId || a.id;
   emit('talk', id, a);
   emit('talk:' + id, a);
-  if (a.mem.sleeping || a.pose === 'sleep') {
+  if ((a.mem.sleeping || a.pose === 'sleep') && a.charId && talkHooks.urgent?.(a.charId)) {
+    // woken for something that matters
+    a.mem.sleeping = false;
+    a.pose = 'idle';
+    a.say(rand.pick(['Hm? What... what is it? Is it important?', 'Mmf. I\'m awake. I\'m awake.']), 2.5);
+  } else if (a.mem.sleeping || a.pose === 'sleep') {
     await conversation(async () => {
       await say(a, 'angry', rand.pick(['Mmh... what? Go away, it\'s the middle of the night!', 'Who\'s there?! Let a body sleep!', 'Zzz... no, mother, not the goose...']));
     });

@@ -194,6 +194,7 @@ reg(
   { id: 'garnet_ring', name: 'Garnet Ring', cat: 'misc', desc: 'Silver set with a Bohemian garnet, red as a heart.', value: 120, weight: 0.05, icon: { shape: 'ring', c1: P.metal4, c2: '#a0182a' } },
   { id: 'flowers', name: 'Wildflowers', cat: 'misc', desc: 'A handful of cornflowers and poppies.', value: 1, weight: 0.1, stack: true, icon: { shape: 'flower', c1: '#4a7ad8' } },
   { id: 'feather', name: 'Goose Feather', cat: 'material', desc: 'For fletching arrows, or for writing.', value: 1, weight: 0.01, stack: true, icon: { shape: 'feather' } },
+  { id: 'candle', name: 'Beeswax Candle', cat: 'misc', desc: 'A good church candle. Burns clean and smells of summer.', value: 2, weight: 0.2, stack: true, icon: { shape: 'honey', c1: '#f0e0a0' } },
   { id: 'horseshoe_sale', name: 'Set of Horseshoes', cat: 'misc', desc: 'Four shoes of your own forging. Any smith or stable will pay for them.', value: 7, weight: 2, stack: true, icon: { shape: 'ring', c1: P.metal3 } },
   { id: 'bone', name: 'Soup Bone', cat: 'misc', desc: 'A meaty bone. Crumb would sell his soul for it.', value: 1, weight: 0.4, stack: true, icon: { shape: 'bone' } },
 );

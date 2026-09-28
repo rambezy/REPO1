@@ -227,8 +227,11 @@ function registerCast() {
       c.tags.add('quest');
       addActor(c, 'overworld', 75 * TILE, 65 * TILE);
     }
+  });
+  castHooks.push(() => {
+    if (ACT() < 1 || ACT() > 3) return;
     // deserters in the Wolfwood (they stay on as allies if spared and asked)
-    if ((!flag('jirka_done') || flag('deserters_allied')) && !flag('deserters_dead') && !flag('deserters_rallied')) {
+    if ((!flag('jirka_done') || flag('deserters_allied')) && !flag('deserters_dead')) {
       const j = npc('jirka', OW(26, 161), always(OW(26, 161), 'stand', { dir: 0 }), { faction: 'bandit', essential: true, skill: 5, weapon: 'falchion', hp: 110 });
       if (j) { j.mem.noSurrender = true; j.tags.add('deserter_boss'); }
       const spots: [number, number][] = [[23, 163], [29, 163], [25, 159]];
@@ -326,7 +329,16 @@ function registerScenes() {
 
   // the deserters' camp
   trigger('a1_deserters', () => qAt('main_crowstone', 'trail', 'deserters') && !flag('jirka_done') && nearTile(26, 163, 11) && !!findActor('jirka'), () => desertersParley());
-  trigger('a1_deserters_beaten', () => !!flag('deserters_fight') && !flag('jirka_done') && (!!findActor('jirka')?.mem.down || hostiles('deserters').length === 0 && !findActor('jirka')?.hostile), () => jirkaYields(), { repeat: true, cooldown: 2 });
+  trigger('a1_deserters_beaten', () => !!flag('deserters_fight') && !flag('jirka_done') && (!!findActor('jirka')?.mem.down || (findActor('jirka')?.hp ?? 999) < 30), () => jirkaYields(), { repeat: true, cooldown: 2 });
+  // losing the duel: Jirka stops before killing you
+  on('player:dying', () => {
+    const j = findActor('jirka');
+    if (!flag('deserters_fight') || flag('jirka_done') || !j || !j.hostile) return;
+    G.player.hp = 5;
+    j.hostile = false; j.mem.target = null;
+    setFlag('lost_to_jirka');
+  });
+  trigger('a1_deserters_won', () => !!flag('lost_to_jirka') && !flag('jirka_done'), () => jirkaYields());
 
   // Havel's buried sword
   on('script:havel_hearth', () => havelHearth());
@@ -547,7 +559,7 @@ function registerTalks() {
     },
   });
   topic('jiri', {
-    id: 'a1_bertram', text: 'What now, Jiří? What happens to all of us?', if: () => act1() && qDone('main_ashes') && !qActive('main_bertram') && !qDone('main_bertram'),
+    id: 'a1_bertram', urgent: true, text: 'What now, Jiří? What happens to all of us?', if: () => act1() && qDone('main_ashes') && !qActive('main_bertram') && !qDone('main_bertram'),
     run: async () => {
       await talk(`
         jiri: Now? Now the lord must be told. Sir Bertram in Linden Hill. We were his village. We paid his rents, fought his wars, baked his bread. He owes us justice, and bread, and roofs before winter.
@@ -1097,12 +1109,16 @@ async function desertersParley(fromTalk = false) {
       { id: 'fight', text: '[Draw your weapon] You were there. That\'s enough.' },
     ]);
     if (c === 'fight' || !lastCheck) {
-      if (c !== 'fight') await say('jirka', 'angry', 'No. I don\'t think I will. Lads.');
-      else await say('jirka', 'angry', 'Aye. We were. Come on, then, and get it over with.');
+      if (c !== 'fight') await talk(`
+        jirka: Words are cheap, smith. I've heard a lot of words. Beat me, and I'll talk. Lads, stay out of it. This is between him and me.
+      `);
+      else await talk(`
+        jirka: Aye. We were. Come on, then, and get it over with. Just you and me. Lads! Stay out of it. Whatever happens.
+      `);
       setFlag('deserters_fight');
       const jj = findActor('jirka');
-      if (jj) { jj.hostile = true; jj.mem.nonlethal = true; }
-      for (const d of [...hostiles('deserters')]) { d.hostile = true; d.mem.alerted = true; }
+      if (jj) { jj.hostile = true; jj.mem.nonlethal = true; jj.mem.alerted = true; jj.mem.target = 'player'; jj.mem.spar = true; }
+      tip('duel', 'A duel. Watch for the glint before his blows, and block late.');
       return;
     }
     await jirkaTalk(false);
@@ -1113,13 +1129,20 @@ async function jirkaYields() {
   if (flag('jirka_done')) return;
   const j = findActor('jirka');
   for (const d of hostiles('deserters')) { d.hostile = false; d.mem.target = null; d.surrendered = false; }
-  if (j) { j.hostile = false; j.mem.target = null; j.mem.down = false; j.pose = 'idle'; j.hp = Math.max(j.hp, 30); }
+  if (j) { j.hostile = false; j.mem.target = null; j.mem.down = false; j.mem.spar = false; j.pose = 'idle'; j.hp = Math.max(j.hp, 30); }
+  G.player.combat.bleeding = 0;
   await conversation(async () => { await jirkaTalk(true); });
 }
 
 async function jirkaTalk(beaten: boolean) {
   setFlag('jirka_done');
-  if (beaten) await talk(`
+  if (beaten && flag('lost_to_jirka')) await talk(`
+    jirka: Stay down, lad. Stay down. You're done.
+    > He stands over you, breathing hard. Then he offers you his hand, and hauls you up.
+    jirka: You've got guts, I'll give you that. Your father had guts too. I saw him on the green. He killed two of ours with a hammer.
+    jirka: You want to know who paid? Fine. I'll tell you. You've earned that much.
+  `);
+  else if (beaten) await talk(`
     jirka pain: Enough! Enough, God damn it. You fight like your father. I saw him on the green, you know. He killed two of ours with a hammer.
     jirka: You want to know who paid? Fine. I'll tell you. I'd have told you anyway, you stubborn bastard.
   `);

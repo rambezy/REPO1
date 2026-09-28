@@ -13,6 +13,10 @@ import { TILE } from './engine/util';
 import { setAutoAdvance } from './ui/dialogue';
 import { talkTo } from './systems/talk';
 import { interactHooks } from './systems/player';
+import { startAct1 } from './content/story/act1';
+import { startAct2 } from './content/story/act2';
+import { startAct3 } from './content/story/act3';
+import * as inv from './systems/inventory';
 
 export function attachDebug() {
   const w = window as unknown as Record<string, unknown>;
@@ -42,6 +46,8 @@ export function attachDebug() {
       return !!b;
     },
     auto: setAutoAdvance,
+    acts: { startAct1, startAct2, startAct3 },
+    give(id: string, n = 1) { inv.addItem(id, n); return true; },
     /** starts a conversation with an actor by id or character id */
     talk(id: string) {
       const a = world.here().find((x) => x.id === id || x.charId === id) || world.findActor(id);

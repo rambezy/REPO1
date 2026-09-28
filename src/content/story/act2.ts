@@ -920,4 +920,3 @@ async function knighting(a: Actor) {
   await startAct3();
 }
 
-export { travel, walkTo, settleSchedules, getMap, regionIs, qVar, readAndWait, refreshDecor, propObj, putAt, kill, removeActor };

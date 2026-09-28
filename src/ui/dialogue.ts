@@ -58,6 +58,8 @@ export function hideDialogue() {
   document.body.classList.remove('dialogue-open');
 }
 export const dialogueVisible = () => !!box;
+/** True while a line or a choice is waiting on the player. */
+export const dialogueBusy = () => !!pendingLine || !!pendingChoice;
 
 let advancePressed = false;
 

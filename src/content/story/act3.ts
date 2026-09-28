@@ -198,12 +198,12 @@ function registerTalks() {
   // allies
   for (const al of ALLIES) {
     topic(al.who, {
-      id: 'a3_rally', text: `Will you fight with us at Ravenstone?`, if: () => qAt('main_allies', 'gather') && !flag('ally_' + al.id) && al.can(),
+      id: 'a3_rally', urgent: true, text: `Will you fight with us at Ravenstone?`, if: () => qAt('main_allies', 'gather') && !flag('ally_' + al.id) && al.can(),
       run: async () => { await rally(al); },
     });
   }
   topic('bertram', {
-    id: 'a3_ready', text: 'Our allies are gathered, my lord. We\'re ready.', if: () => qAt('main_allies', 'gather'),
+    id: 'a3_ready', urgent: true, text: 'Our allies are gathered, my lord. We\'re ready.', if: () => qAt('main_allies', 'gather'),
     run: async (a) => { await bertramReady(a); return 'end'; },
   });
   greet('bertram', async (a) => {
@@ -775,4 +775,3 @@ export async function epilogue() {
   });
 }
 
-export { hourF, disguise, crumbJoins, qActive, qFailed, flee, rand, actors, removeActor, getMap, putAt, readAndWait, canRunScene, skipTo, lockpick, always };

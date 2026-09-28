@@ -14,7 +14,7 @@ import { iconCanvas } from '../../gfx/icons';
 import { makeCanvas } from '../../gfx/pixel';
 import { item } from '../items';
 import { TILE, rand } from '../../engine/util';
-import { registerTalk } from '../../systems/talk';
+import { registerTalk, talkHooks } from '../../systems/talk';
 import { say, choose, inScene, Choice, lastCheck } from '../../systems/script';
 import { openTrade } from '../../ui/trade';
 import { notify } from '../../ui/notify';
@@ -93,6 +93,8 @@ export interface Topic {
   once?: boolean;
   /** runs straight away when the player talks to the character (quest scenes) */
   auto?: boolean;
+  /** important enough to wake the character up for */
+  urgent?: boolean;
   check?: Choice['check'];
   tag?: string;
   /** lower comes first */
@@ -367,7 +369,13 @@ export async function readAndWait(id: string) {
   await waitUntil(() => !UI.screen, 600);
 }
 
+/** True when a character has a quest scene waiting (used to wake them up for it). */
+export function hasUrgentTopic(charId: string) {
+  return (TOPICS[charId] || []).some((t) => (t.auto || t.urgent) && available(charId, t));
+}
+
 export function initLib() {
+  talkHooks.urgent = hasUrgentTopic;
   mapBuiltHooks.push(applyDecor);
   renderHooks.overlay.push(drawGlints);
 }
