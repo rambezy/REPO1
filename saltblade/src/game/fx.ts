@@ -9,6 +9,7 @@ export function setupFx() {
   S.fx = {
     hit(c: Char, by: Char, dmg: number, blocked: boolean) {
       if (!c.view) return;
+      if (!blocked && dmg > 3 && !c.robot && !c.body.robotic) G.decals?.splat(c.x + (Math.random() - 0.5) * 0.8, c.y, c.z + (Math.random() - 0.5) * 0.8, 0.22 + Math.min(0.45, dmg / 50), S.clock.t);
       if (blocked) G.overlay.floater(c, 'blocked', '#c8c0a8');
       else if (dmg > 0.5 && (c.faction === 'player' || by.faction === 'player')) G.overlay.floater(c, String(Math.round(dmg)), c.faction === 'player' ? '#f08868' : '#f8e0a0');
       emit('fx:hit', c, by, dmg, blocked);

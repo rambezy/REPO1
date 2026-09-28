@@ -42,6 +42,7 @@ import { loadSettings, applySettings } from './game/settings';
 import { setupAudio, tickAudio } from './game/audiohook';
 import { Weather, WEATHER_NAME } from './sim/weather';
 import { WeatherFx } from './render/weatherFx';
+import { Decals } from './render/decals';
 
 function loadingScreen() {
   const el = document.createElement('div');
@@ -96,6 +97,9 @@ export async function boot() {
   S.weather = new Weather();
   G.weatherFx = new WeatherFx();
   G.R.scene.add(G.weatherFx.group);
+  G.decals = new Decals();
+  G.R.scene.add(G.decals.mesh);
+  on('world:reset', () => G.decals.clear());
   G.charViews = new CharViews();
   G.R.scene.add(G.charViews.group, G.charViews.rings);
   G.overlay = new Overlay(document.getElementById('app')!);
@@ -125,6 +129,20 @@ export async function boot() {
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
+}
+
+let dripT = 0;
+/** The bleeding leave a trail. */
+function drips(dt: number) {
+  dripT -= dt * (G.speed || 0);
+  if (dripT > 0) return;
+  dripT = 0.8;
+  for (const c of G.W.active) {
+    if (!c.view || c.robot || c.animal && c.body.robotic) continue;
+    const b = c.body.bleeding();
+    if (b < 0.06 || Math.random() > Math.min(0.7, b * 1.8)) continue;
+    G.decals.splat(c.x + (Math.random() - 0.5) * 0.5, c.y, c.z + (Math.random() - 0.5) * 0.5, 0.16 + Math.min(0.3, b * 0.6), S.clock.t);
+  }
 }
 
 const perf = { sim: 0, views: 0, render: 0, frame: 0, fps: 60, pop: 0, chars: 0, structs: 0, terrain: 0, props: 0, misc: 0 };
@@ -172,6 +190,8 @@ function step(dt: number) {
   const sky = S.weather.at(t.x, t.z);
   G.weatherFx.update(dt, sky, G.R.camera.position, G.cam.target, G.cam.dist, G.weather, 0.6 + Math.sin(G.simTime * 0.002) * 1.2);
   G.weatherState = { kind: G.weatherFx.kind, intensity: G.weatherFx.i };
+  G.decals.u.uNow.value = S.clock.t;
+  drips(dt);
   G.weatherName = G.weatherFx.kind !== 'clear' && G.weatherFx.i > 0.25 ? WEATHER_NAME[G.weatherFx.kind as keyof typeof WEATHER_NAME] : '';
   G.daylight.update(dt, G.clock.hour, G.clock.day, G.R, G.sky, G.weather, G.waterMat.uniforms);
   if (G.weatherFx.flash > 0) { G.R.hemi.intensity += G.weatherFx.flash * 2.2; G.R.gl.toneMappingExposure += G.weatherFx.flash * 0.5; }
