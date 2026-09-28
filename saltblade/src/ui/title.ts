@@ -226,7 +226,7 @@ function playableFor(sc: Scenario, i: number): RaceDef[] {
 function creatorScreen(sc: Scenario) {
   screen = 'create';
   const rng = new RNG((Date.now() & 0xffffff) + 7);
-  const drafts: Draft[] = sc.people.map((p, i) => makeDraft(sc, i, p.races?.[0] ?? rng.pick(['valefolk', 'valefolk', 'duneborn']), rng));
+  const drafts: Draft[] = sc.people.map((p, i) => makeDraft(sc, i, p.races ? rng.pick(p.races) : rng.pick(['valefolk', 'valefolk', 'duneborn']), rng));
   let cur = 0;
   let faction = sc.squad;
   const tabs = h('div', { class: 'cctabs' });

@@ -57,7 +57,7 @@ export interface NewGameSetup {
 /** The default people for a start: random looks the player can then edit. */
 export function defaultPeople(sc: Scenario, rng: RNG): { name: string; look: Look }[] {
   return sc.people.map((p) => {
-    const race = p.races?.[0] ?? rng.pick(['valefolk', 'valefolk', 'duneborn']);
+    const race = p.races ? rng.pick(p.races) : rng.pick(['valefolk', 'valefolk', 'duneborn']);
     const look = randomLook(race, rng, p.female);
     return { name: personName(race, look.female, rng), look };
   });

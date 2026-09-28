@@ -244,7 +244,7 @@ export function buildTown(W: World, T: Terrain, site: Site, def: SettlementDef, 
   }
 
   // fields outside town
-  if (plan.fields && T.regionAt(cx, cz).fertility > 0.15) {
+  if (plan.fields && (T.regionAt(cx, cz).fertility > 0.15 || plan.fields === 'riceweed')) { // paddies are flooded, soil or not
     const n = Math.round(3 + R / 40);
     for (let i = 0, tries = 0; i < n && tries < 60; tries++) {
       const a = rng.range(0, Math.PI * 2), d = R + rng.range(14, 70);

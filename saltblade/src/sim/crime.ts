@@ -85,6 +85,7 @@ export function tickRunaways(dt: number) {
       continue;
     }
     if ((c.bounty[fac] ?? 0) > 0 || c.status !== 'up') continue;
-    if (d > site.r + 40 || !c.shackled) crime(c, 'runaway', fac, 1000, true);
+    // the camp includes its fields, which lie outside the fence
+    if (d > site.r + 130 || !c.shackled) crime(c, 'runaway', fac, 1000, true);
   }
 }

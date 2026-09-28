@@ -190,7 +190,7 @@ export function populateTown(W: World, info: TownInfo) {
     c.site = site.id;
   }
   // a few shellbacks and goats in farm towns
-  if (plan.fields && rng.chance(0.6) && fac !== 'mawkin') {
+  if (plan.fields && info.fields.length && rng.chance(0.6) && fac !== 'mawkin') {
     const hs = squad(W, 'fauna', 'herd', 'Livestock', site.id);
     for (let i = 0; i < rng.int(1, 3); i++) {
       const a = makeAnimal(W, rng.pick(['shellback', 'goatling', 'longhorn']), rng);
