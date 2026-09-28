@@ -211,7 +211,7 @@ function npcAI(c: Char, dt: number, think: boolean) {
     // guards help anyone of theirs who is being attacked nearby
     if (!target && (c.role === 'guard' || c.role === 'patrol' || f?.attitude === 'bandit' || c.animal)) {
       S.W.hash.near(c.x, c.z, 30, (o) => {
-        if (target || o === c || o.faction !== c.faction || !o.up) return;
+        if (target || o === c || o.faction !== c.faction || !o.up || o.mem.bout) return; // a pit bout is nobody else's fight
         const foe = S.W.char(o.lastHitBy);
         if (foe && foe.up && S.time - o.lastHitT < 6 && foe.faction !== c.faction) target = foe;
       });

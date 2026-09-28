@@ -96,6 +96,7 @@ export function primsFor(o: WObj, out: StructPrim[]) {
       if (o.def === 'counter' || o.def === 'bar_counter' || o.def === 'desk') hx = (o.data?.len ?? 2) / 2;
       if (o.def === 'longtable') hz = (o.data?.len ?? 4) / 2;
       if (o.def === 'pew') hx = (o.data?.len ?? 3) / 2;
+      if (o.def === 'arena') return; // a ring of thin posts: people walk in and out
       if (o.kind === 'decor' && o.data?.r) { out.push({ kind: 'circle', x: o.x, z: o.z, r: o.data.r }); return; }
       if (o.def === 'rug') return;
       out.push({ kind: 'rect', x: o.x, z: o.z, hx, hz, rot: o.rot });

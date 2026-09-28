@@ -16,6 +16,7 @@ import { strengthOf } from './combat';
 import { bountiesFor, claimValue, claimBounty } from './bounties';
 import { taxFor } from './raids';
 import { UNIQUE_BY_KEY, uniqueReady } from './uniques';
+import { PIT_TIERS, startBout, boutRunning, tierOpen } from './arena';
 
 export interface DCtx { p: Char; n: Char; vars: Record<string, any>; }
 export interface DChoice { t: string | ((c: DCtx) => string); next?: string; if?: (c: DCtx) => boolean; fx?: (c: DCtx) => void | string; end?: boolean; }
@@ -346,6 +347,23 @@ export const UNIQUE_TREES: Record<string, Tree> = {
     },
     joined: { t: (c) => U(c)?.lines.join ?? 'Let\'s go.', ch: [BYE] },
     refused: { t: (c) => U(c)?.lines.refuse ?? 'Not yet.', ch: [{ t: 'We\'ll see.', next: 'start' }, BYE] },
+  },
+  arena: {
+    start: {
+      t: () => boutRunning() ? 'Watch, or wait your turn. The sand is taken.' : S.rng.pick(['Blood on the sand! You want to fight, small one?', 'The Pit is open. Coin in, and then your teeth.', 'The crowd is bored. Are you going to fix that?']),
+      ch: [
+        { t: 'How does the Pit work?', next: 'rules' },
+        ...PIT_TIERS.map((tier, i) => ({
+          t: `${tier.name}: ${tier.fee} chits to enter, a purse of ${tier.purse}.`,
+          if: () => !boutRunning() && tierOpen(i),
+          fx: (c: DCtx) => { const err = startBout(c.p, i); c.vars.err = err; return err ? undefined : 'end'; },
+          next: 'no',
+        } as DChoice)),
+        BYE,
+      ],
+    },
+    rules: { t: 'You pay the entry. You fight until one of you drops. Nobody dies in my Pit if I can help it: we are Karuk, not Mawkin. Win and the purse is yours. Beat my veteran and you may try the Champion. Run and the crowd will remember your back.', ch: [{ t: 'I understand.', next: 'start' }, BYE] },
+    no: { t: (c) => c.vars.err ?? 'Get in the ring!', ch: [{ t: 'Fine.', next: 'start' }, BYE] },
   },
 };
 
