@@ -19,7 +19,7 @@ import { tickShops } from './shops';
 import { kill, knockOut } from './health';
 import { WORLD } from '../world/consts';
 
-const rng = new RNG(4242);
+const rng = new RNG((Date.now() ^ 4242) >>> 0); // a different world story each game
 let t = 0;
 let shopT = 0;
 

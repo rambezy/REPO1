@@ -19,10 +19,11 @@ into a single HTML file.
   Thrumwood, the Mire, the Ashfields, the Bone Sea, the Rustwastes, the
   Glasslands and the Grey Shore. Each has its own ground, plants, beasts,
   ore and weather.
-- **24 settlements** built from town plans (walled cities, villages, hives,
-  swamp towns on stilts, a slave farm, a bandit fort, a cannibal camp), with
+- **32 settlements** built from town plans (walled cities, villages, hives,
+  swamp towns on stilts, a slave farm, a bandit fort, a cannibal camp, a
+  mercenary hall-town, a scavenger town inside a giant's ribs), with
   furnished interiors, shops, bars, prisons, fields and guards.
-- **20 landmarks** and about 220 lesser places: Maker ruins full of relics,
+- **30 landmarks** and about 210 lesser places: Maker ruins full of relics,
   wrecks, bandit and cannibal camps, beast nests, shrines and homesteads.
 - **19 factions** with their own laws and attitudes: the slaving merchant
   lords of the Gilded Concord, the fire zealots of the Ember Covenant, the
@@ -137,7 +138,7 @@ testing.
 ## How it is built
 
 TypeScript, three.js (r186) and Vite with vite-plugin-singlefile. About
-21,000 lines.
+24,600 lines.
 
 - `src/world`: terrain generation (warped regions, ridges and passes, the
   river and its fords, lakes, roads routed with A*), towns, sites and

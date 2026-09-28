@@ -210,7 +210,7 @@ export const RUMOURS = [
   'Stonegate iron goes to the Concord garrison first and everyone else second. If you want good steel, befriend a smith, not a Lord.',
   'The Scorched Hand watch the ford by the Dreamleaf Fields. Cross it at night and you\'ll pay double, if you\'re lucky enough to be asked.',
   'A Delver at Glassfall swears she saw a Warden Prime standing in the door of the Glass Dome, just watching. It didn\'t come out. It didn\'t need to.',
-  'The Iron Coin finally bought itself a town, out on the ash south of the Flats. Hardcoin, they call it. It came cheap, because nobody else wanted to live next door to the Mawkin.',
+  'The Iron Coin finally has a town of its own, out on the ash south of the Flats. Hardcoin, they call it. Nobody fought them for the land, because nobody else wanted to live next door to the Mawkin.',
   'There\'s a Hollow station out past Glassfall called Relay Four. The machines stop there on the way to the Maker\'s Heart. The Delvers count them going in, and count again when they come out.',
   'The scrappers at Rivet swear the Fallen Walker twitched last spring. They also swear they were sober, which is how you know they weren\'t.',
   'Tithefield takes in penitents from all over the Emberlands. They go in for a season and come out grey.',
@@ -218,7 +218,7 @@ export const RUMOURS = [
   'Ribshade charges a chit a cup for water and two for shade. Out in the Bone Sea, people pay both and say thank you.',
   'The Karuk at Cragfold will sell you a crag ram, but not a tame one. They say there\'s no such thing.',
   'The salt boilers at Brinewick ran out of fuel one winter and the pan fires went out. They still won\'t talk about the week after.',
-  'A Delver team found the Sand Dome open last spring and went in. The dunes closed it again the next morning. Lantern Rest is still waiting for the wind to change.',
+  'A Delver team found the Sand Dome open last year and went in. The dunes closed it again the next morning. Lantern Rest is still waiting for the wind to change.',
 ];
 
 export const LINES = {

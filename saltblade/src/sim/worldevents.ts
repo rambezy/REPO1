@@ -18,7 +18,7 @@ import type { TownInfo } from '../world/towns';
 import type { WObj } from './objects';
 import type { World } from './world';
 
-const rng = new RNG(31337);
+const rng = new RNG((Date.now() ^ 31337) >>> 0); // a different world story each game
 let t = 0;
 
 interface Campaign { key: string; attacker: string; targets: string[]; role: Role; n: [number, number]; name: string; from?: string[]; weight: number; }
@@ -177,7 +177,7 @@ export function tickWorldEvents(dt: number) {
     if (there && !sq.active) settle(sq, site);
   }
   // now and then, somebody marches: one or two war parties a day
-  if (active < 2 && rng.chance(0.004)) {
+  if (active < 2 && rng.chance(0.003)) {
     const list = CAMPAIGNS.filter((c) => !suppressed(c));
     if (list.length) launch(rng.weighted(list.map((c) => [c, c.weight] as const)));
   }
@@ -204,6 +204,7 @@ export function leaderFell(c: Char) {
   const fac = site.faction;
   const byPlayer = W.char(c.lastHitBy)?.faction === 'player' && S.time - c.lastHitT < 30;
   W.flags.leaderless = { ...(W.flags.leaderless ?? {}), [site.id]: S.clock.t };
+  W.flags.fell = { ...(W.flags.fell ?? {}), [site.key]: S.clock.t }; // remembered, for the people it matters to
   // the faction sends no war parties while it chooses who comes next
   W.flags.quiet = { ...(W.flags.quiet ?? {}), [fac]: S.clock.t + DAY * (SETTLEMENT[site.settlement!]?.capital ? 12 : 5) };
   W.say(`${c.name}, ${c.title || 'leader'} of ${site.name}, is dead.`, 'story', S.clock.t);
