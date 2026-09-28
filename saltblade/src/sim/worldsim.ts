@@ -26,12 +26,12 @@ let shopT = 0;
 interface Spec { key: string; faction: string; kind: SquadKind; role: Role; n: [number, number]; weight: number; regions?: string[]; from?: string[]; to?: string[]; species?: string; loadout?: string; lead?: string; }
 
 const SPECS: Spec[] = [
-  { key: 'concord_patrol', faction: 'concord', kind: 'patrol', role: 'patrol', n: [4, 6], weight: 3, from: ['aurum', 'harrowmarket', 'stonegate', 'saltmere'], to: ['aurum', 'harrowmarket', 'stonegate', 'saltmere', 'chainfield', 'squatters', 'lowtide'] },
-  { key: 'ember_patrol', faction: 'ember', kind: 'patrol', role: 'patrol', n: [4, 7], weight: 3, from: ['cinderhold', 'brightwater', 'pyreswatch'], to: ['cinderhold', 'brightwater', 'pyreswatch', 'crossroad', 'squatters'] },
-  { key: 'karuk_band', faction: 'karuk', kind: 'patrol', role: 'patrol', n: [3, 6], weight: 2, from: ['hornspire', 'redmesa'], to: ['hornspire', 'redmesa', 'brightwater', 'crossroad', 'humminghollow'] },
+  { key: 'concord_patrol', faction: 'concord', kind: 'patrol', role: 'patrol', n: [4, 6], weight: 3, from: ['aurum', 'harrowmarket', 'stonegate', 'saltmere'], to: ['aurum', 'harrowmarket', 'stonegate', 'saltmere', 'chainfield', 'squatters', 'lowtide', 'brinewick'] },
+  { key: 'ember_patrol', faction: 'ember', kind: 'patrol', role: 'patrol', n: [4, 7], weight: 3, from: ['cinderhold', 'brightwater', 'pyreswatch', 'tithefield'], to: ['cinderhold', 'brightwater', 'pyreswatch', 'crossroad', 'squatters', 'tithefield', 'rivet'] },
+  { key: 'karuk_band', faction: 'karuk', kind: 'patrol', role: 'patrol', n: [3, 6], weight: 2, from: ['hornspire', 'redmesa', 'cragfold'], to: ['hornspire', 'redmesa', 'brightwater', 'crossroad', 'humminghollow', 'cragfold'] },
   { key: 'watch_patrol', faction: 'drifters', kind: 'patrol', role: 'patrol', n: [3, 4], weight: 1.5, from: ['crossroad'], to: ['squatters', 'dustwell', 'crossroad'] },
-  { key: 'caravan', faction: 'drifters', kind: 'caravan', role: 'caravan', n: [1, 2], weight: 3, from: ['crossroad', 'harrowmarket', 'dustwell', 'squatters', 'mudwater', 'lanternrest', 'aurum', 'saltmere', 'stonegate'], to: ['crossroad', 'harrowmarket', 'dustwell', 'squatters', 'mudwater', 'lanternrest', 'aurum', 'saltmere', 'stonegate', 'lowtide'] },
-  { key: 'delver_trip', faction: 'delvers', kind: 'wanderers', role: 'hunter', n: [2, 4], weight: 1.2, from: ['lanternrest', 'glassfall'], to: ['lanternrest', 'glassfall', 'rustward', 'harrowmarket'] },
+  { key: 'caravan', faction: 'drifters', kind: 'caravan', role: 'caravan', n: [1, 2], weight: 3, from: ['crossroad', 'harrowmarket', 'dustwell', 'squatters', 'mudwater', 'lanternrest', 'aurum', 'saltmere', 'stonegate', 'hardcoin', 'ribshade', 'rivet', 'brinewick', 'deepleaf'], to: ['crossroad', 'harrowmarket', 'dustwell', 'squatters', 'mudwater', 'lanternrest', 'aurum', 'saltmere', 'stonegate', 'lowtide', 'hardcoin', 'ribshade', 'rivet', 'brinewick', 'deepleaf'] },
+  { key: 'delver_trip', faction: 'delvers', kind: 'wanderers', role: 'hunter', n: [2, 4], weight: 1.2, from: ['lanternrest', 'glassfall'], to: ['lanternrest', 'glassfall', 'rustward', 'harrowmarket', 'relayfour', 'ribshade'] },
   { key: 'slavers', faction: 'chainhouse', kind: 'slavers', role: 'slaver', n: [3, 6], weight: 2, regions: ['salt', 'flats', 'vale'] },
   { key: 'reavers', faction: 'reavers', kind: 'raid', role: 'bandit', n: [4, 9], weight: 3, regions: ['flats', 'salt', 'highlands'] },
   { key: 'starvelings', faction: 'starvelings', kind: 'raid', role: 'bandit', n: [5, 12], weight: 3, regions: ['flats', 'salt', 'ember', 'vale', 'ash'] },

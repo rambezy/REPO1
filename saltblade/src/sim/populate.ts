@@ -34,6 +34,7 @@ function place(c: Char, x: number, z: number, dir = 0) {
 const WEALTH: Record<string, number> = {
   aurum: 1, harrowmarket: 0.8, cinderhold: 0.9, hornspire: 0.7, stonegate: 0.6, saltmere: 0.5, rustward: 0.8, lanternrest: 0.6, glassfall: 0.6,
   crossroad: 0.45, mudwater: 0.5, brightwater: 0.5, pyreswatch: 0.5, redmesa: 0.5, humminghollow: 0.5, waxgate: 0.4,
+  hardcoin: 0.55, relayfour: 0.6, rivet: 0.45, deepleaf: 0.45, tithefield: 0.4, cragfold: 0.4,
 };
 
 export function populateTown(W: World, info: TownInfo) {

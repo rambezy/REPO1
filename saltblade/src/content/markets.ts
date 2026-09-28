@@ -27,6 +27,14 @@ export const MARKETS: Record<string, Market> = {
   brokenchain: { cheap: ['riceweed'], dear: ['food', 'medical', 'weapon'] },
   lowtide: { cheap: ['raw_meat', 'salt'], dear: ['wheat', 'fabric', 'fuel'] },
   glassfall: { cheap: ['glass_beads'], dear: ['food', 'drink', 'medical'] },
+  hardcoin: { cheap: ['weapon', 'shackles'], dear: ['food', 'drink', 'medical', 'bolts'] },
+  cragfold: { cheap: ['raw_meat', 'hide', 'blood_sausage'], dear: ['salt', 'wheat', 'medical'] },
+  ribshade: { cheap: ['bone', 'colossus_ivory'], dear: ['drink', 'food', 'fuel', 'fabric'] },
+  relayfour: { cheap: ['food', 'glass_beads', 'solder_tin'], dear: ['copper_ore', 'elec_parts', 'machine_parts', 'memory_shard'] },
+  tithefield: { cheap: ['wheat', 'flour', 'pepper_meat'], dear: ['medical', 'salt', 'fabric'] },
+  brinewick: { cheap: ['salt', 'salted_fish'], dear: ['fuel', 'wheat', 'building_mats'] },
+  deepleaf: { cheap: ['dreamleaf', 'mire_dye', 'riceweed'], dear: ['salt', 'medical', 'fabric', 'iron_plates'] },
+  rivet: { cheap: ['machine_parts', 'iron_plates', 'robotics'], dear: ['food', 'drink', 'medical'] },
 };
 
 export const CHEAP_BUY = 0.72, CHEAP_SELL = 0.7;

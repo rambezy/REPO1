@@ -23,14 +23,14 @@ let t = 0;
 
 interface Campaign { key: string; attacker: string; targets: string[]; role: Role; n: [number, number]; name: string; from?: string[]; weight: number; }
 const CAMPAIGNS: Campaign[] = [
-  { key: 'mawkin', attacker: 'mawkin', targets: ['lowtide', 'lanternrest', 'dustwell', 'brokenchain'], role: 'bandit', n: [8, 14], name: 'Mawkin war party', weight: 2 },
+  { key: 'mawkin', attacker: 'mawkin', targets: ['lowtide', 'lanternrest', 'dustwell', 'brokenchain', 'hardcoin', 'ribshade'], role: 'bandit', n: [8, 14], name: 'Mawkin war party', weight: 2 },
   { key: 'reavers', attacker: 'reavers', targets: ['squatters', 'dustwell', 'harrowmarket'], role: 'bandit', n: [8, 13], name: 'Reaver raiding party', weight: 2, from: ['reaversroost'] },
-  { key: 'starvelings', attacker: 'starvelings', targets: ['squatters', 'dustwell', 'lowtide', 'crossroad'], role: 'bandit', n: [10, 16], name: 'Starveling horde', weight: 1.5 },
-  { key: 'crusade', attacker: 'ember', targets: ['redmesa', 'humminghollow', 'waxgate', 'rustward'], role: 'patrol', n: [8, 12], name: 'Covenant crusade', weight: 2, from: ['cinderhold', 'pyreswatch', 'brightwater'] },
-  { key: 'warband', attacker: 'karuk', targets: ['brightwater', 'pyreswatch'], role: 'patrol', n: [7, 11], name: 'Karuk warband', weight: 2, from: ['hornspire', 'redmesa'] },
-  { key: 'swarm', attacker: 'blackcomb', targets: ['humminghollow', 'waxgate'], role: 'bandit', n: [8, 12], name: 'Blackcomb swarm', weight: 1.2, from: ['blackcomb'] },
+  { key: 'starvelings', attacker: 'starvelings', targets: ['squatters', 'dustwell', 'lowtide', 'crossroad', 'tithefield', 'brinewick'], role: 'bandit', n: [10, 16], name: 'Starveling horde', weight: 1.5 },
+  { key: 'crusade', attacker: 'ember', targets: ['redmesa', 'humminghollow', 'waxgate', 'rustward', 'cragfold', 'relayfour'], role: 'patrol', n: [8, 12], name: 'Covenant crusade', weight: 2, from: ['cinderhold', 'pyreswatch', 'brightwater'] },
+  { key: 'warband', attacker: 'karuk', targets: ['brightwater', 'pyreswatch', 'tithefield'], role: 'patrol', n: [7, 11], name: 'Karuk warband', weight: 2, from: ['hornspire', 'redmesa', 'cragfold'] },
+  { key: 'swarm', attacker: 'blackcomb', targets: ['humminghollow', 'waxgate', 'deepleaf'], role: 'bandit', n: [8, 12], name: 'Blackcomb swarm', weight: 1.2, from: ['blackcomb'] },
   { key: 'liberation', attacker: 'unchained', targets: ['chainfield'], role: 'bandit', n: [6, 10], name: 'Unchained war band', weight: 1, from: ['brokenchain'] },
-  { key: 'fog', attacker: 'mistcrawlers', targets: ['lowtide'], role: 'bandit', n: [8, 12], name: 'Mistcrawler pack', weight: 1 },
+  { key: 'fog', attacker: 'mistcrawlers', targets: ['lowtide', 'brinewick'], role: 'bandit', n: [8, 12], name: 'Mistcrawler pack', weight: 1 },
 ];
 
 const siteBy = (key: string) => S.T.sites.find((s) => s.settlement === key || s.key === key);

@@ -122,6 +122,39 @@ export const SETTLEMENTS: SettlementDef[] = [
     key: 'reaversroost', name: "Reaver's Roost", faction: 'reavers', tmpl: 'bandit_fort', u: 0.55, v: 0.585, r: 90, pop: 22,
     shops: [], desc: 'A scrap fortress on a butte where the Dust Reavers count their loot.',
   },
+  {
+    key: 'hardcoin', name: 'Hardcoin', faction: 'ironcoin', tmpl: 'freetown', u: 0.465, v: 0.75, r: 140, pop: 30, walls: true,
+    shops: ['bar', 'mercs', 'weapons', 'armour', 'general'],
+    desc: 'The walled hall-town of the Iron Coin Company, raised on the ash because nobody else wanted the land. Every sword in it is for hire, and the day rates are painted on the gate.',
+  },
+  {
+    key: 'cragfold', name: 'Cragfold', faction: 'karuk', tmpl: 'karuk_fort', u: 0.09, v: 0.33, r: 100, pop: 18, walls: true,
+    shops: ['bar', 'animals', 'general'], desc: 'A Karuk herding village on the western mesas, where the crag rams outnumber the Karuk three to one. The rams have the worse tempers, but only just.',
+  },
+  {
+    key: 'ribshade', name: 'Ribshade', faction: 'drifters', tmpl: 'village', u: 0.805, v: 0.795, r: 100, pop: 14,
+    shops: ['bar', 'general', 'travel'], desc: 'A scavenger town built inside the ribcage of a dead giant, where drifters dig bone and ivory out of the dunes. The well under the skull is the only water for a day in any direction.',
+  },
+  {
+    key: 'relayfour', name: 'Relay Four', faction: 'hollows', tmpl: 'hollow_enclave', u: 0.925, v: 0.185, r: 100, pop: 16,
+    shops: ['bar', 'general', 'robotics'], desc: 'An old Maker relay station deep in the Glasslands, where Hollows stop to be mended on the road to the Maker\'s Heart. Fewer of them stop on the way back.',
+  },
+  {
+    key: 'tithefield', name: 'Tithefield', faction: 'ember', tmpl: 'ember_town', u: 0.3, v: 0.085, r: 120, pop: 24, walls: true,
+    shops: ['bar', 'general', 'animals'], desc: 'A Covenant farming village where penitents work the tithe fields of the Great Pyre until the flame forgives them. The flame is in no hurry.',
+  },
+  {
+    key: 'brinewick', name: 'Brinewick', faction: 'drifters', tmpl: 'fishing', u: 0.925, v: 0.41, r: 85, pop: 12,
+    shops: ['bar', 'general'], desc: 'A salt-boiling hamlet on the northern Grey Shore that sells sea salt and salt fish to the kitchens of Aurum. The pan fires burn all night, because the fog does not like them.',
+  },
+  {
+    key: 'deepleaf', name: 'Deepleaf', faction: 'scorched', tmpl: 'swamp_town', u: 0.11, v: 0.79, r: 120, pop: 24,
+    shops: ['bar', 'general', 'drugs'], desc: 'The Burnt King\'s own leaf farm, hidden in the western Mire where the Covenant has never found a dry road. The best dreamleaf in the waste grows here, and every bale is weighed twice.',
+  },
+  {
+    key: 'rivet', name: 'Rivet', faction: 'drifters', tmpl: 'freetown', u: 0.64, v: 0.18, r: 120, pop: 24, walls: true,
+    shops: ['bar', 'general', 'construction', 'robotics'], desc: 'A scrap town in the western Rustwastes, walled with the plating of dead machines. Drifters cut up the Old Makers here and sell them by the pound.',
+  },
 ];
 
 export const SETTLEMENT: Record<string, SettlementDef> = Object.fromEntries(SETTLEMENTS.map((s) => [s.key, s]));
@@ -135,6 +168,9 @@ export const ROADS: [string, string][] = [
   ['chainfield', 'harrowmarket'], ['harrowmarket', 'stonegate'], ['stonegate', 'aurum'], ['stonegate', 'rustward'],
   ['rustward', 'glassfall'], ['saltmere', 'lanternrest'], ['aurum', 'lowtide'], ['lowtide', 'saltmere'],
   ['cinderhold', 'stonegate'], ['mudwater', 'brokenchain'], ['squatters', 'pyreswatch'], ['crossroad', 'reaversroost'],
+  ['hardcoin', 'chainfield'], ['hardcoin', 'dustwell'], ['cragfold', 'hornspire'], ['cragfold', 'redmesa'], ['ribshade', 'lanternrest'],
+  ['ribshade', 'lowtide'], ['relayfour', 'glassfall'], ['tithefield', 'cinderhold'], ['brinewick', 'aurum'], ['deepleaf', 'mudwater'],
+  ['rivet', 'stonegate'], ['rivet', 'cinderhold'],
 ];
 
 export type POIKind =
@@ -176,4 +212,14 @@ export const LANDMARKS: LandmarkDef[] = [
   { key: 'hermit', name: "The Hermit's Rock", kind: 'hermit', u: 0.58, v: 0.47, r: 25, desc: 'A lone tower of rock with a single shack on top.' },
   { key: 'wardenpost', name: 'Warden Post Seven', kind: 'warden_post', u: 0.85, v: 0.06, r: 45, desc: 'Guardian machines on eternal watch.' },
   { key: 'batroost', name: 'The Roost', kind: 'bat_roost', u: 0.4, v: 0.78, r: 40, desc: 'Carrion bats nest in the dead trees.' },
+  { key: 'ashbell', name: 'The Ash Bell', kind: 'ruin_tower', u: 0.37, v: 0.87, r: 50, desc: 'The bell tower of a town the ash buried, standing up out of the drifts. When the wind is right it still rings, and the Mawkin come to see who is calling.' },
+  { key: 'unpaidfield', name: 'The Unpaid Field', kind: 'battlefield', u: 0.5, v: 0.85, r: 70, desc: 'Where a whole company of the Iron Coin fell to the Mawkin. The Company still sends the Chainhouse a bill for them every year.' },
+  { key: 'sanddome', name: 'The Sand Dome', kind: 'ruin_dome', u: 0.87, v: 0.88, r: 70, boss: 'warden_prime', desc: 'A Maker dome that the dunes uncover every few years and bury again. Delvers race the sand to get inside, and not all of them race it back out.' },
+  { key: 'lighthouse', name: 'The Blind Lighthouse', kind: 'ruin_tower', u: 0.94, v: 0.9, r: 45, desc: 'A Maker lighthouse on the last point of the Grey Shore. Its lamp went out a thousand years ago, but the pale folk in the fog still walk towards it at night.' },
+  { key: 'singingglass', name: 'The Singing Glass', kind: 'glass_ruin', u: 0.945, v: 0.255, r: 55, desc: 'A thicket of towers melted into glass where they stood. They hum when the acid wind blows through them, and Hollows come a long way to listen.' },
+  { key: 'carvedstair', name: 'The Carved Stair', kind: 'ruin', u: 0.075, v: 0.24, r: 45, desc: 'A stair cut into a red mesa by whoever lived here before the Karuk. It climbs three hundred steps to a doorway that the Karuk will not go through.' },
+  { key: 'wallow', name: 'The Wallow', kind: 'nest_mauler', u: 0.08, v: 0.735, r: 55, desc: 'A drowned meadow of warm black mud where the swamp maulers sleep. Walk softly, or better, walk somewhere else.' },
+  { key: 'fallenwalker', name: 'The Fallen Walker', kind: 'wreck', u: 0.62, v: 0.12, r: 80, desc: 'A Maker walking machine the size of a hill, lying on its side among the craters. The scrappers of Rivet have been cutting it up for forty years and have not finished the first leg.' },
+  { key: 'hereticcell', name: "The Heretic's Cell", kind: 'hermit', u: 0.55, v: 0.2, r: 30, desc: 'A hut in the eastern hills where a Covenant priest has lived for thirty years since he stopped believing. The Inquisitors have never found him, because they have never looked.' },
+  { key: 'lastwell', name: 'The Last Well', kind: 'caravan', u: 0.79, v: 0.62, r: 45, desc: 'A caravan stop around the only sweet well on the eastern salt. By long custom nobody fights at the rope, and even the Chainhouse waits its turn.' },
 ];

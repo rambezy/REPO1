@@ -18,7 +18,7 @@ export const SAVE_VERSION = 3;
  * The land is rebuilt from its seed on load, so a save only fits the shape
  * it was made in. Raise this whenever settlements, landmarks or roads change.
  */
-export const WORLD_SHAPE = 1;
+export const WORLD_SHAPE = 2;
 
 const round = (v: number, k = 100) => Math.round(v * k) / k;
 

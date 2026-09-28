@@ -72,6 +72,14 @@ const PLACE_EXTRA: Record<string, string[]> = {
   brokenchain: ['Nobody here was born free. Everybody here is free now.', 'If the hunters ever find this camp, we fight. There is nowhere left to run to.'],
   lowtide: ['If someone knocks in the fog, ask them their mother\'s name. If they don\'t answer, don\'t open.', 'The fish are good, the salt is cheap, and the fog takes one of us every winter.'],
   glassfall: ['Every Delver who goes out into the Glasslands chalks a name on the board by the fire. We rub it out when they come back.', 'The cheap hats rot in a week out there. Pay for a good one.'],
+  hardcoin: ['The Company settled here because the land was free and the Mawkin are good practice. The recruits find that less funny than the sergeants do.', 'Nobody is born in Hardcoin. People sign on, serve out or get buried, and the graveyard is the only part of town that keeps growing.'],
+  cragfold: ['A Karuk child is given a ram to raise before she is given a blade. If the ram lives to be old, so will she. That is the saying.', 'Hornspire calls us goat-herds, as if it were an insult. Come up here in the winter and see who is soft.'],
+  ribshade: ['We sell the bone to the carvers in Aurum, the ivory to the Delvers and the shade to anybody who can pay for it.', 'The bones were here before the town and they will be here after it. We try not to take that personally.'],
+  relayfour: ['THIS STATION IS FOUR OF NINE. THE OTHER EIGHT DO NOT ANSWER. WE CONTINUE TO ASK.', 'Organics are advised to wear a hood. The rain here will remove your face, and we have no replacement faces in stock.'],
+  tithefield: ['Every tenth sheaf goes to the Great Pyre. So does every ninth, when the priests do the counting.', 'Most of the penitents came for one season. Most of them are still here. After a while you stop asking what you did, and just work.'],
+  brinewick: ['The Lords in Aurum like our salt because it is not Barrens salt. It is exactly the same salt, and they pay double for it.', 'Keep the pan fires lit and the fog keeps back. Let them go out, and be indoors with the door barred before the smoke clears.'],
+  deepleaf: ['Pick it, dry it, bale it and row it to Mudwater. Never smoke the stock. The last picker who smoked the stock is feeding the next crop.', 'The Hand pays in chits, food and not drowning. The chits are the smallest part of it.'],
+  rivet: ['Stonegate buys our iron. Cinderhold buys it too, and pays extra for us not to tell Stonegate.', 'Every machine in the Rust is worth money, dead or alive. The live ones are worth more, but they argue about the price.'],
 };
 
 export function greeting(n: Char, p: Char): string {
@@ -202,6 +210,15 @@ export const RUMOURS = [
   'Stonegate iron goes to the Concord garrison first and everyone else second. If you want good steel, befriend a smith, not a Lord.',
   'The Scorched Hand watch the ford by the Dreamleaf Fields. Cross it at night and you\'ll pay double, if you\'re lucky enough to be asked.',
   'A Delver at Glassfall swears she saw a Warden Prime standing in the door of the Glass Dome, just watching. It didn\'t come out. It didn\'t need to.',
+  'The Iron Coin finally bought itself a town, out on the ash south of the Flats. Hardcoin, they call it. It came cheap, because nobody else wanted to live next door to the Mawkin.',
+  'There\'s a Hollow station out past Glassfall called Relay Four. The machines stop there on the way to the Maker\'s Heart. The Delvers count them going in, and count again when they come out.',
+  'The scrappers at Rivet swear the Fallen Walker twitched last spring. They also swear they were sober, which is how you know they weren\'t.',
+  'Tithefield takes in penitents from all over the Emberlands. They go in for a season and come out grey.',
+  'The best dreamleaf in the waste comes out of Deepleaf, somewhere in the western Mire. The Covenant would pay a fortune for the road in. The Hand would pay more to keep it lost.',
+  'Ribshade charges a chit a cup for water and two for shade. Out in the Bone Sea, people pay both and say thank you.',
+  'The Karuk at Cragfold will sell you a crag ram, but not a tame one. They say there\'s no such thing.',
+  'The salt boilers at Brinewick ran out of fuel one winter and the pan fires went out. They still won\'t talk about the week after.',
+  'A Delver team found the Sand Dome open last spring and went in. The dunes closed it again the next morning. Lantern Rest is still waiting for the wind to change.',
 ];
 
 export const LINES = {

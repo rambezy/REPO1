@@ -68,7 +68,8 @@ function ready(W: World, m: Moment, who: Char, named: Char[], mine: Char[]): { o
   if (m.when === 'day' && S.clock.isNight) return null;
   if (m.weather) { const sp = S.weather.at(who.x, who.z); if (sp.kind !== m.weather || sp.i < 0.4) return null; }
   if (m.needs) {
-    const r = NEEDS[m.needs]?.(W, who, mine);
+    // 'fell:<place>': the leader of a place has died since the game began
+    const r = m.needs.startsWith('fell:') ? W.flags.fell?.[m.needs.slice(5)] !== undefined : NEEDS[m.needs]?.(W, who, mine);
     if (!r) return null;
     if (typeof r === 'object') out.other = r;
   }

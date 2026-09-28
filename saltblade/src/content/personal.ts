@@ -150,6 +150,22 @@ export const MOMENTS: Moment[] = [
     lines: [['who', '*hum* Tchikka-counts-eight-soft-people-walking-together. And-Tchikka.'], ['who', 'Soft-people-walk-alone-because-they-have-not-found-each-other-yet. *click* Tchikka-knows-why-now. Tchikka-will-tell-the-Queen.']],
     log: 'Tchikka worked out why the soft people walk alone, and means to tell her Queen.',
   },
+  // when the powers that made them fall
+  {
+    key: 'nettle_drums', who: 'nettle_ashchild', needs: 'fell:gnawbone',
+    lines: [['who', 'The drums have stopped. Whoever beat them is dead.'], ['who', 'I thought I would feel more than this. I just feel lighter.']],
+    log: 'The chief of Gnawbone is dead, and Nettle says the drums have stopped.',
+  },
+  {
+    key: 'kesh_roost_falls', who: 'kesh_one_ear', needs: 'fell:reaversroost',
+    lines: [['who', 'Told you they\'d lose it by winter.'], ['who', 'Twenty years I held that butte. The boy lasted a season. There\'s a lesson in that. I\'m not sure what it is.']],
+    log: 'The Reaver Lord of the Roost is dead, and Kesh One-Ear laughed until he coughed.',
+  },
+  {
+    key: 'skarra_king', who: 'skarra_ninefights', needs: 'fell:hornspire',
+    lines: [['who', 'The Horn King is dead.'], ['who', 'Hah. Now there will be a real fight in Hornspire, for the hall. I would like to be there. I would like to win.']],
+    log: 'Skarra heard that the Horn King is dead.',
+  },
   {
     key: 'skarra_brakka', who: 'skarra_ninefights', with: 'brakka_cook', at: 'hornspire',
     lines: [['who', 'Brakka. The kitchen guard. They still tell the story of the three you broke.'], ['with', 'Four. They leave out the fourth. He was the cook.']],
