@@ -12,8 +12,10 @@ import { updateFade } from '../systems/transition';
 import { renderWorld, updateCamera, updateObjectFx, renderHooks } from './renderer';
 import { updateMusic } from '../audio/music';
 import { S } from '../state';
+import { settleActor } from '../systems/ai';
 
 let hitFrozen = false;
+const FAR_X = 560, FAR_Y = 420;
 
 export function registerCoreSystems() {
   addSystem('play', 'time', (dt) => advanceTime(dt), 5);
@@ -21,8 +23,18 @@ export function registerCoreSystems() {
   addSystem('world', 'player', (dt) => { if (!hitFrozen) updatePlayer(dt); }, 10);
   addSystem('world', 'actors', (dt) => {
     if (hitFrozen) return;
+    const p = G.player;
     for (const a of here()) {
-      if (a !== G.player && a.brain && !a.dead) a.brain.update(a, dt);
+      if (a !== p && a.brain && !a.dead) {
+        // far from the player, calm people skip their thinking and just keep to their schedules
+        const far = Math.abs(a.x - p.x) > FAR_X || Math.abs(a.y - p.y) > FAR_Y;
+        if (far && !a.mem.script && !a.mem.follow && !a.hostile && !a.mem.target && !a.mem.fleeT) {
+          a.mem.farT = (a.mem.farT || 0) + dt;
+          if (a.mem.farT > 2) { a.mem.farT = 0; settleActor(a); }
+          continue;
+        }
+        a.brain.update(a, dt);
+      }
       updateActorCombat(a, dt);
       a.updateAnim(dt);
     }

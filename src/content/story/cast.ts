@@ -192,8 +192,10 @@ export function spawnCast() {
   keep = new Set();
   for (const a of [...actors]) if (a.tags.has('generic') || a.tags.has('wild') || a.tags.has('quest')) removeActor(a);
   const act = ACT();
+  // the wider valley lives its life in every chapter; the prologue then
+  // puts Hollowbrook's people where St. John's Eve needs them
+  spawnActs(act);
   if (act === 0) spawnPrologue();
-  else spawnActs(act);
   for (const h of castHooks) { try { h(); } catch (e) { console.error('cast hook failed', e); } }
   // named characters who have no place in this chapter leave the stage
   for (const a of [...actors]) if (a.charId && a !== G.player && a.charId !== 'crumb' && !keep.has(a) && !a.tags.has('quest')) removeActor(a);
@@ -340,17 +342,18 @@ function spawnActs(act: number) {
   }
   // Pavel serves in the garrison, until his folly
   const pavelAway = qAt('main_pavel', 'gone', 'camp', 'rescue') || flag('pavel_prisoner');
-  if (!pavelAway && !flag('pavel_dead')) npc('pavel', null, [
+  if (act >= 1 && !pavelAway && !flag('pavel_dead')) npc('pavel', null, [
     sched(6, 18, L('yard'), 'wander', { r: 30 }),
     sched(18, 23, at('lh_tavern', 'seat2'), 'drink'),
     sched(23, 6, at('lh_barracks', 'table'), 'sleep'),
   ], { faction: 'town', weapon: 'arming_sword', skill: 4, hp: 120 });
   // Brother Tobiah: at the church in Linden Hill in act I, then home at the priory
-  if (act <= 1) npc('tobiah', null, [sched(7, 20, at('lh_church', 'pew1'), 'sit', { dir: 3 }), sched(20, 23, at('lh_tavern', 'seat6'), 'drink'), sched(23, 7, at('lh_church', 'pew2'), 'sleep')]);
+  if (act === 0) { /* the prologue places him */ }
+  else if (act <= 1) npc('tobiah', null, [sched(7, 20, at('lh_church', 'pew1'), 'sit', { dir: 3 }), sched(20, 23, at('lh_tavern', 'seat6'), 'drink'), sched(23, 7, at('lh_church', 'pew2'), 'sleep')]);
   else npc('tobiah', null, [sched(7, 13, L('hives'), 'wander', { r: 30 }), sched(13, 20, at('pr_library', 'desk2'), 'sit', { dir: 0 }), sched(20, 7, at('pr_dorm', 'tobiah_bed'), 'sleep')], { merchant: 'priory' });
 
   // Mother: sick in the far tent, then baking in Linden Hill
-  if (!flag('mother_dead')) {
+  if (act >= 1 && !flag('mother_dead')) {
     if (flag('mother_cured')) {
       npc('marta', null, [
         sched(4, 16, at('lh_bakery', 'marta_oven'), 'work', { dir: 3 }),
@@ -394,7 +397,8 @@ function spawnActs(act: number) {
 
   // ---------- the refugee camp at the crossroads ----------
   const C = (dx: number, dy: number) => OW(122 + dx, 131 + dy);
-  if (!flag('refugees_moved')) {
+  if (act === 0) { /* no refugees yet: the camp is only the crossroads */ }
+  else if (!flag('refugees_moved')) {
     npc('jiri', C(-2, 1), always(C(-2, 1), 'sit', { dir: 2 }), { barks: ['...', 'God help us.'] });
     npc('marek', null, [sched(7, 21, C(0, 2), 'wander', { r: 40 }), sched(21, 7, C(-4, 2), 'sleep')]);
     npc('bara', null, always(C(4, 1), 'wander', { r: 16 }));
@@ -418,7 +422,8 @@ function spawnActs(act: number) {
 
   // ---------- forest folk ----------
   npc('wenda', null, [sched(6, 21, at('wenda_hut', 'cauldron'), 'work', { dir: 3 }), sched(21, 6, at('wenda_hut', 'bed'), 'sleep')], { merchant: 'wenda' });
-  if (!flag('hanka_moved')) npc('hanka', null, [sched(6, 19, at('overworld', 'wenda'), 'wander', { r: 40 }), sched(19, 22, at('wenda_hut', 'hanka'), 'sit'), sched(22, 6, at('wenda_hut', 'hanka'), 'sleep')]);
+  if (act === 0) { /* the prologue places her */ }
+  else if (!flag('hanka_moved')) npc('hanka', null, [sched(6, 19, at('overworld', 'wenda'), 'wander', { r: 40 }), sched(19, 22, at('wenda_hut', 'hanka'), 'sit'), sched(22, 6, at('wenda_hut', 'hanka'), 'sleep')]);
   else npc('hanka', null, [sched(7, 18, at('lh_apothecary', 'bench'), 'work', { dir: 3 }), sched(18, 22, at('lh_tavern', 'seat6'), 'sit'), sched(22, 7, at('lh_tavern', 'room'), 'sleep')], { faction: 'town' });
   npc('matej', null, [sched(6, 19, L('lodge'), 'wander', { r: 40 }), sched(19, 6, at('lodge', 'bed'), 'sleep')], { merchant: 'hunter' });
   npc('tomas_burner', null, always(L('burners'), 'work'));

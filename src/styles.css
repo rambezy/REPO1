@@ -102,6 +102,11 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible { outline: 2
 #title .menu { display: flex; flex-direction: column; gap: 10px; min-width: min(300px, 90vw); }
 #title .menu .btn { font-size: 18px; min-height: 46px; }
 #title .foot { font-family: var(--label); font-size: 12px; color: var(--wheat-dim); letter-spacing: 0.08em; }
+body.title-open #touch { display: none !important; }
+@media (max-width: 520px) {
+  #title .kicker { letter-spacing: 0.16em; font-size: 11px; }
+  #title .sub { font-size: 15px; }
+}
 .namebox { display: flex; flex-direction: column; gap: 10px; align-items: stretch; }
 .namebox label { font-family: var(--label); color: var(--wheat); letter-spacing: 0.1em; }
 .namebox input {

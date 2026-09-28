@@ -43,18 +43,21 @@ export function currentSched(a: Actor): Sched | null {
 
 /** Places scheduled NPCs where they should be right now (used on map enter / load / time skips). */
 export function settleSchedules() {
-  for (const a of actors) {
-    if (a === G.player || a.dead || a.mem.follow || a.mem.hold || a.mem.script) continue;
-    const s = currentSched(a);
-    if (!s) continue;
-    if (a.mapId !== s.map || Math.hypot(a.x - s.x, a.y - s.y) > (s.r || 8) + 40) {
-      a.mapId = s.map;
-      a.x = s.x + (s.act === 'wander' ? rand.range(-(s.r || 0), s.r || 0) * 0.5 : 0);
-      a.y = s.y + (s.act === 'wander' ? rand.range(-(s.r || 0), s.r || 0) * 0.5 : 0);
-      a.mem.path = null;
-    }
-    applyActivityPose(a, s);
+  for (const a of actors) settleActor(a);
+}
+
+/** Puts one scheduled NPC where its schedule says (cheap stand-in for walking there off-screen). */
+export function settleActor(a: Actor) {
+  if (a === G.player || a.dead || a.mem.follow || a.mem.hold || a.mem.script) return;
+  const s = currentSched(a);
+  if (!s) return;
+  if (a.mapId !== s.map || Math.hypot(a.x - s.x, a.y - s.y) > (s.r || 8) + 40) {
+    a.mapId = s.map;
+    a.x = s.x + (s.act === 'wander' ? rand.range(-(s.r || 0), s.r || 0) * 0.5 : 0);
+    a.y = s.y + (s.act === 'wander' ? rand.range(-(s.r || 0), s.r || 0) * 0.5 : 0);
+    a.mem.path = null;
   }
+  applyActivityPose(a, s);
 }
 
 function applyActivityPose(a: Actor, s: Sched) {

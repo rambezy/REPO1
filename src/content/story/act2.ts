@@ -21,7 +21,7 @@ import { fadeTo, travel } from '../../systems/transition';
 import { forge } from '../../ui/minigames/forge';
 import { lockpick } from '../../ui/minigames/lockpick';
 import { kill } from '../../systems/combat';
-import { trigger, topic, greet, waitUntil, put, putAt, nearTile, onMap, regionIs, protectPlayer, addRel, remember, chose, tip, P, canRunScene, decor, propObj, markerObj, groundItem, hostiles, readAndWait, refreshDecor, skipTo } from './lib';
+import { trigger, unfire, topic, greet, waitUntil, put, putAt, nearTile, onMap, regionIs, protectPlayer, addRel, remember, chose, tip, P, canRunScene, decor, propObj, markerObj, groundItem, hostiles, readAndWait, refreshDecor, skipTo } from './lib';
 import { spawnCast, castHooks, npc, fighter, person, OW, always, ACT, at, sched } from './cast';
 import { startAct3 } from './act3';
 
@@ -110,7 +110,7 @@ export async function startAct2() {
 function registerCast() {
   castHooks.push(() => {
     const act = ACT();
-    if (act !== 2 && act !== 3) return;
+    if (act < 1 || act > 3) return;
     // the war camp, until it is broken
     if (!flag('warcamp_broken')) {
       const W = (dx: number, dy: number) => OW(158 + dx, 38 + dy);
@@ -139,6 +139,10 @@ function registerCast() {
     const m = /^campmerc(\d)$/.exec(a.id);
     if (m) setFlag('campmerc_dead_' + m[1]);
   });
+  // a save made in the middle of the crossroads battle starts the night again
+  castHooks.push(() => {
+    if (qAt('main_feast', 'battle')) { S.quests.main_feast.stage = 'wait'; unfire('a2_feast_night'); }
+  });
 }
 
 const isDruggedNight = () => { const h = hourF(); return (h >= 21.5 || h < 5) && Math.floor((S.minutes - 5 * 60) / 1440) === (flag('drug_day') ?? -1); };
@@ -162,7 +166,7 @@ function registerScenes() {
   trigger('a2_pavel_gone', () => ACT() === 2 && !qActive('main_pavel') && !qDone('main_pavel') && (qAt('main_silver', 'bertram') || qDone('main_silver') || Math.floor(S.minutes / 1440) >= (flag('act2_day') ?? 0) + 2) && regionIs('linden'), () => pavelGone());
   trigger('a2_overlook', () => qAt('main_pavel', 'gone') && nearTile(155, 46, 12), () => overlook());
   // the camp's rules: strangers are not welcome
-  trigger('a2_trespass', () => ACT() >= 2 && !flag('warcamp_broken') && regionIs('warcamp') && !['servant', 'harrow'].includes(disguise() || '') && !hostiles('camp').length && here().some((a) => a.tags.has('camp') && !a.mem.sleeping), () => trespass(), { repeat: true, cooldown: 4 });
+  trigger('a2_trespass', () => ACT() >= 1 && ACT() <= 3 && !flag('warcamp_broken') && regionIs('warcamp') && !['servant', 'harrow'].includes(disguise() || '') && !hostiles('camp').length && here().some((a) => a.tags.has('camp') && !a.mem.sleeping), () => trespass(), { repeat: true, cooldown: 4 });
   trigger('a2_ilse_spots', () => qAt('main_pavel', 'camp') && onMap('ilse_tent'), () => ilseSpots());
   on('script:stewpot', () => stewpot());
   on('script:cage', () => cage());

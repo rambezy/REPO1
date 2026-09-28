@@ -26,6 +26,7 @@ export function showTitle(h: TitleHandlers) {
   const foot = el('div', { cls: 'foot', html: 'Best with sound on · Keyboard & mouse, gamepad or touch' });
   root.append(kicker, h1, sub, menu, foot);
   UI.root.appendChild(root);
+  document.body.classList.add('title-open');
   const startAudio = () => { if (initAudio()) playMusic('title', 1); };
 
   const mainMenu = () => {
@@ -89,4 +90,5 @@ export function showTitle(h: TitleHandlers) {
 
 export function hideTitle() {
   if (root) { root.remove(); root = null; }
+  document.body.classList.remove('title-open');
 }

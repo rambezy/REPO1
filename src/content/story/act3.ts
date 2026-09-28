@@ -22,7 +22,7 @@ import { lockpick } from '../../ui/minigames/lockpick';
 import { kill } from '../../systems/combat';
 import { crumbJoins } from '../../systems/companion';
 import { makeCanvas } from '../../gfx/pixel';
-import { trigger, topic, greet, waitUntil, put, putAt, nearTile, onMap, regionIs, protectPlayer, addRel, rel, remember, chose, tip, P, canRunScene, decor, markerObj, hostiles, readAndWait, refreshDecor, skipTo, setHollowbrook } from './lib';
+import { trigger, unfire, topic, greet, waitUntil, put, putAt, nearTile, onMap, regionIs, protectPlayer, addRel, rel, remember, chose, tip, P, canRunScene, decor, markerObj, hostiles, readAndWait, refreshDecor, skipTo, setHollowbrook } from './lib';
 import { spawnCast, castHooks, npc, fighter, person, OW, always, ACT, at } from './cast';
 
 // ---------------------------------------------------------------- allies
@@ -138,6 +138,14 @@ function registerCast() {
     }
   });
   on('kill', (a: Actor) => { const m = /^rvguard(\d)$/.exec(a.id); if (m) setFlag('rvguard_dead_' + m[1]); });
+  // saves made in the middle of the siege pick up where they left off
+  castHooks.push(() => {
+    if (ACT() !== 3) return;
+    if (qAt('main_siege', 'bailey')) for (const g of actors) if (g.tags.has('siege')) { g.hostile = true; g.mem.alerted = true; g.mem.aggroRange = 400; }
+    if (qAt('main_siege', 'dieter')) { S.quests.main_siege.stage = 'bailey'; unfire('a3_bailey_clear'); }
+    if (qAt('main_siege', 'hall')) unfire('a3_hall');
+    if (qAt('main_siege', 'lida')) unfire('a3_kitchen');
+  });
   // after the war: everyone home in Hollowbrook
   castHooks.push(() => {
     if (ACT() < 4) return;

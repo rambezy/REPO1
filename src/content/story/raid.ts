@@ -233,6 +233,7 @@ export async function startRaidNight() {
   if (raidBusy) return;
   raidBusy = true;
   setFlag('raid_started');
+  setFlag('no_travel');
   const p = P();
   await cutscene(async () => {
     await fadeTo(1, 1.5);

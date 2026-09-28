@@ -126,6 +126,7 @@ export async function startAct1() {
   setFlag('act', 1);
   setFlag('war_news');
   setFlag('map_known');
+  setFlag('no_travel', false);
   S.dog.owned = false;
   crumbLeaves();
   S.minutes = DAY + 9.6 * 60;
@@ -234,6 +235,8 @@ function registerCast() {
     if ((!flag('jirka_done') || flag('deserters_allied')) && !flag('deserters_dead')) {
       const j = npc('jirka', OW(26, 161), always(OW(26, 161), 'stand', { dir: 0 }), { faction: 'bandit', essential: true, skill: 5, weapon: 'falchion', hp: 110 });
       if (j) { j.mem.noSurrender = true; j.tags.add('deserter_boss'); }
+      // a duel interrupted by a reload goes on
+      if (j && flag('deserters_fight') && !flag('jirka_done')) { j.hostile = true; j.mem.nonlethal = true; j.mem.spar = true; j.mem.target = 'player'; }
       const spots: [number, number][] = [[23, 163], [29, 163], [25, 159]];
       spots.forEach(([x, y], i) => {
         if (flag('deserter_dead_' + i)) return;
