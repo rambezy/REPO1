@@ -134,8 +134,8 @@ export function newGame(name: string, difficulty: 'story' | 'normal' | 'hard') {
   p.maxHp = maxHp();
   p.hp = p.maxHp;
   resetSurvivalWarnings();
-  story.newGame();
   G.mode = 'play';
+  story.newGame();
 }
 
 export function loadGame(st: GameState) {

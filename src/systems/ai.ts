@@ -143,13 +143,7 @@ export class NpcBrain implements Brain {
   update(a: Actor, dt: number) {
     if (a.dead) return;
     if (a.mem.down) { a.pose = 'lie'; return; }
-    if (a.mem.hold) {
-      if (a.combat.phase === 'none' && a.poseLock <= 0 && a.pose === 'walk') a.pose = 'idle';
-      return;
-    }
-    if (a.surrendered) { this.surrendered(a, dt); return; }
-
-    // scripted movement overrides everything (cutscenes)
+    // scripted movement overrides everything (cutscenes), even a hold
     const sc = a.mem.script;
     if (sc) {
       sc.t += dt;
@@ -162,6 +156,11 @@ export class NpcBrain implements Brain {
       }
       return;
     }
+    if (a.mem.hold) {
+      if (a.combat.phase === 'none' && a.poseLock <= 0 && a.pose === 'walk') a.pose = 'idle';
+      return;
+    }
+    if (a.surrendered) { this.surrendered(a, dt); return; }
 
     // fleeing
     if (a.mem.fleeT > 0) {

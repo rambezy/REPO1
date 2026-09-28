@@ -37,7 +37,7 @@ export function hollowbrook(b: MapBuilder) {
   // fields
   const fieldT = ruined ? T.BURNT_WHEAT : T.WHEAT;
   const fields: [number, number, number, number, number][] = [
-    [56, 86, 11, 8, fieldT], [60, 103, 12, 7, ruined ? T.ASH : T.FIELD], [44, 112, 9, 5, ruined ? T.ASH : T.VEG], [33, 112, 8, 6, fieldT], [66, 91, 8, 6, fieldT],
+    [56, 86, 11, 8, fieldT], [60, 103, 12, 7, ruined ? T.ASH : T.FIELD], [44, 115, 9, 4, ruined ? T.ASH : T.VEG], [33, 112, 8, 6, fieldT], [66, 91, 8, 6, fieldT],
   ];
   for (const [fx, fy, fw, fh, ft] of fields) { b.fill(fx, fy, fw, fh, ft); b.reserve(fx, fy, fw, fh); }
   if (ruined) b.blob(44, 100, 13, 9, T.ASH, 0.6, [T.GRASS, T.DIRT, T.MEADOW, T.FOREST]);
@@ -73,16 +73,29 @@ export function hollowbrook(b: MapBuilder) {
   // chapel yard graves, east of the chapel
   for (let i = 0; i < 4; i++) b.prop('grave', 46 + i * 2, 85, { variant: i });
   b.spawn('graveyard', 48, 87, 3);
-  if (flag('father_buried')) b.prop('grave_fresh', 54, 85, { opt: 'flowers', key: 'radek_grave', interact: { type: 'script', script: 'radek_grave', label: "Father's grave" } });
   b.spawn('radek_grave', 54, 87, 3);
-  // geese pen
+  // geese pen, behind the tavern and Bára's house
+  b.fill(43, 110, 10, 5, T.GRASS);
+  b.reserve(43, 110, 10, 5);
   if (!ruined) {
-    for (let i = 0; i < 6; i++) { b.prop('fence_h', 60 + i, 111); b.prop('fence_h', 60 + i, 115); }
-    b.prop('fence_v', 59, 112); b.prop('fence_v', 59, 114); b.prop('fence_v', 66, 112); b.prop('fence_v', 66, 114);
-    b.prop('coop', 62, 113);
-    b.prop('trough', 64, 114);
+    for (let i = 0; i < 6; i++) { b.prop('fence_h', 45 + i, 110); b.prop('fence_h', 45 + i, 114); }
+    b.prop('fence_v', 44, 111); b.prop('fence_v', 44, 113); b.prop('fence_v', 51, 111); b.prop('fence_v', 51, 113);
+    b.prop('coop', 46, 112);
+    b.prop('trough', 49, 113);
+  } else {
+    b.prop('fence_h_broken', 46, 110); b.prop('fence_h', 48, 114); b.prop('fence_v', 44, 111);
   }
-  b.spawn('geese_pen', 63, 114);
+  b.spawn('geese_pen', 48, 112);
+  // the fox hollow in the wood's edge above the brook, where Lida watches the kits
+  b.blob(57, 120, 3.4, 2.4, T.GRASS, 0.3, [T.FOREST]);
+  b.reserve(54, 118, 7, 5);
+  b.rock(59, 119, 'big', true);
+  b.rock(55, 121, 'small', true);
+  b.deco(57, 122, 'flowers');
+  b.spawn('fox_den', 57, 121, 3);
+  b.region({ id: 'foxhollow', name: 'The Fox Hollow', x: 53, y: 117, w: 9, h: 7 });
+  // Pavel's sparring meadow across from the mill
+  b.spawn('spar', 27, 80, 1);
   // village furniture
   b.prop('well', 42, 100, { interact: { type: 'water' } });
   if (!ruined) {

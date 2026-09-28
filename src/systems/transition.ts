@@ -5,12 +5,15 @@ import { enterMap } from '../world/world';
 import { snapCamera } from '../engine/renderer';
 import { chunks } from '../world/chunks';
 import { sfx } from '../audio/sfx';
+import { hideDialogue } from '../ui/dialogue';
 
 interface Fade { from: number; to: number; t: number; dur: number; resolve: () => void }
 let fade: Fade | null = null;
 
 export function fadeTo(to: number, dur = 0.35, color = '#000'): Promise<void> {
   G.fadeColor = color;
+  // a line of dialogue should not linger over a fade to black
+  if (to >= 1) hideDialogue();
   return new Promise((resolve) => {
     if (fade) fade.resolve();
     fade = { from: G.fade, to, t: 0, dur: Math.max(0.01, dur), resolve };

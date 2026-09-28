@@ -7,6 +7,7 @@ import { startLoop } from './engine/loop';
 import { registerCoreSystems } from './engine/systems';
 import { initNotify } from './ui/notify';
 import { boot } from './game';
+import { attachDebug } from './debug';
 
 function resize() {
   const w = window.innerWidth, h = window.innerHeight;
@@ -36,6 +37,7 @@ function start() {
   buildTouchControls(ui);
   registerCoreSystems();
   boot(ui);
+  if (import.meta.env.DEV || location.hash.includes('debug')) attachDebug();
   startLoop();
 }
 

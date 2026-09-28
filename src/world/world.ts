@@ -10,6 +10,8 @@ import { clearFx } from '../engine/fx';
 
 const builders = new Map<string, () => GameMap>();
 const maps = new Map<string, GameMap>();
+/** Called whenever a map is (re)built, so story code can add its own objects. */
+export const mapBuiltHooks: ((m: GameMap) => void)[] = [];
 
 export function registerMap(id: string, build: () => GameMap) {
   builders.set(id, build);
@@ -23,6 +25,7 @@ export function getMap(id: string): GameMap {
     if (!b) throw new Error('Unknown map ' + id);
     m = b();
     maps.set(id, m);
+    for (const h of mapBuiltHooks) h(m);
   }
   return m;
 }
@@ -32,6 +35,7 @@ export function rebuildMap(id: string) {
   maps.delete(id);
 }
 export function clearMaps() { maps.clear(); }
+export function isBuilt(id: string) { return maps.has(id); }
 
 // ---------- actors ----------
 export const actors: Actor[] = [];

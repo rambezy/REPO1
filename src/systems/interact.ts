@@ -26,6 +26,11 @@ import { conversation, narrate } from './script';
 
 export const HERB_REGROW_MIN = 60 * 24 * 2; // two days
 
+/** Story hooks: return true to take over the interaction. */
+export const storyHooks = {
+  bed: null as null | ((owner?: string) => boolean),
+};
+
 function objLabel(o: MapObject): { label: string; crime?: boolean } | null {
   const it = o.interact!;
   switch (it.type) {
@@ -79,6 +84,7 @@ function actorLabel(a: Actor): { label: string; crime?: boolean } | null {
   }
   if (a.surrendered) return { label: `Spare ${a.name}` };
   if (a.hostile) return null;
+  if (a.mem.label) return { label: a.mem.label };
   if (a.mem.sleeping || a.pose === 'sleep') return { label: `Wake ${a.name}` };
   if (a.charId && hasTalk(a.charId)) return { label: `Talk to ${a.mem.introduced || S.flags['met_' + a.charId] || ['radek', 'marta', 'lida', 'pavel', 'hanka'].includes(a.charId) ? a.name : a.mem.stranger || a.name}` };
   if (a.isAnimal) return null;
@@ -160,6 +166,7 @@ async function interactObj(o: MapObject) {
       return;
     }
     case 'bed': {
+      if (storyHooks.bed && storyHooks.bed(it.owner)) return;
       if (isOwnedByOther(it.owner) && !it.free) {
         notify('This is not your bed. Sleeping here would be trespassing.', 'bad');
         return;

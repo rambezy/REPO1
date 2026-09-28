@@ -69,6 +69,28 @@ export function updatePlayer(dt: number) {
   if (p.stamina > p.maxStamina) p.stamina = p.maxStamina;
 
   const locked = G.controlLocked || G.mode !== 'play';
+  // scripted walking (cutscenes move the player like any other actor)
+  const sc = p.mem.script;
+  if (sc) {
+    sc.t += dt;
+    const dx = sc.x - p.x, dy = sc.y - p.y;
+    const d = Math.hypot(dx, dy);
+    if (d <= (sc.near ?? 4) || sc.t > sc.timeout) {
+      if (sc.t > sc.timeout) { p.x = sc.x; p.y = sc.y; }
+      p.mem.script = null;
+      p.pose = 'idle';
+      p.running = false;
+      sc.resolve();
+    } else {
+      const sp = p.speed * (sc.run ? p.runMul : 1) * G.map.speedAt(p.x, p.y);
+      const moved = p.move(G.map, (dx / d) * sp * dt, (dy / d) * sp * dt, here());
+      if (!moved) p.move(G.map, (-dy / d) * sp * dt * 0.7, (dx / d) * sp * dt * 0.7, here());
+      p.dir = dirFromVec(dx, dy, p.dir);
+      p.pose = 'walk';
+      p.running = !!sc.run;
+    }
+    return;
+  }
   const mv = locked ? { x: 0, y: 0 } : input.moveVec();
   const moving = Math.hypot(mv.x, mv.y) > 0.1;
 

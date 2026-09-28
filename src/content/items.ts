@@ -194,6 +194,7 @@ reg(
   { id: 'garnet_ring', name: 'Garnet Ring', cat: 'misc', desc: 'Silver set with a Bohemian garnet, red as a heart.', value: 120, weight: 0.05, icon: { shape: 'ring', c1: P.metal4, c2: '#a0182a' } },
   { id: 'flowers', name: 'Wildflowers', cat: 'misc', desc: 'A handful of cornflowers and poppies.', value: 1, weight: 0.1, stack: true, icon: { shape: 'flower', c1: '#4a7ad8' } },
   { id: 'feather', name: 'Goose Feather', cat: 'material', desc: 'For fletching arrows, or for writing.', value: 1, weight: 0.01, stack: true, icon: { shape: 'feather' } },
+  { id: 'horseshoe_sale', name: 'Set of Horseshoes', cat: 'misc', desc: 'Four shoes of your own forging. Any smith or stable will pay for them.', value: 7, weight: 2, stack: true, icon: { shape: 'ring', c1: P.metal3 } },
   { id: 'bone', name: 'Soup Bone', cat: 'misc', desc: 'A meaty bone. Crumb would sell his soul for it.', value: 1, weight: 0.4, stack: true, icon: { shape: 'bone' } },
 );
 
@@ -235,6 +236,7 @@ reg(
   Q('horseshoe', 'Horseshoe', 'Your first proper horseshoe. Father said it was "not bad," which from him is a hymn.', { shape: 'ring', c1: P.metal2 }),
   Q('mothers_apron', "Mother's Apron", 'Flour-white, singed at the hem. Found on the path out of the village. There was no body.', { shape: 'cloth', c1: CLOTH.white }),
   Q('lida_drawing', "Lida's Drawing", 'Charcoal on a scrap of board: four stick figures and a dog. Underneath, in careful letters: L I D A.', { shape: 'drawing' }),
+  Q('half_seal', 'Half a Seal', 'Red wax, half-melted, from the ashes at the Crow\'s Stone: a black bird with its wings spread.', { shape: 'seal', c1: '#8e2f2f' }),
   Q('harrow_orders', 'Sealed Orders', 'Orders bearing a raven seal: the mark of Ravenstone.', { shape: 'letter', c1: '#2a2a3a' }, { book: 'harrow_orders' }),
   Q('lothar_letter', "Lothar's Letter", 'A letter in Sir Lothar\'s hand to the usurper\'s captain, promising the silver of Silverdale.', { shape: 'scroll' }, { book: 'lothar_letter' }),
   Q('foreman_ledger', "Foreman's Ledger", 'Two sets of numbers. Only one of them is honest.', { shape: 'book', c1: CLOTH.brown }, { book: 'foreman_ledger' }),

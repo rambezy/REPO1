@@ -5,6 +5,7 @@ import { input } from '../engine/input';
 import { G } from '../G';
 import { formatText } from './dialogue';
 import { fillText } from '../systems/script';
+import { autoAdvance } from './dialogue';
 
 export function card(title: string, sub = '', body = '', opts: { secs?: number; skippable?: boolean; bg?: string } = {}): Promise<void> {
   return new Promise((resolve) => {
@@ -30,7 +31,7 @@ export function card(title: string, sub = '', body = '', opts: { secs?: number; 
     const tick = () => {
       if (done) return;
       const t = (performance.now() - start) / 1000;
-      if (t > 0.8 && opts.skippable !== false && (input.pressed('confirm') || input.pressed('interact'))) { end(); return; }
+      if (t > 0.8 && opts.skippable !== false && (input.pressed('confirm') || input.pressed('interact') || (autoAdvance && t > 1.2))) { end(); return; }
       if (t > secs && opts.skippable === false) { end(); return; }
       requestAnimationFrame(tick);
     };

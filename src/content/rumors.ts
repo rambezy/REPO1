@@ -9,7 +9,7 @@ export function rumorFor(a: Actor, settlement: string): string {
   const pool: string[] = [];
   const act = flag('act') || 0;
   if (act === 0) {
-    pool.push('Tomorrow\'s St. John\'s Eve. The girls will float their wreaths on the brook, and the boys will jump the fire like fools.',
+    pool.push('It\'s St. John\'s Eve! Tonight the girls float their wreaths on the brook, and the boys jump the fire like fools.',
       'Riders were seen up on the pass road last week. Strangers, with black cloaks. Probably nothing.',
       'Your father\'s been working late in the forge. My Honza says he\'s making something special.',
       'Vojta owes everyone money. Everyone. The priest. The geese, probably.',

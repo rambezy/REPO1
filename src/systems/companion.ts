@@ -23,7 +23,6 @@ class DogBrain implements Brain {
   name = 'dog';
   update(a: Actor, dt: number) {
     if (a.dead) return;
-    if (a.mem.hold) return;
     const sc = a.mem.script;
     if (sc) {
       const d = Math.hypot(sc.x - a.x, sc.y - a.y);
@@ -31,6 +30,7 @@ class DogBrain implements Brain {
       step(a, sc.x, sc.y, dt, sc.run ? 1.8 : 1.1);
       return;
     }
+    if (a.mem.hold) return;
     const p = G.player;
     // limping away when hurt
     if (S.dog.downUntil && S.dog.downUntil > S.minutes) { a.hidden = true; a.solid = false; return; }
@@ -110,7 +110,7 @@ function step(a: Actor, x: number, y: number, dt: number, mul: number) {
 function nearestHostile(a: Actor, r: number): Actor | null {
   let best: Actor | null = null, bd = r;
   for (const o of here()) {
-    if (o.dead || o.hidden || o.mem.down || !o.hostile || o.isAnimal && o.animal?.species === 'goose') continue;
+    if (o.dead || o.hidden || o.mem.down || !o.hostile || o.mem.spar || o.isAnimal && o.animal?.species === 'goose') continue;
     const d = Math.hypot(o.x - a.x, o.y - a.y);
     if (d < bd) { bd = d; best = o; }
   }

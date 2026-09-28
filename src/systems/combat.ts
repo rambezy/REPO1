@@ -187,8 +187,8 @@ export function updateActorCombat(a: Actor, dt: number) {
     }
   }
 
-  // bleeding
-  if (c.bleeding > 0) {
+  // bleeding (paused for the player while a scene has control)
+  if (c.bleeding > 0 && !(isPlayer(a) && (G.controlLocked || G.mode === 'cutscene' || G.mode === 'dialogue'))) {
     const b = c.bleeding * dt;
     a.hp -= b;
     c.bleeding = Math.max(0, c.bleeding - dt * (isPlayer(a) ? 0.03 : 0.06));
@@ -227,7 +227,8 @@ export function areHostile(a: Actor, b: Actor): boolean {
   if (a.dead || b.dead) return false;
   if (a === G.player) return b.hostile;
   if (b === G.player) return a.hostile;
-  // NPC vs NPC
+  // NPC vs NPC (sparring partners only fight the player)
+  if (a.mem.spar || b.mem.spar) return false;
   const allyOfPlayer = (x: Actor) => x.faction === 'ally' || x.faction === 'dog' || x.mem.follow === G.player.id;
   if (allyOfPlayer(a) && b.hostile) return true;
   if (allyOfPlayer(b) && a.hostile) return true;
