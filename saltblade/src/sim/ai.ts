@@ -164,6 +164,21 @@ function hostileOrProvoked(c: Char, a: Char) {
 /** Eating and self-care for idle characters. */
 export function idleUpkeep(c: Char) {
   if (c.hunger < 150 && !c.robot && !c.animal) eatSomething(c);
+  if (c.faction !== 'player' || c.animal) return;
+  // bind the bleeding, yourself first, then the nearest of your squad
+  let patient: Char | null = null;
+  if (c.body.bleeding() > 0.04 && c.body.needsAid() && findMedkit(c, c.robot, c)) patient = c;
+  else {
+    let bd = 25 * 25;
+    for (const id of S.W.squadOf(c)?.members ?? []) {
+      const o = S.W.char(id);
+      if (!o || o === c || o.animal || o.status === 'dead' || o.carriedBy || o.cage) continue;
+      if ((o.status !== 'ko' && o.body.bleeding() <= 0.04) || !o.body.needsAid()) continue;
+      const d2 = (o.x - c.x) ** 2 + (o.z - c.z) ** 2;
+      if (d2 < bd && findMedkit(c, o.robot, o)) { bd = d2; patient = o; }
+    }
+  }
+  if (patient) c.order = { k: 'aid', id: patient.id };
 }
 
 export function eatSomething(c: Char): boolean {
@@ -261,6 +276,8 @@ function postFight(c: Char): boolean {
       }
     }
   });
+  // nobody else to see to: patch yourself up
+  if (!best && c.status === 'up' && c.body.bleeding() > 0.04 && c.body.needsAid() && findMedkit(c, c.robot, c)) { best = c; kind = 'aid'; }
   if (!best) return false;
   B.task = { k: kind, id: (best as Char).id, t: 0 };
   return true;

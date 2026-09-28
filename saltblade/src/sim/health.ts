@@ -147,7 +147,8 @@ export function treatLimb(medic: Char, patient: Char, l: number, pts: number, qu
   const b = patient.body;
   if (!b.has(l)) { if (b.bleed[l] > 0) { const u = Math.min(pts, b.bleed[l] * 60); b.bleed[l] = Math.max(0, b.bleed[l] - u / 60); return u; } return 0; }
   const skill = medic.skill('medic');
-  const eff = quality * (0.5 + skill * 0.012);
+  // bandaging yourself is awkward work
+  const eff = quality * (0.5 + skill * 0.012) * (medic === patient ? 0.75 : 1);
   let used = 0;
   if (b.bleed[l] > 0) {
     const u = Math.min(pts, b.bleed[l] * 40);
