@@ -151,7 +151,7 @@ function homesteadSpot(x: number, z: number, rng: RNG): [number, number] {
 
 /** One of the player's starting people, made into a world (a scratch one for the creator's preview). */
 export function makePlayerPerson(p: ScenarioPerson, who: { name: string; look: Look }, rng: RNG, W: World = G.W): Char {
-  const c = makePerson(W, { faction: 'drifters', role: p.shackled ? 'slave' : 'wanderer', race: who.look.race, level: p.level, loadout: p.loadout }, rng);
+  const c = makePerson(W, { faction: 'drifters', role: p.shackled ? 'slave' : p.role ?? 'wanderer', race: who.look.race, level: p.level, loadout: p.loadout }, rng);
   c.look = { ...who.look };
   c.name = who.name.trim() || c.name;
   c.money = 0;

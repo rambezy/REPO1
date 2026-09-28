@@ -1,8 +1,11 @@
 // Ways to begin. Each puts a handful of people somewhere in the world with
 // whatever they have, and nothing else.
 
+import type { Role } from '../sim/char';
+
 export interface ScenarioPerson {
-  races?: string[]; // allowed races, first is the default
+  role?: Role; // what they were: shapes which skills they start with (default wanderer)
+  races?: string[]; // allowed races
   female?: boolean;
   level: number;
   loadout: string;
@@ -48,10 +51,10 @@ export const SCENARIOS: Scenario[] = [
     desc: 'The four of you pooled everything for a patch of green country on the edge of the Vale, a long day\'s walk from Aurum. There is a shack, a wheat field, a well and a food store. The Concord taxes everything that grows on its land, and the Reavers want their share too.',
     squad: 'Freeholders', money: 1500,
     people: [
-      { level: 6, loadout: 'drifters_resident', kit: [['dustbread', 3]] },
-      { level: 6, loadout: 'drifters_resident', kit: [['dustbread', 3]] },
-      { level: 6, loadout: 'drifters_resident', kit: [['dustbread', 3]] },
-      { level: 6, loadout: 'drifters_resident', kit: [['dustbread', 3]] },
+      { role: 'worker', level: 6, loadout: 'drifters_resident', kit: [['dustbread', 3]] },
+      { role: 'worker', level: 6, loadout: 'drifters_resident', kit: [['dustbread', 3]] },
+      { role: 'worker', level: 6, loadout: 'drifters_resident', kit: [['dustbread', 3]] },
+      { role: 'worker', level: 6, loadout: 'drifters_resident', kit: [['dustbread', 3]] },
     ],
     start: { settlement: 'aurum', region: 'vale', off: [-900, 500] },
     homestead: true,
@@ -63,9 +66,9 @@ export const SCENARIOS: Scenario[] = [
     desc: 'Your caravan master took a bolt in the throat on the Harrow road. The three of you buried him, took what was left and now answer to nobody. You can fight. Everything else you will have to learn.',
     squad: 'The Unpaid', money: 400,
     people: [
-      { level: 22, loadout: 'merc', kit: [['first_aid', 1], ['dried_meat', 2]] },
-      { level: 20, loadout: 'merc', kit: [['first_aid', 1], ['dried_meat', 2]] },
-      { level: 20, loadout: 'merc', kit: [['bandages', 2], ['dried_meat', 2]] },
+      { role: 'merc', level: 22, loadout: 'merc', kit: [['first_aid', 1], ['dried_meat', 2]] },
+      { role: 'merc', level: 20, loadout: 'merc', kit: [['first_aid', 1], ['dried_meat', 2]] },
+      { role: 'merc', level: 20, loadout: 'merc', kit: [['bandages', 2], ['dried_meat', 2]] },
     ],
     start: { settlement: 'harrowmarket', off: [-260, 90] },
   },
@@ -75,9 +78,9 @@ export const SCENARIOS: Scenario[] = [
     desc: 'Hornspire sent you out with a blessing and a threat: come back with honour or do not come back. You are strong as rocks and about as quick to learn anything that is not a fight. The Covenant burns your kind on sight.',
     squad: 'Hornborn', money: 600,
     people: [
-      { races: ['karuk'], level: 14, loadout: 'karuk_resident', kit: [['dried_meat', 3]] },
-      { races: ['karuk'], level: 12, loadout: 'karuk_resident', kit: [['dried_meat', 3]] },
-      { races: ['karuk'], level: 12, loadout: 'karuk_resident', kit: [['bandages', 2]] },
+      { role: 'merc', races: ['karuk'], level: 14, loadout: 'karuk_resident', kit: [['dried_meat', 3]] },
+      { role: 'merc', races: ['karuk'], level: 12, loadout: 'karuk_resident', kit: [['dried_meat', 3]] },
+      { role: 'merc', races: ['karuk'], level: 12, loadout: 'karuk_resident', kit: [['bandages', 2]] },
     ],
     start: { settlement: 'hornspire', off: [240, 210] },
     rel: { karuk: 30 },
@@ -99,8 +102,8 @@ export const SCENARIOS: Scenario[] = [
     desc: 'You walked away from the Stonegate garrison with your kit and each other. Now there are posters with your faces on every Concord wall, and patrols that would love to collect. The Drifters might hide you. The Unchained might even welcome you.',
     squad: 'Deserters', money: 300,
     people: [
-      { races: ['valefolk', 'duneborn'], level: 18, loadout: 'concord_guard', kit: [['bandages', 2], ['dried_meat', 2]] },
-      { races: ['valefolk', 'duneborn'], level: 16, loadout: 'concord_guard', kit: [['bandages', 2], ['dried_meat', 2]] },
+      { role: 'merc', races: ['valefolk', 'duneborn'], level: 18, loadout: 'concord_guard', kit: [['bandages', 2], ['dried_meat', 2]] },
+      { role: 'merc', races: ['valefolk', 'duneborn'], level: 16, loadout: 'concord_guard', kit: [['bandages', 2], ['dried_meat', 2]] },
     ],
     start: { settlement: 'stonegate', off: [-520, 180] },
     bounty: { concord: 3000 },
@@ -128,9 +131,9 @@ export const SCENARIOS: Scenario[] = [
     desc: 'A test of the fighting.',
     squad: 'Wanderers', money: 1000,
     people: [
-      { level: 22, loadout: 'merc', kit: [['first_aid', 2], ['dried_meat', 3]] },
-      { level: 22, loadout: 'merc', kit: [['first_aid', 2], ['dried_meat', 3]] },
-      { level: 22, loadout: 'merc', kit: [['first_aid', 2], ['dried_meat', 3]] },
+      { role: 'merc', level: 22, loadout: 'merc', kit: [['first_aid', 2], ['dried_meat', 3]] },
+      { role: 'merc', level: 22, loadout: 'merc', kit: [['first_aid', 2], ['dried_meat', 3]] },
+      { role: 'merc', level: 22, loadout: 'merc', kit: [['first_aid', 2], ['dried_meat', 3]] },
     ],
     start: { settlement: 'crossroad', off: [260, 80] },
   },
