@@ -1,0 +1,187 @@
+// Bleeding, knock-outs, death, natural healing, hunger and first aid.
+import { Char } from './char';
+import { Body, LI, LIMB_NAMES } from './body';
+import { RACE } from '../content/races';
+import { ITEM } from '../content/items';
+import { RATE } from './clock';
+import { S } from './ctx';
+import { train } from './train';
+
+export function koThreshold(c: Char, limb: number) {
+  const t = c.skill('toughness');
+  return -c.body.max[limb] * Math.min(0.85, t / 115);
+}
+
+export function isKOCondition(c: Char) {
+  const b = c.body;
+  for (let l = 0; l < 3; l++) if (b.hp[l] < koThreshold(c, l)) return true;
+  if (b.blood < b.bloodMax * 0.3 && !b.robotic) return true;
+  return false;
+}
+
+export function isDeadCondition(c: Char) {
+  const b = c.body;
+  if (b.hp[LI.head] <= -b.max[LI.head] || b.hp[LI.chest] <= -b.max[LI.chest]) return true;
+  if (b.blood <= 0 && !b.robotic) return true;
+  return false;
+}
+
+export function knockOut(c: Char, why = '') {
+  if (c.status !== 'up') return;
+  c.status = 'ko';
+  c.body.koT = 0;
+  c.atk = null;
+  c.act = null;
+  c.path = null;
+  c.hasGoal = false;
+  c.sleeping = false;
+  c.stats.downed++;
+  if (c.carrying) dropCarried(c);
+  S.fx.ko(c);
+  if (c.faction === 'player') S.W.say(`${c.name} is down${why ? ' (' + why + ')' : ''}.`, 'bad', S.clock.t);
+}
+
+export function kill(c: Char, by?: Char) {
+  if (c.status === 'dead') return;
+  c.status = 'dead';
+  c.atk = null;
+  c.act = null;
+  c.path = null;
+  c.hasGoal = false;
+  c.sleeping = false;
+  if (c.carrying) dropCarried(c);
+  if (by) by.stats.kills++;
+  if (c.faction === 'player') S.W.say(`${c.name} has died.`, 'bad', S.clock.t);
+  S.fx.died(c);
+}
+
+export function dropCarried(c: Char) {
+  const o = S.W.char(c.carrying);
+  c.carrying = 0;
+  if (!o) return;
+  o.carriedBy = 0;
+  const a = c.dir + Math.PI / 2;
+  const nx = c.x + Math.sin(a) * 0.9, nz = c.z + Math.cos(a) * 0.9;
+  const spot = S.nav.nearestOpen(nx, nz, 4);
+  o.x = spot ? spot[0] : c.x; o.z = spot ? spot[1] : c.z;
+  o.y = S.T.heightAt(o.x, o.z);
+  o.dir = c.dir;
+}
+
+/** Per-step body upkeep. */
+export function tickHealth(c: Char, dt: number) {
+  const b = c.body;
+  if (c.status === 'dead') return;
+  const race = RACE[c.look.race];
+  const gameH = (dt * RATE) / 3600; // game hours this step
+  // hunger
+  if (!b.robotic && !c.animal) {
+    c.hunger = Math.max(0, c.hunger - 6 * gameH * (race?.hunger ?? 1) * (c.sleeping ? 0.7 : 1));
+    if (c.hunger <= 0) {
+      b.hp[LI.stomach] -= 2 * gameH;
+      b.blood -= 1.5 * gameH;
+    }
+  }
+  // bleeding
+  let bleeding = 0;
+  if (!b.robotic) {
+    const clot = (0.004 + c.skill('toughness') * 0.00005) * dt;
+    for (let l = 0; l < 7; l++) {
+      if (b.bleed[l] <= 0) continue;
+      const k = b.treated[l] > 0 ? 6 : 1;
+      b.bleed[l] = Math.max(0, b.bleed[l] - clot * k);
+      bleeding += b.bleed[l];
+    }
+    b.blood -= bleeding * dt * (race?.bleed ?? 1);
+    if (bleeding < 0.001 && c.hunger > 40 && b.blood < b.bloodMax) b.blood = Math.min(b.bloodMax, b.blood + 5 * gameH);
+  }
+  // healing
+  const heal = (race?.heal ?? 1) * (c.animal ? 1 : 1);
+  if (heal > 0 && c.hunger > 30) {
+    const bed = c.bed ? 3.5 : c.sleeping ? 1.6 : 1;
+    const rate = 4 * gameH * heal * bed;
+    for (let l = 0; l < 7; l++) {
+      if (!b.has(l) || b.hp[l] >= b.max[l]) continue;
+      const tr = 1 + b.treated[l] * 1.6;
+      b.hp[l] = Math.min(b.max[l], b.hp[l] + rate * tr);
+      if (b.hp[l] >= b.max[l] * 0.98) b.treated[l] = 0;
+    }
+  }
+  // status transitions
+  if (isDeadCondition(c)) { kill(c, S.W.char(c.lastHitBy)); return; }
+  if (c.status === 'up' && isKOCondition(c)) knockOut(c, b.blood < b.bloodMax * 0.3 ? 'blood loss' : '');
+  else if (c.status === 'ko') {
+    b.koT += dt;
+    if (!c.carriedBy && !c.playDead && b.koT > 10 && !isKOCondition(c)) {
+      // coming round
+      const margin = Math.min(b.hp[0] - koThreshold(c, 0), b.hp[1] - koThreshold(c, 1), b.hp[2] - koThreshold(c, 2));
+      if (margin > 4) {
+        c.status = 'up';
+        c.act = null;
+        if (c.faction === 'player') S.W.say(`${c.name} gets back up.`, 'info', S.clock.t);
+      }
+    }
+  }
+  // a limp right arm drops its weapon's use; a lost arm drops it entirely
+  if (c.eq.weapon && !b.has(LI.rarm) && !b.has(LI.larm) && !b.prost[LI.rarm] && !b.prost[LI.larm]) {
+    c.inv.add(c.eq.weapon.id, 1, c.eq.weapon.q);
+    c.eq.weapon = null;
+    c.dirty = true;
+  }
+}
+
+export function severLimb(c: Char, l: number) {
+  const b = c.body;
+  if (l < 3 || !b.has(l)) return;
+  b.lost |= 1 << l;
+  b.hp[l] = 0;
+  b.bleed[l] += 1.4;
+  c.dirty = true;
+  S.fx.notice(`${c.name} lost their ${LIMB_NAMES[l].toLowerCase()}!`, c.faction === 'player' ? 'bad' : 'combat');
+  S.fx.sound('sever', c.x, c.z);
+}
+
+/** Treats one limb using a medical item's points. Returns points used. */
+export function treatLimb(medic: Char, patient: Char, l: number, pts: number, quality: number, splint: boolean): number {
+  const b = patient.body;
+  if (!b.has(l)) { if (b.bleed[l] > 0) { const u = Math.min(pts, b.bleed[l] * 60); b.bleed[l] = Math.max(0, b.bleed[l] - u / 60); return u; } return 0; }
+  const skill = medic.skill('medic');
+  const eff = quality * (0.5 + skill * 0.012);
+  let used = 0;
+  if (b.bleed[l] > 0) {
+    const u = Math.min(pts, b.bleed[l] * 40);
+    b.bleed[l] = Math.max(0, b.bleed[l] - (u / 40) * eff * 1.5);
+    used += u;
+    pts -= u;
+  }
+  const missing = b.max[l] - b.hp[l];
+  if (missing > 0 && pts > 0) {
+    const heal = Math.min(missing, pts * eff * 0.45);
+    b.hp[l] += heal;
+    used += heal / (eff * 0.45);
+  }
+  b.treated[l] = Math.max(b.treated[l], Math.min(1, eff));
+  if (splint && l >= 5 && b.hp[l] <= 0) b.splint |= 1 << l;
+  train(medic, 'medic', used / 25, 1 + (missing > 40 ? 0.5 : 0));
+  return used;
+}
+
+/** Most urgent limb to treat. */
+export function worstLimb(b: Body): number {
+  let best = -1, score = 0;
+  for (let l = 0; l < 7; l++) {
+    const s = b.bleed[l] * 200 + (b.has(l) ? Math.max(0, (b.max[l] - b.hp[l]) / b.max[l]) * (b.treated[l] > 0.5 ? 10 : 100) : 0) + (l < 3 && b.hp[l] < 0 ? 60 : 0);
+    if (s > score) { score = s; best = l; }
+  }
+  return score > 5 ? best : -1;
+}
+
+/** Finds a medical item in a character's inventory (or pack) suited for the patient. */
+export function findMedkit(c: Char, robot: boolean) {
+  for (const g of [c.inv, c.eq.back?.inv]) {
+    if (!g) continue;
+    const it = g.first((d) => !!d.med && !!d.med.robot === robot && !d.med.splint);
+    if (it) return { grid: g, it, def: ITEM[it.id] };
+  }
+  return null;
+}

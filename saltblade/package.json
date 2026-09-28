@@ -1,0 +1,27 @@
+{
+  "name": "saltblade",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Saltblade: a squad-based open-world sandbox RPG set in a sundered wasteland.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview",
+    "test:sim": "tsx tools/simtest.ts",
+    "test:smoke": "node tools/smoke.mjs",
+    "artifact": "node tools/make-artifact.mjs"
+  },
+  "dependencies": {
+    "three": "0.186.1"
+  },
+  "devDependencies": {
+    "@types/three": "0.186.0",
+    "playwright": "1.56.1",
+    "tsx": "^4.20.0",
+    "typescript": "5.9.3",
+    "vite": "7.3.6",
+    "vite-plugin-singlefile": "2.3.2"
+  }
+}

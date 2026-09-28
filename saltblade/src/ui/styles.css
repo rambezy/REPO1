@@ -1,0 +1,24 @@
+:root {
+  --ink: #e9e1cf;
+  --ink-dim: #b9ae96;
+  --ink-faint: #8a8170;
+  --panel: rgba(24, 21, 17, 0.92);
+  --panel-2: rgba(38, 33, 26, 0.94);
+  --edge: #5e5240;
+  --edge-hi: #8a7858;
+  --accent: #d9a441;
+  --accent-2: #b8742e;
+  --bad: #c6523a;
+  --good: #7fae5a;
+  --warn: #d8b24a;
+  --blue: #6aa6c8;
+  --font: 'Barlow', system-ui, sans-serif;
+  --cond: 'Barlow Condensed', 'Arial Narrow', sans-serif;
+  --title: 'Cinzel', Georgia, serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #14110d; color: var(--ink); font: 14px/1.35 var(--font); }
+#app { position: fixed; inset: 0; }
+#view { position: absolute; inset: 0; display: block; }
+#ui { position: absolute; inset: 0; pointer-events: none; }
+#ui > * { pointer-events: auto; }
