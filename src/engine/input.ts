@@ -180,9 +180,18 @@ class Input {
 
   // ---------- gamepad ----------
   private padPrev: boolean[] = [];
+  /** Embedded pages may forbid the gamepad feature; then we stop asking. */
+  private padBlocked = !gamepadAllowed();
   private pollGamepad() {
-    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-    const gp = pads && Array.from(pads).find((p) => p && p.connected);
+    if (this.padBlocked || !navigator.getGamepads) return;
+    let pads: (Gamepad | null)[];
+    try {
+      pads = Array.from(navigator.getGamepads());
+    } catch {
+      this.padBlocked = true;
+      return;
+    }
+    const gp = pads.find((p) => p && p.connected);
     if (!gp) return;
     const b = (i: number) => !!gp.buttons[i] && gp.buttons[i].pressed;
     const ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
@@ -207,6 +216,16 @@ class Input {
     if (any) this.lastDevice = 'gamepad';
     this.padPrev = gp.buttons.map((x) => x.pressed);
   }
+}
+
+/** False when the page's permissions policy forbids gamepads (as in sandboxed embeds). */
+function gamepadAllowed(): boolean {
+  const d = document as unknown as { permissionsPolicy?: { allowsFeature?: (f: string) => boolean }; featurePolicy?: { allowsFeature?: (f: string) => boolean } };
+  const policy = d.permissionsPolicy || d.featurePolicy;
+  try {
+    if (policy?.allowsFeature) return policy.allowsFeature('gamepad');
+  } catch { /* unknown feature name: assume allowed and let the try/catch decide */ }
+  return true;
 }
 
 function isTypingTarget(t: EventTarget | null) {

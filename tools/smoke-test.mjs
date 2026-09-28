@@ -15,7 +15,10 @@ if (!existsSync(file)) { console.error(`${path.relative(root, file)} missing; ru
 const html = asArtifact
   ? '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px)}body{margin:0;font:14px system-ui;background:#f7f7f5}img{max-width:100%}[hidden]{display:none!important}</style></head><body>' + readFileSync(file, 'utf8') + '</body></html>'
   : readFileSync(file);
-const server = createServer((req, res) => { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); res.end(html); });
+// the artifact viewer is a locked-down frame: device features such as the gamepad are refused
+const headers = { 'content-type': 'text/html; charset=utf-8' };
+if (asArtifact) headers['permissions-policy'] = 'gamepad=(), camera=(), microphone=(), geolocation=(), fullscreen=(), clipboard-read=(), display-capture=()';
+const server = createServer((req, res) => { res.writeHead(200, headers); res.end(html); });
 await new Promise((r) => server.listen(0, r));
 const url = `http://localhost:${server.address().port}/#debug`;
 const out = path.join(root, 'tools/out');

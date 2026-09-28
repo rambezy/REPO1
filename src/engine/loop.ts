@@ -39,12 +39,18 @@ function run(list: Sys[], dt: number) {
 }
 
 function frame(now: number) {
+  // schedule the next frame first, so no single failure can ever stop the game
+  requestAnimationFrame(frame);
   const raw = (now - last) / 1000;
   last = now;
   const dt = Math.min(0.05, Math.max(0, raw));
   G.dt = dt;
   G.clock += dt;
-  input.update();
+  try {
+    input.update();
+  } catch (e) {
+    if (errors++ < 20) console.error('input failed', e);
+  }
   tickFrame();
   if (!G.paused) {
     const worldAlive = G.mode === 'play' || G.mode === 'dialogue' || G.mode === 'cutscene';
@@ -61,7 +67,6 @@ function frame(now: number) {
     if (errors++ < 20) console.error('render failed', e);
   }
   input.endFrame();
-  requestAnimationFrame(frame);
 }
 
 export function startLoop() {
