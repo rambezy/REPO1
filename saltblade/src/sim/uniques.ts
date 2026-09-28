@@ -83,6 +83,28 @@ export function placeUniques(W: World, info: TownInfo) {
     c.x = spot[0]; c.z = spot[1]; c.y = S.T.heightAt(c.x, c.z);
     c.homeX = c.x; c.homeZ = c.z; c.dir = dir; c.homeDir = dir;
   }
+  if (site.settlement === 'chainfield') placeAma(W, info);
+}
+
+/** Tunde's sister Ama, still cutting riceweed in the east paddy at Chainfield. */
+function placeAma(W: World, info: TownInfo) {
+  if (W.flags.amaPlaced || !info.jobs.length) return;
+  W.flags.amaPlaced = true;
+  const site = info.site;
+  const town = [...W.squads.values()].find((q) => q.site === site.id && q.kind === 'town' && q.faction === site.faction);
+  if (!town) return;
+  const job = info.jobs.reduce((a, b) => (b.x > a.x ? b : a)); // the east paddy
+  const c = makePerson(W, { faction: site.faction ?? 'chainhouse', role: 'slave', race: 'duneborn', female: true, level: 14, name: 'Ama' }, new RNG(hash3(site.seed, 7171, 3)));
+  c.name = 'Ama';
+  c.title = 'Slave';
+  c.mem.enslavedBy = site.faction;
+  c.mem.sister = 'tunde_runaway';
+  c.mem.backstory = 'Ama was sold to Chainfield with her younger brother Tunde. He ran west through the reeds in their tenth year. She stayed, and cut riceweed, and did not stop believing he would come back.';
+  c.site = site.id;
+  W.moveToSquad(c, town);
+  const spot = S.nav.nearestOpen(job.x + 1.5, job.z, 6) ?? [job.x, job.z];
+  c.x = spot[0]; c.z = spot[1]; c.y = S.T.heightAt(c.x, c.z);
+  c.homeX = c.x; c.homeZ = c.z; c.homeDir = c.dir = job.dir;
 }
 
 /** Whether a named person's condition for joining is met. */

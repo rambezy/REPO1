@@ -9,7 +9,7 @@ import { FACTION } from '../content/factions';
 import { SETTLEMENT } from '../content/layout';
 import { selected, issue } from '../game/control';
 import { playerBase } from '../sim/base';
-import { emit } from '../core/events';
+import { emit, on } from '../core/events';
 
 const MAP = 1024; // base image resolution
 export const EXP = 128; // exploration grid
@@ -66,6 +66,12 @@ function paintBase(): HTMLCanvasElement {
   }
   return cv;
 }
+
+// a finished map (Cressa's) shows the whole waste
+on('map:reveal', () => {
+  S.W.explored = new Uint8Array(EXP * EXP).fill(1);
+  S.fx.notice('Every road, ford and pass of the waste is on your map now.', 'good');
+});
 
 /** Marks the land around your people as explored (called every couple of seconds). */
 export function tickExplore() {

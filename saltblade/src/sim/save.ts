@@ -13,6 +13,12 @@ import type { TownInfo } from '../world/towns';
 import { TOWN_PLANS } from '../content/buildings';
 
 export const SAVE_VERSION = 3;
+/**
+ * The shape of the land: which towns and landmarks the generator lays out.
+ * The land is rebuilt from its seed on load, so a save only fits the shape
+ * it was made in. Raise this whenever settlements, landmarks or roads change.
+ */
+export const WORLD_SHAPE = 1;
 
 const round = (v: number, k = 100) => Math.round(v * k) / k;
 
@@ -81,6 +87,7 @@ export function serialize(extra: Record<string, any> = {}): any {
   const W = S.W;
   return {
     v: SAVE_VERSION,
+    shape: WORLD_SHAPE,
     seed: S.T.seed,
     savedAt: Date.now(),
     clock: S.clock.t,
@@ -175,7 +182,10 @@ async function idbDel(store: string, key: string) {
   await new Promise<void>((res) => { const tx = d.transaction(store, 'readwrite'); tx.objectStore(store).delete(key); tx.oncomplete = () => res(); tx.onerror = () => res(); });
 }
 
-export interface SaveMeta { slot: string; name: string; day: number; savedAt: number; chars: number; money: number; place: string; seed: number; }
+export interface SaveMeta { slot: string; name: string; day: number; savedAt: number; chars: number; money: number; place: string; seed: number; shape?: number; }
+
+/** Whether a save fits the land as this version lays it out. */
+export const fitsWorld = (m: { shape?: number }) => (m.shape ?? 1) === WORLD_SHAPE;
 
 /** In-memory fallback when no storage is available (still lets the session reload). */
 const memory = new Map<string, Blob>();
@@ -183,7 +193,7 @@ const memory = new Map<string, Blob>();
 export async function writeSave(slot: string, meta: Omit<SaveMeta, 'slot' | 'savedAt'>, extra: Record<string, any> = {}): Promise<boolean> {
   const json = JSON.stringify(serialize(extra));
   const blob = await gzip(json);
-  const m: SaveMeta = { ...meta, slot, savedAt: Date.now() };
+  const m: SaveMeta = { ...meta, slot, savedAt: Date.now(), shape: WORLD_SHAPE };
   memory.set(slot, blob);
   try {
     await idbPut('saves', slot, blob);

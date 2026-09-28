@@ -40,7 +40,10 @@ into a single HTML file.
 - **Grow** through 33 skills that rise with use. Getting beaten trains
   toughness; carrying heavy loads trains strength; reading teaches science.
 - **Recruit** people from bars and cages, including 18 named characters
-  with their own stories, prices and conditions. Hire mercenaries, buy
+  with their own stories, prices and conditions. Take them back to the
+  places that made them and their stories move on: a runaway finds the
+  sister he left in the paddy, a Warden is forgiven by the machine she
+  would not burn, a cartographer finishes her map. Hire mercenaries, buy
   slaves, or buy a pack beast or a hound.
 - **Trade** in shops that restock over time. Each town sells some goods
   cheap and pays well for others (salt from the Barrens, resin from the
@@ -70,7 +73,7 @@ into a single HTML file.
   lost. The named characters have their own voices, and some share a past.
   Karuk, Hollows and Thrum each talk their own way, and townsfolk gossip as
   you pass. Chatter can be turned off in the options.
-- **Keep a record**: a journal of what happened, 28 deeds to earn, and a
+- **Keep a record**: a journal of what happened, 30 deeds to earn, and a
   Codex of the places, regions, factions, creatures and books you have
   come across.
 - **Survive the weather**: dust storms, fog, rain, ashfall, spore drift,

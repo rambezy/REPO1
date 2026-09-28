@@ -6,7 +6,7 @@ import { World } from '../sim/world';
 import { sel } from './control';
 import { newGame, NewGameSetup, placeOres } from './newgame';
 import { buildStructures } from './world';
-import { serialize, apply, writeSave, readSave, SaveMeta, SAVE_VERSION } from '../sim/save';
+import { serialize, apply, writeSave, readSave, SaveMeta, SAVE_VERSION, WORLD_SHAPE } from '../sim/save';
 import { structuresIn, townRings } from '../sim/structures';
 import { emit } from '../core/events';
 import { closeTop } from '../ui/dom';
@@ -85,6 +85,7 @@ export function loadData(data: any): string | null {
   if (!data || typeof data !== 'object' || !data.chars) return 'That is not a Saltblade save.';
   if (data.v > SAVE_VERSION) return 'That save comes from a newer version of the game.';
   if (data.seed !== G.seed) return 'That save belongs to a different world.';
+  if ((data.shape ?? 1) !== WORLD_SHAPE) return 'That save was made before the waste changed shape (new towns and roads), and no longer fits it.';
   resetWorld();
   try {
     apply(data, G.W);

@@ -280,6 +280,8 @@ body.mode-title #hud, body.mode-title #overlay { display: none !important; }
 /* saves, options, help */
 .savelist { display: flex; flex-direction: column; gap: 6px; }
 .saverow { display: grid; grid-template-columns: 64px 1fr auto auto auto; gap: 12px; align-items: center; background: rgba(38,33,26,.7); border: 1px solid var(--edge); border-radius: 4px; padding: 8px 12px; }
+.saverow.stale { opacity: .55; }
+.saverow.stale .svinfo .dim { color: #c89a70; }
 .svslot { font: 600 14px var(--cond); color: var(--accent); letter-spacing: .08em; text-transform: uppercase; }
 .svinfo b { font: 600 16px var(--cond); }
 .svwhen { font-size: 12.5px; }

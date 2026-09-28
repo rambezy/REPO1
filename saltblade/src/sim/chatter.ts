@@ -180,6 +180,19 @@ function run(lines: string[], who: Char[], group: number, v: Vars) {
 
 const talking = (group: number) => queue.some((q) => q.group === group);
 
+/** Whether a scene (a personal moment) is still being played. */
+export const playing = () => queue.some((q) => q.group === -2);
+
+/** Plays a short scene: each person says their line in turn. */
+export function scene(parts: [Char, string][]) {
+  const id = ++convoSeq;
+  let at = S.time;
+  for (const [c, text] of parts) {
+    queue.push({ id: c.id, text, at, convo: id, group: -2 });
+    at += Math.max(2.8, 1.3 + text.length * 0.06);
+  }
+}
+
 /** Watches your people: who went down, who died, and when a fight ends. */
 function watch(W: World) {
   for (const c of W.playerChars()) {
@@ -239,7 +252,7 @@ function idle(W: World, sq: Squad) {
   const people = all.filter(canTalk);
   const later = (s: number) => { nextAt.set(sq.id, now + s); };
   if (!people.some(visible)) return later(6);
-  if (fights.has(sq.id) || talking(sq.id)) return later(8);
+  if (fights.has(sq.id) || talking(sq.id) || playing()) return later(8);
   const spoke = idleLine(W, sq, all, people);
   const n = people.length;
   later(spoke ? rng.range(80, 170) * (n === 1 ? 1.7 : n >= 5 ? 0.8 : 1) : 20);

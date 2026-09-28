@@ -41,6 +41,8 @@ export const DEEDS: Deed[] = [
   { key: 'pit', name: 'Champion of the Pit', desc: 'Beat the Champion of the Pit at Hornspire.', check: (W) => (W.flags.pitWins ?? -1) >= 2 },
   { key: 'kingslayer', name: 'Kingslayer', desc: 'Bring down the leader of a faction.', check: (W) => count(W, 'leadersKilled') >= 1 },
   { key: 'most_wanted', name: 'Most Wanted', desc: 'Carry a price of 10,000 chits on one head.', check: (W, m) => m.some((c) => totalBounty(c) >= 10000) },
+  { key: 'family', name: 'Family', desc: 'Bring Tunde and his sister together, free.', check: (W) => W.flags.moments?.tunde_ama_free !== undefined },
+  { key: 'mapmaker', name: 'The Last Blank', desc: 'Help Cressa finish her map of the waste.', check: (W) => W.flags.moments?.cressa_glass !== undefined },
 ];
 
 let t = 0;

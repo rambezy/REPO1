@@ -14,7 +14,7 @@ import { Char } from '../sim/char';
 import { Look } from '../sim/look';
 import { makePlayerPerson, NewGameSetup } from '../game/newgame';
 import { startNewGame, loadSlot, loadData, backdropWorld } from '../game/session';
-import { listSaves, deleteSave, importSaveFile, importText, SaveMeta } from '../sim/save';
+import { listSaves, deleteSave, importSaveFile, importText, SaveMeta, fitsWorld } from '../sim/save';
 import { input } from '../core/input';
 import { DAY, HOUR } from '../sim/clock';
 import { SK, SKILL_INFO, SKILLS } from '../sim/skills';
@@ -376,11 +376,12 @@ export async function renderLoadList(el: HTMLElement, onLoad: (slot: string) => 
     const when = new Date(m.savedAt);
     const rowEl = h('div', { class: 'saverow' },
       h('div', { class: 'svslot' }, m.slot === 'auto' ? 'Auto' : m.slot === 'quick' ? 'Quick' : 'Slot ' + m.slot),
-      h('div', { class: 'svinfo' }, h('b', {}, m.name), h('div', { class: 'dim' }, `Day ${m.day} · ${m.chars} ${m.chars === 1 ? 'person' : 'people'} · ${m.money.toLocaleString()} chits · ${m.place}`)),
+      h('div', { class: 'svinfo' }, h('b', {}, m.name), h('div', { class: 'dim' }, fitsWorld(m) ? `Day ${m.day} · ${m.chars} ${m.chars === 1 ? 'person' : 'people'} · ${m.money.toLocaleString()} chits · ${m.place}` : `Day ${m.day} · made before the waste changed shape; it can no longer be loaded`)),
       h('div', { class: 'svwhen dim' }, when.toLocaleDateString() + ' ' + when.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })),
     );
     const load = h('button', { class: 'tbtn small primary' }, 'Load');
     load.onclick = () => onLoad(m.slot);
+    if (!fitsWorld(m)) { (load as HTMLButtonElement).disabled = true; rowEl.classList.add('stale'); }
     const del = h('button', { class: 'tbtn small' }, 'Delete');
     del.onclick = () => ask(`Delete the save "${m.name}, day ${m.day}"? This cannot be undone.`, 'Delete', async () => { await deleteSave(m.slot); renderLoadList(el, onLoad, onData); }, 'Keep it', true);
     rowEl.append(load, del);
