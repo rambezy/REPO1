@@ -19,7 +19,7 @@ import { findEnemy } from './ai';
 import { applyDamage, dist } from './combat';
 import { RATE } from './clock';
 
-const rng = new RNG(777);
+const rng = new RNG((Date.now() ^ 777) >>> 0); // a different world story each game
 
 // ---------------------------------------------------------------- placement
 export function canPlace(b: Buildable, x: number, z: number, rot: number): { ok: boolean; why: string } {

@@ -18,7 +18,7 @@ export const PIT_TIERS: PitTier[] = [
   { name: 'The Champion of the Pit', fee: 1000, purse: 6000, level: 55, loadout: 'karuk_guard', title: 'Champion of the Pit', needs: 1 },
 ];
 
-const rng = new RNG(4711);
+const rng = new RNG((Date.now() ^ 4711) >>> 0); // a different world story each game
 
 /** Gives one of your people an order, as a click would. */
 function issue(c: Char, o: Order) {

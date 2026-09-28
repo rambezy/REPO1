@@ -13,7 +13,7 @@ import { HUNTER_LINES } from '../content/chatter';
 import { DAY, HOUR } from './clock';
 import { WORLD } from '../world/consts';
 
-const rng = new RNG(8675309);
+const rng = new RNG((Date.now() ^ 8675309) >>> 0); // a different world story each game
 let lastHour = -1;
 let followT = 0;
 

@@ -12,7 +12,7 @@ import { HOUR, DAY } from './clock';
 import { WORLD } from '../world/consts';
 import { Char } from './char';
 
-const rng = new RNG(8181);
+const rng = new RNG((Date.now() ^ 8181) >>> 0); // a different world story each game
 let t = 0;
 
 interface RaidKind { faction: string; role: 'bandit' | 'patrol'; demand: 'tribute' | 'food' | 'tax' | 'fight'; n: [number, number]; name: string; }
