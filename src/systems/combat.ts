@@ -12,6 +12,7 @@ import { S, addStat } from '../state';
 import { addXp, hasPerk, skill, attr } from './stats';
 import { sfx } from '../audio/sfx';
 import { P } from '../gfx/palette';
+import { weaponPose } from './weaponPose';
 
 export const PB_BASE = 0.17;
 
@@ -556,136 +557,180 @@ function isWaterTile(x: number, y: number) {
   return t === 10 || t === 11;
 }
 
+function arrowShape(ctx: CanvasRenderingContext2D, x: number, y: number, ang: number, len: number, alpha = 1) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(x, y);
+  ctx.rotate(ang);
+  ctx.strokeStyle = '#8a6a44';
+  ctx.lineWidth = 0.55;
+  ctx.beginPath(); ctx.moveTo(-len, 0); ctx.lineTo(0, 0); ctx.stroke();
+  ctx.fillStyle = '#c8cfd6';
+  ctx.beginPath(); ctx.moveTo(1.8, 0); ctx.lineTo(-0.3, -0.8); ctx.lineTo(-0.3, 0.8); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#e8e2d2';
+  for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(-len, 0); ctx.lineTo(-len - 1.2, s * 1.1); ctx.lineTo(-len + 1.8, s * 0.3); ctx.closePath(); ctx.fill(); }
+  ctx.restore();
+}
+
 export function drawArrows(ctx: CanvasRenderingContext2D) {
-  ctx.lineWidth = 1;
-  for (const r of arrows) {
-    const ang = Math.atan2(r.vy, r.vx);
-    ctx.strokeStyle = P.wood4;
-    ctx.beginPath();
-    ctx.moveTo(Math.round(r.x - Math.cos(ang) * 7), Math.round(r.y - Math.sin(ang) * 7));
-    ctx.lineTo(Math.round(r.x), Math.round(r.y));
-    ctx.stroke();
-    ctx.fillStyle = P.metal4;
-    ctx.fillRect(Math.round(r.x), Math.round(r.y), 1, 1);
-  }
-  for (const s of stuckArrows) {
-    ctx.globalAlpha = Math.min(1, s.life / 3);
-    ctx.strokeStyle = P.wood3;
-    ctx.beginPath();
-    ctx.moveTo(Math.round(s.x - Math.cos(s.ang) * 5), Math.round(s.y - Math.sin(s.ang) * 5 - 2));
-    ctx.lineTo(Math.round(s.x), Math.round(s.y));
-    ctx.stroke();
-    ctx.fillStyle = '#f0ece4';
-    ctx.fillRect(Math.round(s.x - Math.cos(s.ang) * 5), Math.round(s.y - Math.sin(s.ang) * 5 - 2), 1, 1);
-    ctx.globalAlpha = 1;
-  }
+  for (const r of arrows) arrowShape(ctx, r.x, r.y, Math.atan2(r.vy, r.vx), 8);
+  for (const s of stuckArrows) arrowShape(ctx, s.x, s.y - 1, s.ang, 5, Math.min(1, s.life / 3));
 }
 
 // ---------- weapon drawing ----------
 
-const WEAPON_COLORS: Record<string, [string, string]> = {
-  sword: [P.metal4, P.metal2], dagger: [P.metal4, P.metal2], axe: [P.metal3, P.wood2], mace: [P.metal3, P.wood2],
-  hammer: [P.metal3, P.wood2], spear: [P.metal4, P.wood3], stick: [P.wood3, P.wood2], fist: ['', ''], bow: [P.wood3, P.wood2],
-};
+const STEEL: [string, string, string] = ['#eef2f5', '#aab4be', '#56606a'];
 
-/** Draws the weapon of an actor during attacks and blocks (render hook). */
+function blade(ctx: CanvasRenderingContext2D, from: number, to: number, w: number, tip: number) {
+  const g = ctx.createLinearGradient(0, -w, 0, w);
+  g.addColorStop(0, STEEL[0]);
+  g.addColorStop(0.45, STEEL[1]);
+  g.addColorStop(1, STEEL[2]);
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.moveTo(from, -w);
+  ctx.lineTo(to - tip, -w * 0.85);
+  ctx.lineTo(to, 0);
+  ctx.lineTo(to - tip, w * 0.85);
+  ctx.lineTo(from, w);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(40,46,52,0.55)';
+  ctx.lineWidth = 0.18;
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+  ctx.lineWidth = 0.14;
+  ctx.beginPath(); ctx.moveTo(from + 0.5, -w * 0.25); ctx.lineTo(to - tip * 1.2, -w * 0.2); ctx.stroke();
+}
+
+function haft(ctx: CanvasRenderingContext2D, from: number, to: number, w: number, col = '#6b4526') {
+  const g = ctx.createLinearGradient(0, -w, 0, w);
+  g.addColorStop(0, '#a87444');
+  g.addColorStop(0.5, col);
+  g.addColorStop(1, '#3a2416');
+  ctx.fillStyle = g;
+  ctx.fillRect(from, -w, to - from, w * 2);
+}
+
+/** Draws the weapon of an actor from its hand during fights and at the ready (render hook). */
 export function drawWeapon(ctx: CanvasRenderingContext2D, a: Actor) {
-  if (a.dead || a.isAnimal || a.hidden) return;
+  const wp = weaponPose(a, isPlayer(a));
+  if (!wp || !wp.show) return;
   const c = a.combat;
   const w = c.weapon;
-  if (w.kind === 'fist') return;
-  const inCombat = c.phase !== 'none' || a.hostile || (a === G.player && a.mem.combatReady);
-  if (!inCombat && !a.mem.showWeapon) return;
-  const [blade, grip] = WEAPON_COLORS[w.kind] || WEAPON_COLORS.sword;
-  let ang = c.attackAngle;
-  const hx = a.x, hy = a.y - 11;
-  let len = Math.max(8, w.reach - 6);
-  let swing = 0;
-  const t = c.phaseLen > 0 ? clamp(c.phaseT / c.phaseLen, 0, 1) : 1;
-  if (c.phase === 'windup') {
-    swing = c.attackKind === 'thrust' ? 0 : -1.4 * (c.combo % 2 === 0 ? -1 : 1) * t;
-    if (c.attackKind === 'thrust') len *= 0.7;
-    if (c.attackKind === 'heavy') swing = -1.9 * t;
-  } else if (c.phase === 'strike') {
-    const from = c.attackKind === 'heavy' ? -1.9 : -1.4 * (c.combo % 2 === 0 ? -1 : 1);
-    const to = -from * 0.9;
-    swing = c.attackKind === 'thrust' ? 0 : from + (to - from) * t;
-    // swing trail
-    if (c.attackKind !== 'thrust' && c.attackKind !== 'shoot') {
-      ctx.strokeStyle = 'rgba(255,250,235,0.5)';
-      ctx.lineWidth = 2;
+  const hand = (a.mem.hand as { x: number; y: number } | undefined) ?? { x: a.x, y: a.y - 11 };
+  if (w.kind === 'bow') { drawBow(ctx, a, wp.A); return; }
+  const A = wp.A, len = wp.len;
+  // swing trail
+  if (wp.trail) {
+    const [a0, a1] = wp.trail;
+    const cx = a.x, cy = a.y - 13, R = len + 5;
+    ctx.save();
+    ctx.lineCap = 'round';
+    for (let k = 0; k < 3; k++) {
+      ctx.strokeStyle = `rgba(255,250,235,${0.16 + k * 0.1})`;
+      ctx.lineWidth = 2.6 - k * 0.8;
       ctx.beginPath();
-      const a0 = ang + from, a1 = ang + swing;
-      ctx.arc(hx, hy, len + 2, Math.min(a0, a1), Math.max(a0, a1));
+      const from = a0 + (a1 - a0) * (k * 0.25);
+      ctx.arc(cx, cy, R - k * 0.6, Math.min(from, a1), Math.max(from, a1));
       ctx.stroke();
-      ctx.lineWidth = 1;
     }
-  } else if (c.phase === 'recover') {
-    swing = c.attackKind === 'thrust' ? 0 : 1.2 * (c.combo % 2 === 0 ? 1 : -1) * (c.combo % 2 === 0 ? -1 : 1);
-  } else if (c.phase === 'block') {
-    ang = a.mem.blockAngle ?? ang;
-    swing = Math.PI / 2;
-    len *= 0.8;
-  } else {
-    // at rest: held low, pointing forward-down
-    ang = [Math.PI / 2, Math.PI, 0, -Math.PI / 2][a.dir] + 0.6;
-    len *= 0.75;
+    ctx.restore();
   }
-  if (w.kind === 'bow') {
-    drawBow(ctx, a, ang);
-    return;
-  }
-  const A = ang + swing;
-  const ex = hx + Math.cos(A) * len, ey = hy + Math.sin(A) * len;
-  const gx = hx + Math.cos(A) * 4, gy = hy + Math.sin(A) * 4;
-  // behind the body when facing up
-  ctx.lineCap = 'butt';
-  ctx.strokeStyle = P.ink;
-  ctx.lineWidth = 3;
-  ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(ex, ey); ctx.stroke();
-  ctx.strokeStyle = grip;
-  ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(gx, gy); ctx.stroke();
-  ctx.strokeStyle = blade;
-  ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(ex, ey); ctx.stroke();
-  if (w.kind === 'sword' || w.kind === 'dagger') {
-    // crossguard
-    const px = Math.cos(A + Math.PI / 2) * 2.5, py = Math.sin(A + Math.PI / 2) * 2.5;
-    ctx.strokeStyle = P.gold2;
-    ctx.beginPath(); ctx.moveTo(gx - px, gy - py); ctx.lineTo(gx + px, gy + py); ctx.stroke();
-  } else if (w.kind === 'axe' || w.kind === 'mace' || w.kind === 'hammer') {
-    ctx.fillStyle = blade;
-    ctx.fillRect(Math.round(ex - 2), Math.round(ey - 2), 4, 4);
-    ctx.fillStyle = P.ink;
-    ctx.fillRect(Math.round(ex - 2), Math.round(ey + 2), 4, 1);
+  ctx.save();
+  ctx.translate(hand.x, hand.y);
+  ctx.rotate(A);
+  ctx.lineCap = 'round';
+  switch (w.kind) {
+    case 'sword': case 'dagger': {
+      const dagger = w.kind === 'dagger';
+      const L = dagger ? Math.min(len, 7) : len;
+      haft(ctx, -2.4, 0.2, 0.55, '#4a2e1a');
+      ctx.fillStyle = '#c79a2c';
+      ctx.beginPath(); ctx.arc(-2.7, 0, 0.8, 0, Math.PI * 2); ctx.fill();
+      blade(ctx, 0.6, L, dagger ? 0.65 : 0.72, dagger ? 1.6 : 2.2);
+      const g = ctx.createLinearGradient(0, -2.6, 0, 2.6);
+      g.addColorStop(0, '#f6e39a'); g.addColorStop(1, '#8a6a18');
+      ctx.fillStyle = g;
+      ctx.fillRect(0.1, dagger ? -1.8 : -2.6, 0.9, dagger ? 3.6 : 5.2);
+      break;
+    }
+    case 'axe': {
+      haft(ctx, -2, len, 0.5);
+      const g = ctx.createLinearGradient(len - 3, -3.6, len - 3, 1);
+      g.addColorStop(0, STEEL[0]); g.addColorStop(0.5, STEEL[1]); g.addColorStop(1, STEEL[2]);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(len - 3.5, -0.6); ctx.lineTo(len - 4.6, -3.8); ctx.quadraticCurveTo(len - 2.2, -3.4, len - 0.8, -4.2);
+      ctx.quadraticCurveTo(len + 0.6, -1.5, len - 0.6, 0.8); ctx.lineTo(len - 3.5, 0.6); ctx.closePath(); ctx.fill();
+      break;
+    }
+    case 'mace': case 'hammer': {
+      haft(ctx, -2, len - 1, 0.5);
+      if (w.kind === 'mace') {
+        const g = ctx.createRadialGradient(len - 0.8, -0.8, 0.2, len, 0, 2.4);
+        g.addColorStop(0, STEEL[0]); g.addColorStop(0.6, STEEL[1]); g.addColorStop(1, STEEL[2]);
+        ctx.fillStyle = g;
+        for (let k = 0; k < 6; k++) { const q = (k / 6) * Math.PI * 2; ctx.beginPath(); ctx.moveTo(len, 0); ctx.lineTo(len + Math.cos(q) * 2.4, Math.sin(q) * 2.4); ctx.lineTo(len + Math.cos(q + 0.5) * 1.4, Math.sin(q + 0.5) * 1.4); ctx.closePath(); ctx.fill(); }
+        ctx.beginPath(); ctx.arc(len, 0, 1.4, 0, Math.PI * 2); ctx.fill();
+      } else {
+        const g = ctx.createLinearGradient(0, -2.6, 0, 2.6);
+        g.addColorStop(0, STEEL[0]); g.addColorStop(0.5, '#6f7882'); g.addColorStop(1, '#34393f');
+        ctx.fillStyle = g;
+        ctx.fillRect(len - 2.2, -2.6, 3.2, 5.2);
+      }
+      break;
+    }
+    case 'spear': {
+      haft(ctx, -6, len, 0.45, '#8a5c33');
+      blade(ctx, len - 0.3, len + 3.4, 0.9, 2.2);
+      break;
+    }
+    case 'stick': {
+      haft(ctx, -2.5, len, 0.5, '#8a6a44');
+      ctx.fillStyle = '#6b4526';
+      ctx.beginPath(); ctx.ellipse(len * 0.6, -0.5, 0.6, 0.3, 0.6, 0, Math.PI * 2); ctx.fill();
+      break;
+    }
+    default:
+      haft(ctx, -2, len, 0.5);
   }
   // telegraph glint for enemies about to strike
-  if (c.phase === 'windup' && !isPlayer(a) && t > 0.45) {
+  if (c.phase === 'windup' && !isPlayer(a) && wp.t > 0.45) {
+    const s = 1.2 + wp.t * 2.4;
     ctx.fillStyle = '#fff8d0';
-    const s = 1 + Math.round(t * 2);
-    ctx.fillRect(Math.round(ex - s), Math.round(ey), s * 2 + 1, 1);
-    ctx.fillRect(Math.round(ex), Math.round(ey - s), 1, s * 2 + 1);
+    ctx.globalAlpha = 0.9;
+    ctx.beginPath();
+    ctx.moveTo(len - s, 0); ctx.lineTo(len, -0.35); ctx.lineTo(len + s, 0); ctx.lineTo(len, 0.35); ctx.closePath();
+    ctx.moveTo(len, -s); ctx.lineTo(len + 0.35, 0); ctx.lineTo(len, s); ctx.lineTo(len - 0.35, 0); ctx.closePath();
+    ctx.fill();
+    ctx.globalAlpha = 1;
   }
+  ctx.restore();
 }
 
 function drawBow(ctx: CanvasRenderingContext2D, a: Actor, ang: number) {
-  const hx = a.x + Math.cos(ang) * 6, hy = a.y - 11 + Math.sin(ang) * 6;
+  const hand = (a.mem.hand as { x: number; y: number } | undefined) ?? { x: a.x, y: a.y - 11 };
+  const hx = hand.x, hy = hand.y;
   const draw = a.mem.drawT ? clamp(a.mem.drawT / (a.mem.drawTime || 0.8), 0, 1) : 0;
-  ctx.strokeStyle = P.wood2;
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(hx - Math.cos(ang) * 4, hy - Math.sin(ang) * 4, 7, ang - 1.1, ang + 1.1);
-  ctx.stroke();
-  ctx.lineWidth = 1;
-  ctx.strokeStyle = '#d8d0c0';
-  const e1x = hx - Math.cos(ang) * 4 + Math.cos(ang - 1.1) * 7, e1y = hy - Math.sin(ang) * 4 + Math.sin(ang - 1.1) * 7;
-  const e2x = hx - Math.cos(ang) * 4 + Math.cos(ang + 1.1) * 7, e2y = hy - Math.sin(ang) * 4 + Math.sin(ang + 1.1) * 7;
-  const nx = hx - Math.cos(ang) * (4 + draw * 5), ny = hy - Math.sin(ang) * (4 + draw * 5);
-  ctx.beginPath(); ctx.moveTo(e1x, e1y); ctx.lineTo(nx, ny); ctx.lineTo(e2x, e2y); ctx.stroke();
-  if (draw > 0) {
-    ctx.strokeStyle = P.wood4;
-    ctx.beginPath(); ctx.moveTo(nx, ny); ctx.lineTo(nx + Math.cos(ang) * 11, ny + Math.sin(ang) * 11); ctx.stroke();
-  }
+  ctx.save();
+  ctx.translate(hx, hy);
+  ctx.rotate(ang);
+  ctx.lineCap = 'round';
+  // limbs
+  ctx.strokeStyle = '#6b4526';
+  ctx.lineWidth = 1.1;
+  ctx.beginPath(); ctx.moveTo(-1.5 - draw * 0.8, -8); ctx.quadraticCurveTo(2.6, 0, -1.5 - draw * 0.8, 8); ctx.stroke();
+  ctx.strokeStyle = '#a87444';
+  ctx.lineWidth = 0.4;
+  ctx.beginPath(); ctx.moveTo(-1.3 - draw * 0.8, -7.6); ctx.quadraticCurveTo(2.2, 0, -1.3 - draw * 0.8, 7.6); ctx.stroke();
+  // string pulled back
+  const nx = -1.5 - draw * 5.5;
+  ctx.strokeStyle = 'rgba(230,222,205,0.9)';
+  ctx.lineWidth = 0.22;
+  ctx.beginPath(); ctx.moveTo(-1.5 - draw * 0.8, -8); ctx.lineTo(nx, 0); ctx.lineTo(-1.5 - draw * 0.8, 8); ctx.stroke();
+  ctx.restore();
+  if (draw > 0) arrowShape(ctx, hx + Math.cos(ang) * 3, hy + Math.sin(ang) * 3, ang, 8 - (1 - draw) * 2);
 }
 
 export { wrapAngle };

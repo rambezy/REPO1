@@ -170,9 +170,9 @@ function characterTab(rerender: () => void): HTMLElement {
   const head = el('div');
   head.style.display = 'flex'; head.style.gap = '14px'; head.style.alignItems = 'center';
   const img = document.createElement('canvas');
-  img.width = 48; img.height = 48;
+  img.width = pc.width; img.height = pc.height;
   img.getContext('2d')!.drawImage(pc, 0, 0);
-  img.style.width = '96px'; img.style.height = '96px'; img.style.imageRendering = 'pixelated'; img.style.border = '2px solid #3a2c1e';
+  img.style.width = '104px'; img.style.height = '104px'; img.style.border = '2px solid #3a2c1e'; img.style.borderRadius = '4px'; img.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
   head.append(img, el('div', { html: `<h2>${esc(S.playerName)}</h2><div class="meta">Son of Radek the smith · ${dateString()}, ${clockString()} · Day ${dayIndex() + 1}</div>` }));
   left.append(head);
   left.append(el('h3', { html: 'Attributes' }));
@@ -285,9 +285,9 @@ function codexTab(rerender: () => void): HTMLElement {
   if (c) {
     const pc = getPortrait('c:' + c.id, c.look, S.deadNpcs[c.id] ? 'sleep' : 'neutral');
     const cv = document.createElement('canvas');
-    cv.width = 48; cv.height = 48;
+    cv.width = pc.width; cv.height = pc.height;
     cv.getContext('2d')!.drawImage(pc, 0, 0);
-    cv.style.width = '144px'; cv.style.height = '144px'; cv.style.imageRendering = 'pixelated'; cv.style.border = '2px solid #3a2c1e';
+    cv.style.width = '160px'; cv.style.height = '160px'; cv.style.border = '2px solid #3a2c1e'; cv.style.borderRadius = '4px'; cv.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
     right.append(cv, el('h2', { html: esc(c.name) }), el('div', { cls: 'meta', html: esc(c.title || '') }), el('p', { html: esc(c.codex || '') }));
     const extra = S.flags['codex_' + c.id] as string[] | undefined;
     if (extra) for (const e of extra) right.append(el('p', { cls: 'entry', html: esc(e) }));

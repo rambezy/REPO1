@@ -6,9 +6,9 @@ chosen ones: just bread, iron, grief, and stubborn hope.
 
 It is inspired by *Kingdom Come: Deliverance*: a grounded world with a
 day-night cycle, skills that grow by use, hunger and fatigue, reputation
-and crime, and hard, readable sword fights. Everything, from the pixel art
-to the music, is generated in code; the whole game builds into a single HTML
-file.
+and crime, and hard, readable sword fights. Everything, from the painted
+art to the music, is generated in code; the whole game builds into a single
+HTML file.
 
 ## The story
 
@@ -96,10 +96,36 @@ when the page URL ends in `#debug`.
 `tools/make-artifact.mjs` turns the build into page content for hosting in
 a page that supplies its own `<html>`, `<head>` and `<body>`.
 
+### How it is drawn
+
+The world is drawn at full screen resolution through a zoom transform, so
+the camera glides with sub-pixel smoothness and all game logic stays in
+world units (a tile is 16).
+
+- **Ground**: painted, tiling materials (grass tufts, leaf litter, pebbles,
+  cobbles, planks, ploughed furrows, wheat) are laid down per chunk in web
+  workers, with curved borders between ground types, raised turf edges,
+  banks that shade the water, water depth and shallows, and broad colour
+  drift so fields never look tiled. Grass, flowers and ferns sway on top.
+- **Things**: trees, buildings, props, people, animals, portraits and icons
+  are painted with gradients and brush-like strokes at four texels per
+  world unit, lazily, the first time they come near the camera. Tree crowns
+  bend in the wind.
+- **People** are posed every frame from painted parts: a real walk cycle,
+  breathing, blinking, arms that reach for where the weapon goes.
+- **Light**: the scene is multiplied by a light map that follows the sun
+  (gold at dawn and dusk, blue by moonlight) with fires, lanterns and lit
+  windows added in; objects cast soft shadows that swing with the time of
+  day; clouds drift their shadows across the land; sunbeams slant through
+  windows indoors.
+
+`dev/*.html` are preview pages for the art (open them on the dev server).
+
 ### Layout
 
 - `src/engine`: loop, input, renderer, lighting, particles
-- `src/gfx`: procedural sprites, portraits, terrain, buildings, props, icons
+- `src/gfx`: the painting toolkit, people, portraits, ground materials and
+  chunk renderer, trees, buildings, props, animals, icons
 - `src/world`: maps, chunked terrain, actors, collision, path-finding
 - `src/systems`: combat, AI, stats, inventory, crime, survival, quests,
   dialogue scripting, saving

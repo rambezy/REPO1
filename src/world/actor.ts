@@ -3,7 +3,10 @@
 // operate on these fields.
 
 import { Dir, DIR_VEC, dirFromVec, clamp, TILE } from '../engine/util';
-import { Look, drawChar, FRAME } from '../gfx/characters';
+import { Look, FRAME } from '../gfx/characters';
+import { drawPerson, PersonPose } from '../gfx/person';
+import { weaponPose } from '../systems/weaponPose';
+import { G } from '../G';
 import { AnimalLook, drawAnimal, AFRAME } from '../gfx/animals';
 import { GameMap } from './map';
 import { P } from '../gfx/palette';
@@ -226,26 +229,43 @@ export class Actor {
 
   draw(ctx: CanvasRenderingContext2D) {
     if (this.hidden) return;
-    const f = this.frameIndex();
-    const bob = this.pose === 'walk' && !this.animal && (Math.floor(this.animT * (this.running ? 11 : 7.5)) % 2 === 1) ? -1 : 0;
-    // shadow
-    if (this.pose !== 'dead' && this.pose !== 'lie' && this.pose !== 'sleep') {
-      ctx.fillStyle = 'rgba(10,6,4,0.28)';
-      const w = this.animal ? Math.min(20, this.hitW + 6) : 12;
+    const lying = this.pose === 'dead' || this.pose === 'lie' || this.pose === 'sleep';
+    // soft contact shadow under the feet
+    if (!lying) {
+      const w = this.animal ? Math.min(22, this.hitW + 8) : 13 * (this.look?.build === 'child' ? 0.75 : 1);
+      const g = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, w / 2);
+      g.addColorStop(0, 'rgba(12,8,6,0.42)');
+      g.addColorStop(1, 'rgba(12,8,6,0)');
+      ctx.fillStyle = g;
       ctx.beginPath();
-      ctx.ellipse(Math.round(this.x), Math.round(this.y), w / 2, 2.5, 0, 0, Math.PI * 2);
+      ctx.ellipse(this.x, this.y, w / 2, 3.2, 0, 0, Math.PI * 2);
       ctx.fill();
     }
-    if (this.pose === 'sleep' && this.look) {
-      drawChar(ctx, this.look, 0, FRAME.HURT, this.x, this.y, { alpha: this.alpha, clipH: 13 });
+    if (this.animal) {
+      const f = this.frameIndex();
+      drawAnimal(ctx, this.animal, this.pose === 'dead' ? 1 : this.dir, f, this.x, this.y, this.flash, this.alpha);
       return;
     }
-    if (this.animal) {
-      drawAnimal(ctx, this.animal, this.pose === 'dead' ? 1 : this.dir, f, this.x, this.y, this.flash, this.alpha);
-    } else if (this.look) {
-      const dir = this.pose === 'dead' || this.pose === 'lie' ? 0 : this.dir;
-      drawChar(ctx, this.look, dir, f, this.x, this.y + bob + (this.pose === 'dead' || this.pose === 'lie' ? 2 : 0), { flash: this.flash, alpha: this.alpha });
-    }
+    if (!this.look) return;
+    const wp = weaponPose(this, this === G.player);
+    const fighting = !!wp && !wp.rest;
+    const hand = (this.mem.hand ||= { x: this.x, y: this.y - 11 });
+    let seed = this.mem.animSeed as number | undefined;
+    if (seed === undefined) { seed = 0; for (let i = 0; i < this.id.length; i++) seed = (seed * 31 + this.id.charCodeAt(i)) % 997; this.mem.animSeed = seed; }
+    const pose: PersonPose = this.pose === 'walk' && this.crouching ? 'walk' : (this.pose as PersonPose);
+    drawPerson(ctx, this.look, {
+      dir: lying ? 0 : this.dir,
+      pose,
+      t: this.animT,
+      running: this.running,
+      crouching: this.crouching,
+      aim: fighting ? wp!.A : null,
+      reach: wp?.reach,
+      flash: this.flash,
+      alpha: this.alpha,
+      seed,
+      hand,
+    }, this.x, this.y + (lying ? 2 : 0));
   }
 
   /** Point in front of the actor at distance d. */

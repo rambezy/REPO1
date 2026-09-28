@@ -15,8 +15,8 @@ const barEls = new Map<string, HTMLElement>();
 function pos(a: Actor, dy: number) {
   const canvas = G.canvas.getBoundingClientRect();
   const root = UI.root.getBoundingClientRect();
-  const x = (a.x - Math.round(G.cam.x)) * G.scale + canvas.left - root.left;
-  const y = (a.y + dy - Math.round(G.cam.y)) * G.scale + canvas.top - root.top;
+  const x = (a.x - G.cam.x) * G.scale + canvas.left - root.left;
+  const y = (a.y + dy - G.cam.y) * G.scale + canvas.top - root.top;
   return { x, y };
 }
 

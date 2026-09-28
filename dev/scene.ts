@@ -1,4 +1,6 @@
-import { renderChunkPixels, CHUNK, drawWaterGlints } from '../src/gfx/terrainArt';
+import { renderGround, CHUNK, groundSize } from '../src/gfx/ground/render';
+import { TexCache } from '../src/gfx/ground/textures';
+import { drawWaterFx } from '../src/gfx/ground/water';
 import { T } from '../src/world/terrain';
 import { treeSprite, bushSprite, rockSprite, herbSprite, flowerPatchSprite, reedsSprite } from '../src/gfx/nature';
 import { buildingArt } from '../src/gfx/buildings';
@@ -26,23 +28,29 @@ for (let y = 3; y < 8; y++) for (let x = 40; x < 48; x++) set(x, y, T.ROCK);
 const src = { w: W, h: H, ground, seed: 7, outdoor: true };
 
 const c = document.getElementById('c') as HTMLCanvasElement;
-const S = 2;
+const S = +(new URLSearchParams(location.search).get('s') || 3);
 c.width = W * 16 * S; c.height = H * 16 * S;
 const ctx = c.getContext('2d')!;
-ctx.imageSmoothingEnabled = false;
+ctx.imageSmoothingEnabled = true;
+ctx.imageSmoothingQuality = 'high';
 ctx.scale(S, S);
+const TR = 3;
 const t0 = performance.now();
+const tex = new TexCache(TR);
+const t1 = performance.now();
+const n = groundSize(TR);
 for (let cy = 0; cy < Math.ceil(H / CHUNK); cy++) for (let cx = 0; cx < Math.ceil(W / CHUNK); cx++) {
-  const out = new Uint32Array(256 * 256);
-  renderChunkPixels(src, cx, cy, out);
-  const bytes = new Uint8ClampedArray(out.buffer);
-  const img = new ImageData(bytes, 256, 256);
-  const tmp = document.createElement('canvas'); tmp.width = 256; tmp.height = 256;
+  const out = new Uint32Array(n * n);
+  renderGround(src, cx, cy, TR, tex, out);
+  const img = new ImageData(new Uint8ClampedArray(out.buffer), n, n);
+  const tmp = document.createElement('canvas'); tmp.width = n; tmp.height = n;
   tmp.getContext('2d')!.putImageData(img, 0, 0);
-  ctx.drawImage(tmp, cx * 256, cy * 256);
+  const m = 1 / TR;
+  ctx.drawImage(tmp, cx * 128 - m, cy * 128 - m, 128 + 2 * m, 128 + 2 * m);
 }
-console.log('chunks ms', (performance.now() - t0).toFixed(1));
-drawWaterGlints(ctx, src, 0, 0, W - 1, H - 1, 0.3);
+console.log('textures ms', (t1 - t0).toFixed(1), 'chunks ms', (performance.now() - t1).toFixed(1));
+const wm = { w: W, h: H, outdoor: true, get: (x: number, y: number) => (x < 0 || y < 0 || x >= W || y >= H ? T.GRASS : ground[y * W + x]) };
+drawWaterFx(ctx, wm, 0, 0, W * 16, H * 16, 0.3);
 type D = { y: number; draw: () => void };
 const list: D[] = [];
 const add = (y: number, draw: () => void) => list.push({ y, draw });

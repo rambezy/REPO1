@@ -3,11 +3,12 @@ import { Look, randomLook } from '../src/gfx/characters';
 import { CLOTH, HAIR, P } from '../src/gfx/palette';
 
 const c = document.getElementById('c') as HTMLCanvasElement;
-const S = 3;
-const cols = 12, rows = 8;
-c.width = cols * 50 * S; c.height = rows * 50 * S;
+const S = 2;
+const cols = 12, rows = 12;
+const Z = 64; // cell size
+c.width = cols * Z * S; c.height = rows * Z * S;
 const ctx = c.getContext('2d')!;
-ctx.imageSmoothingEnabled = false;
+ctx.imageSmoothingQuality = 'high';
 const hero: Look = { skin: 'fair', hair: HAIR.brown, hairStyle: 'messy', shirt: CLOTH.linen, legs: CLOTH.brown, boots: P.wood1, outer: 'vest', outerColor: CLOTH.russet, eyes: '#4a6a3a', face: { jaw: 'round', nose: 'small', brows: 'thick' }, portraitBg: '#6b5a44' };
 const father: Look = { skin: 'ruddy', hair: HAIR.darkbrown, hairStyle: 'short', beard: 'full', beardColor: HAIR.saltpepper, shirt: CLOTH.linenDark, outer: 'apron', apronColor: P.wood2, legs: CLOTH.charcoal, boots: P.wood0, build: 'broad', face: { jaw: 'heavy', nose: 'broad', brows: 'bushy', wrinkles: 2 }, portraitBg: '#7a4a2a' };
 const mother: Look = { skin: 'fair', hair: HAIR.chestnut, hairStyle: 'bun', female: true, hat: 'kerchief', hatColor: CLOTH.white, shirt: CLOTH.linen, outer: 'dress', outerColor: CLOTH.madder, apronColor: CLOTH.white, legs: CLOTH.brown, boots: P.wood1, face: { jaw: 'round', nose: 'small', mouth: 'full', wrinkles: 1, cheeks: true }, eyes: '#5a4a2a', portraitBg: '#8a6a44' };
@@ -24,8 +25,8 @@ const looks = [hero, father, mother, lida, monk, knight, dieter, hanka, wenda, o
 looks.forEach((lk, r) => {
   if (r >= rows) return;
   EXPRS.forEach((e, i) => {
-    const img = getPortrait('p' + r, lk, e, false, false);
-    ctx.drawImage(img, i * 50 * S, r * 50 * S, 48 * S, 48 * S);
+    const img = getPortrait('p' + r, lk, e, i === 1 && r % 2 === 0, false);
+    ctx.drawImage(img, i * Z * S, r * Z * S, (Z - 2) * S, (Z - 2) * S);
   });
 });
 // second block: remaining looks neutral + random villagers

@@ -1,39 +1,59 @@
-// Terrain chunk cache. Chunks are rendered in a web worker when possible and
+// Ground chunk cache. Chunks are painted in web workers when possible and
 // drawn from cached canvases; missing chunks fall back to flat colours.
 
-import { CHUNK, TS, chunkWindow, renderChunkPixels, drawWaterGlints } from '../gfx/terrainArt';
+import { CHUNK, TS, PX, chunkWindow, renderGround, groundSize } from '../gfx/ground/render';
+import { TexCache, MatName, MatTex, ALL_MATS } from '../gfx/ground/textures';
+import { drawWaterFx } from '../gfx/ground/water';
 import { GameMap } from './map';
-import { makeCanvas } from '../gfx/pixel';
+import { newCanvas } from '../gfx/paint';
 import { T } from './terrain';
+import { G } from '../G';
 import ChunkWorker from '../gfx/chunkWorker?worker&inline';
-
-const PX = CHUNK * TS;
 
 interface Entry { canvas: HTMLCanvasElement | null; version: number; pending: boolean; lastUsed: number }
 
 const FALLBACK: Record<number, string> = {
-  [T.GRASS]: '#4b7d33', [T.FOREST]: '#35592a', [T.MEADOW]: '#5a8f3b', [T.DIRT]: '#765637', [T.ROAD]: '#937553',
-  [T.COBBLE]: '#75757c', [T.SAND]: '#bca46f', [T.MUD]: '#3d2e20', [T.FIELD]: '#5e432c', [T.WATER]: '#29557f', [T.DEEP]: '#1f4166',
-  [T.ROCK]: '#5b5b63', [T.ASH]: '#2b2826', [T.FLAGSTONE]: '#75757c', [T.WOOD]: '#8a5c33', [T.STRAW]: '#8f6b46', [T.CARPET]: '#6e1f1f',
-  [T.WALL_STONE]: '#44444c', [T.WALL_PLASTER]: '#3b2a1c', [T.WALL_WOOD]: '#4f321e', [T.WALL_DARK]: '#0b0807', [T.BRIDGE]: '#8a5c33',
-  [T.BRIDGE_V]: '#8a5c33', [T.FORD]: '#356b98', [T.WHEAT]: '#b08a3a', [T.VEG]: '#5e432c', [T.GRAVEL]: '#75757c', [T.WALL_CAVE]: '#2c2622', [T.BURNT_WHEAT]: '#2b2826',
+  [T.GRASS]: '#4f7632', [T.FOREST]: '#34482a', [T.MEADOW]: '#5a8438', [T.DIRT]: '#76573a', [T.ROAD]: '#957853',
+  [T.COBBLE]: '#7a746a', [T.SAND]: '#c4ab80', [T.MUD]: '#4b3827', [T.FIELD]: '#6a4c34', [T.WATER]: '#39707a', [T.DEEP]: '#1f4c62',
+  [T.ROCK]: '#6c6862', [T.ASH]: '#2d2927', [T.FLAGSTONE]: '#8e8a82', [T.WOOD]: '#8a5c34', [T.STRAW]: '#8a7048', [T.CARPET]: '#6e1f1f',
+  [T.WALL_STONE]: '#7c7870', [T.WALL_PLASTER]: '#2b1e14', [T.WALL_WOOD]: '#4f321e', [T.WALL_DARK]: '#0b0807', [T.BRIDGE]: '#7a6a58',
+  [T.BRIDGE_V]: '#7a6a58', [T.FORD]: '#5d8a7c', [T.WHEAT]: '#b8923e', [T.VEG]: '#5a412b', [T.GRAVEL]: '#6f6b64', [T.WALL_CAVE]: '#26211e', [T.BURNT_WHEAT]: '#1f1b19',
 };
 
 class ChunkCache {
   private maps = new Map<string, Map<number, Entry>>();
-  private worker: Worker | null = null;
+  private workers: { w: Worker; busy: number }[] = [];
   private reqId = 1;
-  private inflight = new Map<number, { mapId: string; key: number; version: number }>();
+  private inflight = new Map<number, { mapId: string; key: number; version: number; worker: number }>();
   private frame = 0;
   private syncBudget = 0;
+  private tr = 0;
+  private tex: TexCache | null = null;
 
-  constructor() {
-    try {
-      this.worker = new ChunkWorker();
-      this.worker.onmessage = (e) => this.onResult(e.data);
-      this.worker.onerror = () => { this.worker = null; };
-    } catch {
-      this.worker = null;
+  /** Texels per world unit for the ground, chosen once from the display density. */
+  private init() {
+    if (this.tex) return;
+    const k = G.scale * G.dpr;
+    this.tr = k >= 2.6 ? 3 : 2;
+    this.tex = new TexCache(this.tr);
+    // workers paint their own textures when they have an OffscreenCanvas;
+    // otherwise the main thread paints them once and sends them over
+    const offscreen = typeof OffscreenCanvas !== 'undefined' && !!OffscreenCanvas.prototype.getContext;
+    let shared: Record<string, MatTex> | undefined;
+    const n = Math.max(1, Math.min(3, (navigator.hardwareConcurrency || 2) - 1));
+    for (let i = 0; i < n; i++) {
+      try {
+        const w = new ChunkWorker();
+        const slot = { w, busy: 0 };
+        const idx = this.workers.length;
+        w.onmessage = (e) => this.onResult(e.data, idx);
+        w.onerror = () => { const j = this.workers.indexOf(slot); if (j >= 0) this.workers.splice(j, 1); };
+        if (!offscreen && !shared) { shared = {}; for (const m of ALL_MATS) shared[m] = this.tex.get(m as MatName); }
+        w.postMessage({ type: 'init', tr: this.tr, tex: shared });
+        this.workers.push(slot);
+      } catch {
+        break;
+      }
     }
   }
 
@@ -43,16 +63,17 @@ class ChunkCache {
     return t;
   }
 
-  private onResult(d: { id: number; cx: number; cy: number; buf: ArrayBuffer }) {
+  private onResult(d: { id: number; cx: number; cy: number; buf: ArrayBuffer }, wi: number) {
     const info = this.inflight.get(d.id);
     this.inflight.delete(d.id);
+    if (this.workers[wi]) this.workers[wi].busy = Math.max(0, this.workers[wi].busy - 1);
     if (!info) return;
     const t = this.table(info.mapId);
     const e = t.get(info.key);
     if (!e) return;
     e.pending = false;
     if (e.version > info.version) return; // stale; will be re-requested
-    e.canvas = toCanvas(new Uint32Array(d.buf));
+    e.canvas = this.toCanvas(new Uint32Array(d.buf));
     e.version = info.version;
   }
 
@@ -67,23 +88,28 @@ class ChunkCache {
 
   private request(map: GameMap, cx: number, cy: number, key: number, e: Entry) {
     const version = map.version;
-    if (this.worker) {
+    if (this.workers.length) {
+      let wi = 0;
+      for (let i = 1; i < this.workers.length; i++) if (this.workers[i].busy < this.workers[wi].busy) wi = i;
       const id = this.reqId++;
       e.pending = true;
-      this.inflight.set(id, { mapId: map.id, key, version });
+      this.workers[wi].busy++;
+      this.inflight.set(id, { mapId: map.id, key, version, worker: wi });
       const src = chunkWindow(map, cx, cy);
-      this.worker.postMessage({ id, src, cx, cy });
+      this.workers[wi].w.postMessage({ id, src, cx, cy });
     } else if (this.syncBudget > 0) {
       this.syncBudget--;
-      const out = new Uint32Array(PX * PX);
-      renderChunkPixels(map, cx, cy, out);
-      e.canvas = toCanvas(out);
+      const n = groundSize(this.tr);
+      const out = new Uint32Array(n * n);
+      renderGround(map, cx, cy, this.tr, this.tex!, out);
+      e.canvas = this.toCanvas(out);
       e.version = version;
     }
   }
 
   /** Ensure chunks around the view exist; call once per frame before drawing. */
   prepare(map: GameMap, x0: number, y0: number, x1: number, y1: number, margin = 1) {
+    this.init();
     this.frame++;
     this.syncBudget = 1;
     const t = this.table(map.id);
@@ -103,9 +129,9 @@ class ChunkCache {
       if (e.version !== map.version && !e.pending) this.request(map, cx, cy, key, e);
     }
     // evict old chunks
-    if (t.size > 90) {
+    if (t.size > 70) {
       const entries = [...t.entries()].sort((a, b) => a[1].lastUsed - b[1].lastUsed);
-      for (let i = 0; i < entries.length - 70; i++) t.delete(entries[i][0]);
+      for (let i = 0; i < entries.length - 56; i++) if (!entries[i][1].pending) t.delete(entries[i][0]);
     }
   }
 
@@ -124,29 +150,30 @@ class ChunkCache {
     const t = this.table(map.id);
     const cx0 = Math.max(0, Math.floor(x0 / PX)), cy0 = Math.max(0, Math.floor(y0 / PX));
     const cx1 = Math.floor(x1 / PX), cy1 = Math.floor(y1 / PX);
+    const m = 1 / (this.tr || 3);
     for (let cy = cy0; cy <= cy1; cy++) for (let cx = cx0; cx <= cx1; cx++) {
       if (cx * CHUNK >= map.w || cy * CHUNK >= map.h) continue;
       const e = t.get(cy * 1000 + cx);
-      if (e && e.canvas) ctx.drawImage(e.canvas, cx * PX, cy * PX);
+      if (e && e.canvas) ctx.drawImage(e.canvas, cx * PX - m, cy * PX - m, PX + 2 * m, PX + 2 * m);
       else this.drawFallback(ctx, map, cx, cy);
     }
-    // outside-of-map fill for interiors
-    drawWaterGlints(ctx, map, Math.floor(x0 / TS), Math.floor(y0 / TS), Math.floor(x1 / TS), Math.floor(y1 / TS), time);
+    drawWaterFx(ctx, map, x0, y0, x1, y1, time);
   }
 
   private drawFallback(ctx: CanvasRenderingContext2D, map: GameMap, cx: number, cy: number) {
     for (let ty = cy * CHUNK; ty < Math.min(map.h, (cy + 1) * CHUNK); ty++) for (let tx = cx * CHUNK; tx < Math.min(map.w, (cx + 1) * CHUNK); tx++) {
-      ctx.fillStyle = FALLBACK[map.get(tx, ty)] || '#000';
-      ctx.fillRect(tx * TS, ty * TS, TS, TS);
+      ctx.fillStyle = FALLBACK[map.get(tx, ty)] || '#0b0807';
+      ctx.fillRect(tx * TS - 0.05, ty * TS - 0.05, TS + 0.1, TS + 0.1);
     }
   }
-}
 
-function toCanvas(px: Uint32Array): HTMLCanvasElement {
-  const c = makeCanvas(PX, PX);
-  const bytes = new Uint8ClampedArray(px.buffer as ArrayBuffer, px.byteOffset, px.byteLength);
-  c.getContext('2d')!.putImageData(new ImageData(bytes, PX, PX), 0, 0);
-  return c;
+  private toCanvas(px: Uint32Array): HTMLCanvasElement {
+    const n = groundSize(this.tr);
+    const c = newCanvas(n, n);
+    const bytes = new Uint8ClampedArray(px.buffer as ArrayBuffer, px.byteOffset, px.byteLength);
+    c.getContext('2d')!.putImageData(new ImageData(bytes, n, n), 0, 0);
+    return c;
+  }
 }
 
 export const chunks = new ChunkCache();

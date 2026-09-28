@@ -66,7 +66,6 @@ let advancePressed = false;
 function drawPortrait() {
   if (!portraitCanvas || !current || !current.look) return;
   const ctx = portraitCanvas.getContext('2d')!;
-  ctx.imageSmoothingEnabled = false;
   const blink = blinkT < 0.12 && current.expr !== 'laugh' && current.expr !== 'sleep';
   const img = getPortrait(current.key, current.look, current.expr, typing && talkFrame, blink);
   ctx.clearRect(0, 0, PORTRAIT_SIZE, PORTRAIT_SIZE);

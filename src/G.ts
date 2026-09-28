@@ -21,9 +21,13 @@ export const G = {
   mode: 'title' as Mode,
   canvas: null as unknown as HTMLCanvasElement,
   ctx: null as unknown as CanvasRenderingContext2D,
+  /** size of the view in world units */
   viewW: 480,
   viewH: 270,
+  /** CSS pixels per world unit */
   scale: 3,
+  /** device pixels per CSS pixel (capped) */
+  dpr: 1,
   map: null as unknown as GameMap,
   player: null as unknown as Actor,
   cam: { x: 0, y: 0, shake: 0, zoom: 1, follow: null, lockX: null, lockY: null, speed: 8 } as Camera,

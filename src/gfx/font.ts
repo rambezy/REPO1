@@ -1,116 +1,28 @@
-// A 5x7 bitmap font for crisp in-world text (damage numbers, tags).
+// In-world text (damage numbers, distances, little symbols), set in the
+// game's book face and drawn as crisp vector text at any zoom.
 
-const G: Record<string, string> = {
-  A: '.###.|#...#|#...#|#####|#...#|#...#|#...#',
-  B: '####.|#...#|#...#|####.|#...#|#...#|####.',
-  C: '.###.|#...#|#....|#....|#....|#...#|.###.',
-  D: '####.|#...#|#...#|#...#|#...#|#...#|####.',
-  E: '#####|#....|#....|####.|#....|#....|#####',
-  F: '#####|#....|#....|####.|#....|#....|#....',
-  G: '.###.|#...#|#....|#.###|#...#|#...#|.###.',
-  H: '#...#|#...#|#...#|#####|#...#|#...#|#...#',
-  I: '.###.|..#..|..#..|..#..|..#..|..#..|.###.',
-  J: '..###|...#.|...#.|...#.|#..#.|#..#.|.##..',
-  K: '#...#|#..#.|#.#..|##...|#.#..|#..#.|#...#',
-  L: '#....|#....|#....|#....|#....|#....|#####',
-  M: '#...#|##.##|#.#.#|#.#.#|#...#|#...#|#...#',
-  N: '#...#|##..#|#.#.#|#..##|#...#|#...#|#...#',
-  O: '.###.|#...#|#...#|#...#|#...#|#...#|.###.',
-  P: '####.|#...#|#...#|####.|#....|#....|#....',
-  Q: '.###.|#...#|#...#|#...#|#.#.#|#..#.|.##.#',
-  R: '####.|#...#|#...#|####.|#.#..|#..#.|#...#',
-  S: '.####|#....|#....|.###.|....#|....#|####.',
-  T: '#####|..#..|..#..|..#..|..#..|..#..|..#..',
-  U: '#...#|#...#|#...#|#...#|#...#|#...#|.###.',
-  V: '#...#|#...#|#...#|#...#|#...#|.#.#.|..#..',
-  W: '#...#|#...#|#...#|#.#.#|#.#.#|#.#.#|.#.#.',
-  X: '#...#|#...#|.#.#.|..#..|.#.#.|#...#|#...#',
-  Y: '#...#|#...#|.#.#.|..#..|..#..|..#..|..#..',
-  Z: '#####|....#|...#.|..#..|.#...|#....|#####',
-  '0': '.###.|#...#|#..##|#.#.#|##..#|#...#|.###.',
-  '1': '..#..|.##..|..#..|..#..|..#..|..#..|.###.',
-  '2': '.###.|#...#|....#|...#.|..#..|.#...|#####',
-  '3': '####.|....#|....#|.###.|....#|....#|####.',
-  '4': '...#.|..##.|.#.#.|#..#.|#####|...#.|...#.',
-  '5': '#####|#....|####.|....#|....#|#...#|.###.',
-  '6': '.###.|#....|#....|####.|#...#|#...#|.###.',
-  '7': '#####|....#|...#.|..#..|.#...|.#...|.#...',
-  '8': '.###.|#...#|#...#|.###.|#...#|#...#|.###.',
-  '9': '.###.|#...#|#...#|.####|....#|....#|.###.',
-  '+': '.....|..#..|..#..|#####|..#..|..#..|.....',
-  '-': '.....|.....|.....|#####|.....|.....|.....',
-  '!': '..#..|..#..|..#..|..#..|..#..|.....|..#..',
-  '?': '.###.|#...#|....#|...#.|..#..|.....|..#..',
-  '.': '.....|.....|.....|.....|.....|.....|..#..',
-  ',': '.....|.....|.....|.....|.....|..#..|.#...',
-  ':': '.....|..#..|.....|.....|.....|..#..|.....',
-  "'": '..#..|..#..|.....|.....|.....|.....|.....',
-  '/': '....#|....#|...#.|..#..|.#...|#....|#....',
-  '%': '##..#|##..#|...#.|..#..|.#...|#..##|#..##',
-  '(': '...#.|..#..|.#...|.#...|.#...|..#..|...#.',
-  ')': '.#...|..#..|...#.|...#.|...#.|..#..|.#...',
-  ' ': '.....|.....|.....|.....|.....|.....|.....',
-  '*': '.....|#.#.#|.###.|#####|.###.|#.#.#|.....',
-  '♥': '.....|.#.#.|#####|#####|.###.|..#..|.....',
-  'x': '.....|.....|#...#|.#.#.|..#..|.#.#.|#...#',
-};
-
-const cache = new Map<string, HTMLCanvasElement>();
-
-function glyphCanvas(color: string, outline: string | null): HTMLCanvasElement {
-  const key = color + '|' + outline;
-  let c = cache.get(key);
-  if (c) return c;
-  const chars = Object.keys(G);
-  // Each glyph cell is 7x9 to leave room for a 1px outline.
-  c = document.createElement('canvas');
-  c.width = chars.length * 7;
-  c.height = 9;
-  const ctx = c.getContext('2d')!;
-  chars.forEach((ch, i) => {
-    const rows = G[ch].split('|');
-    const ox = i * 7 + 1, oy = 1;
-    if (outline) {
-      ctx.fillStyle = outline;
-      for (let y = 0; y < 7; y++) for (let x = 0; x < 5; x++) {
-        if (rows[y][x] !== '#') continue;
-        for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [1, 1], [-1, 1], [1, -1], [-1, -1]]) {
-          ctx.fillRect(ox + x + dx, oy + y + dy, 1, 1);
-        }
-      }
-    }
-    ctx.fillStyle = color;
-    for (let y = 0; y < 7; y++) for (let x = 0; x < 5; x++) {
-      if (rows[y][x] === '#') ctx.fillRect(ox + x, oy + y, 1, 1);
-    }
-  });
-  cache.set(key, c);
-  return c;
-}
-
-const INDEX: Record<string, number> = {};
-Object.keys(G).forEach((ch, i) => (INDEX[ch] = i));
+const FACE = '"Alegreya SC", "Alegreya", Georgia, serif';
 
 export function textWidth(text: string, scale = 1) {
-  return text.length * 6 * scale - scale;
+  return text.length * 5.2 * scale;
 }
 
-/** Draws bitmap text; (x,y) is the top-left of the first glyph. */
+/** Draws text; (x,y) is the top of the text box; alignment is horizontal. */
 export function drawText(
   ctx: CanvasRenderingContext2D, text: string, x: number, y: number,
   color = '#fff', outline: string | null = '#1b1410', scale = 1, align: 'left' | 'center' | 'right' = 'left',
 ) {
-  const src = glyphCanvas(color, outline);
-  const t = text.toUpperCase();
-  let cx = x;
-  if (align === 'center') cx = x - textWidth(t, scale) / 2;
-  if (align === 'right') cx = x - textWidth(t, scale);
-  cx = Math.round(cx);
-  y = Math.round(y);
-  for (const ch0 of t) {
-    const ch = ch0 in INDEX ? ch0 : (ch0.toLowerCase() === 'x' ? 'x' : ' ');
-    const i = INDEX[ch];
-    ctx.drawImage(src, i * 7, 0, 7, 9, cx - scale, y - scale, 7 * scale, 9 * scale);
-    cx += 6 * scale;
+  ctx.save();
+  ctx.font = `700 ${(8.5 * scale).toFixed(2)}px ${FACE}`;
+  ctx.textAlign = align;
+  ctx.textBaseline = 'top';
+  ctx.lineJoin = 'round';
+  if (outline) {
+    ctx.strokeStyle = outline;
+    ctx.lineWidth = 1.6 * scale;
+    ctx.strokeText(text, x, y - 0.5);
   }
+  ctx.fillStyle = color;
+  ctx.fillText(text, x, y - 0.5);
+  ctx.restore();
 }

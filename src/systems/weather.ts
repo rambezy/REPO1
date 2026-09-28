@@ -48,14 +48,32 @@ export function updateWeather(dt: number) {
 export function drawRain(ctx: CanvasRenderingContext2D) {
   if (!G.map.outdoor) return;
   if (weather.drops.length) {
-    ctx.strokeStyle = 'rgba(180,200,225,0.45)';
-    ctx.lineWidth = 1;
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(190,208,230,0.42)';
+    ctx.lineWidth = 0.4;
     ctx.beginPath();
     for (const d of weather.drops) {
-      ctx.moveTo(Math.round(d.x), Math.round(d.y));
-      ctx.lineTo(Math.round(d.x - d.l * weather.wind * 0.35), Math.round(d.y - d.l));
+      ctx.moveTo(d.x, d.y);
+      ctx.lineTo(d.x - d.l * weather.wind * 0.35, d.y - d.l * 1.4);
     }
     ctx.stroke();
+    // little splash rings where drops land
+    ctx.strokeStyle = 'rgba(200,215,235,0.35)';
+    ctx.lineWidth = 0.3;
+    const t = performance.now() / 1000;
+    for (let i = 0; i < weather.drops.length; i += 3) {
+      const d = weather.drops[i];
+      const u = t * 2.2 + i * 0.137;
+      const ph = u % 1, cyc = Math.floor(u);
+      const x = hash2(i, cyc, 5) * G.viewW, y = hash2(i, cyc, 9) * G.viewH;
+      void d;
+      ctx.globalAlpha = (1 - ph) * 0.8;
+      ctx.beginPath();
+      ctx.ellipse(x, y, 0.6 + ph * 2.2, 0.3 + ph * 0.9, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
   if (weather.lightning > 0) {
     ctx.fillStyle = `rgba(230,235,255,${weather.lightning * 1.6})`;

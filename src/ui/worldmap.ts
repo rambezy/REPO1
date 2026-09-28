@@ -6,6 +6,7 @@ import { getMap, hasMap, here } from '../world/world';
 import { PLACES, placeById, Place } from '../content/places';
 import { S, isNight, flag } from '../state';
 import { makeCanvas } from '../gfx/pixel';
+import { newCanvas } from '../gfx/paint';
 import { T, tdef } from '../world/terrain';
 import { TILE, rand } from '../engine/util';
 import { markerPositions, resolveMarker, QUESTS } from '../systems/quests';
@@ -15,55 +16,133 @@ import { applyNeeds } from '../systems/survival';
 import { emit } from '../engine/events';
 import { overweight } from '../systems/inventory';
 
-const PX = 3; // screen pixels per tile on the map canvas
+const PX = 6; // canvas pixels per tile on the painted map
 let baseCache: { version: number; canvas: HTMLCanvasElement } | null = null;
 
-function colorFor(t: number, x: number, y: number): [number, number, number] {
-  const n = ((x * 7 + y * 13) % 5) - 2;
-  const c = (r: number, g: number, b: number): [number, number, number] => [r + n * 3, g + n * 3, b + n * 2];
-  switch (t) {
-    case T.WATER: case T.DEEP: return c(96, 126, 150);
-    case T.FORD: return c(120, 146, 160);
-    case T.ROAD: case T.DIRT: case T.GRAVEL: case T.BRIDGE: case T.BRIDGE_V: return c(150, 112, 70);
-    case T.COBBLE: case T.FLAGSTONE: return c(140, 128, 112);
-    case T.FOREST: return c(92, 110, 64);
-    case T.FIELD: case T.VEG: return c(170, 140, 96);
-    case T.WHEAT: return c(196, 170, 104);
-    case T.SAND: return c(200, 180, 130);
-    case T.ASH: case T.BURNT_WHEAT: return c(90, 80, 72);
-    case T.MUD: return c(120, 96, 70);
-    default:
-      if (t === T.ROCK) return c(132, 124, 116);
-      if (tdef(t).wall) return c(96, 86, 76);
-      return c(158, 164, 104);
-  }
-}
+const WASH: Partial<Record<number, [string, number]>> = {
+  [T.MEADOW]: ['#9aae5a', 0.22], [T.GRASS]: ['#b4b870', 0.1], [T.FOREST]: ['#5e7a3a', 0.42],
+  [T.FIELD]: ['#c89a5a', 0.35], [T.VEG]: ['#b89050', 0.35], [T.WHEAT]: ['#d8b050', 0.42],
+  [T.WATER]: ['#5a86a8', 0.75], [T.DEEP]: ['#46749a', 0.85], [T.FORD]: ['#7aa0b8', 0.6],
+  [T.SAND]: ['#e0c890', 0.4], [T.MUD]: ['#8a6a48', 0.35], [T.ASH]: ['#6a625a', 0.5], [T.BURNT_WHEAT]: ['#5a524a', 0.5],
+  [T.ROCK]: ['#9a9084', 0.5], [T.ROAD]: ['#a07a4e', 0.0], [T.COBBLE]: ['#9a8e7e', 0.45], [T.FLAGSTONE]: ['#9a8e7e', 0.45],
+};
 
+/** The overworld painted as an old parchment map: washes, inked trees and peaks, roads, rivers, towns. */
 function mapCanvas(): HTMLCanvasElement {
   const m = getMap('overworld');
   if (baseCache && baseCache.version === m.version) return baseCache.canvas;
-  const c = makeCanvas(m.w * PX, m.h * PX);
-  const ctx = c.getContext('2d')!;
-  const img = ctx.createImageData(m.w * PX, m.h * PX);
+  const W = m.w * PX, H = m.h * PX;
+  const c = newCanvas(W, H);
+  const g = c.getContext('2d')!;
+  const at = (x: number, y: number) => m.ground[Math.max(0, Math.min(m.h - 1, y)) * m.w + Math.max(0, Math.min(m.w - 1, x))];
+  // parchment
+  g.fillStyle = '#e6d6ac';
+  g.fillRect(0, 0, W, H);
+  for (let i = 0; i < 70; i++) {
+    const x = Math.random() * W, y = Math.random() * H, r = 30 + Math.random() * 140;
+    const gr = g.createRadialGradient(x, y, 0, x, y, r);
+    gr.addColorStop(0, `rgba(${Math.random() < 0.5 ? '150,110,60' : '255,245,215'},${0.05 + Math.random() * 0.06})`);
+    gr.addColorStop(1, 'rgba(150,110,60,0)');
+    g.fillStyle = gr;
+    g.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+  // watercolour washes, tile by tile as soft dabs
   for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) {
-    const [r, g, b] = colorFor(m.ground[y * m.w + x], x, y);
-    for (let j = 0; j < PX; j++) for (let i = 0; i < PX; i++) {
-      const k = ((y * PX + j) * m.w * PX + x * PX + i) * 4;
-      img.data[k] = r; img.data[k + 1] = g; img.data[k + 2] = b; img.data[k + 3] = 255;
+    const w = WASH[at(x, y)];
+    if (!w || w[1] <= 0) continue;
+    g.fillStyle = w[0];
+    g.globalAlpha = w[1] * 0.55;
+    g.beginPath();
+    g.arc((x + 0.5) * PX, (y + 0.5) * PX, PX * 0.95, 0, Math.PI * 2);
+    g.fill();
+  }
+  g.globalAlpha = 1;
+  // riverbanks inked
+  g.strokeStyle = 'rgba(40,70,100,0.55)';
+  g.lineWidth = 1;
+  const isW = (t: number) => t === T.WATER || t === T.DEEP || t === T.FORD;
+  for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) {
+    if (!isW(at(x, y))) continue;
+    const X = x * PX, Y = y * PX;
+    g.beginPath();
+    if (!isW(at(x, y - 1))) { g.moveTo(X, Y); g.lineTo(X + PX, Y); }
+    if (!isW(at(x, y + 1))) { g.moveTo(X, Y + PX); g.lineTo(X + PX, Y + PX); }
+    if (!isW(at(x - 1, y))) { g.moveTo(X, Y); g.lineTo(X, Y + PX); }
+    if (!isW(at(x + 1, y))) { g.moveTo(X + PX, Y); g.lineTo(X + PX, Y + PX); }
+    g.stroke();
+    if ((x * 7 + y * 13) % 23 === 0 && isW(at(x + 1, y)) && isW(at(x - 1, y))) {
+      g.strokeStyle = 'rgba(230,240,245,0.6)';
+      g.beginPath(); g.moveTo(X - 2, Y + 3); g.quadraticCurveTo(X + 1, Y, X + 4, Y + 3); g.quadraticCurveTo(X + 7, Y + 6, X + 10, Y + 3); g.stroke();
+      g.strokeStyle = 'rgba(40,70,100,0.55)';
     }
   }
-  ctx.putImageData(img, 0, 0);
-  // trees as dark dots, buildings as ink blocks
-  for (const o of m.objects) {
-    if (o.kind === 'tree') { ctx.fillStyle = 'rgba(52,70,38,0.8)'; ctx.fillRect(Math.floor(o.x / TILE) * PX, Math.floor(o.y / TILE) * PX - PX, PX, PX); }
-    if (o.kind === 'building' && o.solid) { ctx.fillStyle = '#4a3a2a'; ctx.fillRect((o.solid.x / TILE) * PX, (o.solid.y / TILE) * PX, (o.solid.w / TILE) * PX, (o.solid.h / TILE) * PX); }
+  // roads: brown ink trails
+  g.fillStyle = 'rgba(122,84,44,0.75)';
+  for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) {
+    const t = at(x, y);
+    if (t !== T.ROAD && t !== T.BRIDGE && t !== T.BRIDGE_V && t !== T.DIRT) continue;
+    g.globalAlpha = t === T.DIRT ? 0.35 : 0.8;
+    g.beginPath(); g.arc((x + 0.5) * PX, (y + 0.5) * PX, t === T.DIRT ? PX * 0.4 : PX * 0.36, 0, Math.PI * 2); g.fill();
   }
-  // parchment tone and vignette
-  ctx.fillStyle = 'rgba(233,210,160,0.18)';
-  ctx.fillRect(0, 0, c.width, c.height);
+  g.globalAlpha = 1;
+  // mountains: inked peaks along the rock
+  for (let y = 0; y < m.h; y += 2) for (let x = 0; x < m.w; x += 3) {
+    if (at(x, y) !== T.ROCK || ((x * 31 + y * 17) % 3 === 0)) continue;
+    const X = (x + 0.5) * PX + ((y * 5) % 3), Y = (y + 1) * PX;
+    const h = PX * (1.6 + ((x * 13 + y * 7) % 5) * 0.25);
+    g.fillStyle = 'rgba(245,235,210,0.9)';
+    g.beginPath(); g.moveTo(X - h * 0.7, Y); g.lineTo(X, Y - h); g.lineTo(X + h * 0.7, Y); g.closePath(); g.fill();
+    g.fillStyle = 'rgba(110,96,80,0.55)';
+    g.beginPath(); g.moveTo(X, Y - h); g.lineTo(X + h * 0.7, Y); g.lineTo(X + h * 0.1, Y); g.closePath(); g.fill();
+    g.strokeStyle = 'rgba(70,56,40,0.85)'; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(X - h * 0.7, Y); g.lineTo(X, Y - h); g.lineTo(X + h * 0.7, Y); g.stroke();
+  }
+  // forests: little inked trees
+  for (const o of m.objects) {
+    if (o.kind !== 'tree') continue;
+    const X = (o.x / TILE) * PX, Y = (o.y / TILE) * PX;
+    const pine = o.type === 'pine';
+    g.strokeStyle = 'rgba(58,44,28,0.8)'; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(X, Y); g.lineTo(X, Y - 3); g.stroke();
+    g.fillStyle = o.type === 'burnt' || o.type === 'dead' ? 'rgba(90,80,70,0.8)' : pine ? 'rgba(62,92,60,0.9)' : 'rgba(92,120,62,0.9)';
+    g.beginPath();
+    if (pine) { g.moveTo(X - 3, Y - 2); g.lineTo(X, Y - 9); g.lineTo(X + 3, Y - 2); g.closePath(); }
+    else g.arc(X, Y - 5, 3.2, 0, Math.PI * 2);
+    g.fill();
+    g.strokeStyle = 'rgba(40,52,28,0.8)'; g.stroke();
+  }
+  // buildings and walls
+  for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) {
+    const t = at(x, y);
+    if (t === T.WALL_STONE) { g.fillStyle = 'rgba(80,72,64,0.9)'; g.fillRect(x * PX, y * PX, PX, PX); }
+  }
+  for (const o of m.objects) {
+    if (o.kind !== 'building' || !o.solid) continue;
+    const bx = (o.solid.x / TILE) * PX, by = (o.solid.y / TILE) * PX, bw = (o.solid.w / TILE) * PX, bh = (o.solid.h / TILE) * PX;
+    const burned = o.type === 'burned' || o.type === 'ruin';
+    g.fillStyle = burned ? 'rgba(60,54,50,0.85)' : o.type === 'tent' ? 'rgba(200,180,140,0.9)' : o.type === 'church' || o.type === 'keep' || o.type === 'tower' || o.type === 'stone' ? 'rgba(120,112,104,0.95)' : 'rgba(160,82,56,0.9)';
+    g.fillRect(bx + 1, by + 1, bw - 2, bh - 2);
+    g.strokeStyle = 'rgba(40,28,18,0.9)'; g.lineWidth = 1.2;
+    g.strokeRect(bx + 1, by + 1, bw - 2, bh - 2);
+  }
+  // paper grain and a burnt edge
+  const img = g.getImageData(0, 0, W, H);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const n = (Math.random() - 0.5) * 14;
+    img.data[i] += n; img.data[i + 1] += n; img.data[i + 2] += n * 0.8;
+  }
+  g.putImageData(img, 0, 0);
+  const edge = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.72);
+  edge.addColorStop(0, 'rgba(120,80,40,0)');
+  edge.addColorStop(1, 'rgba(90,56,24,0.45)');
+  g.fillStyle = edge;
+  g.fillRect(0, 0, W, H);
   baseCache = { version: m.version, canvas: c };
   return c;
 }
+
+/** The painted overworld map (6 px per tile), shared with the minimap. */
+export function paintedMap(): HTMLCanvasElement { return mapCanvas(); }
 
 export function discovered(p: Place) {
   if (S.discovered.includes(p.id)) return true;
@@ -83,7 +162,7 @@ export function mapPanel(travelFrom?: string, onClose?: () => void): HTMLElement
   tip.hidden = true;
   wrap.append(tip);
   const m = getMap('overworld');
-  let zoom = 1;
+  let zoom = 0.6;
   const onOver = G.map.id === 'overworld';
   const px = onOver ? G.player.x / TILE : (S.flags.lastOverX ?? m.w / 2);
   const py = onOver ? G.player.y / TILE : (S.flags.lastOverY ?? m.h / 2);
@@ -91,10 +170,13 @@ export function mapPanel(travelFrom?: string, onClose?: () => void): HTMLElement
   let hover: Place | null = null;
   const draw = () => {
     const W = wrap.clientWidth || 800, H = wrap.clientHeight || 500;
-    view.width = W; view.height = H;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    view.width = Math.round(W * dpr); view.height = Math.round(H * dpr);
     view.style.width = W + 'px'; view.style.height = H + 'px';
     const ctx = view.getContext('2d')!;
-    ctx.imageSmoothingEnabled = false;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     ctx.fillStyle = '#c9b890';
     ctx.fillRect(0, 0, W, H);
     const s = zoom;
@@ -159,7 +241,7 @@ export function mapPanel(travelFrom?: string, onClose?: () => void): HTMLElement
   let drag: { x: number; y: number; ox: number; oy: number; moved: boolean } | null = null;
   const placeAt = (clientX: number, clientY: number): Place | null => {
     const r = view.getBoundingClientRect();
-    const W = view.width, H = view.height;
+    const W = r.width, H = r.height;
     const cx = W / 2 - px * PX * zoom + ox, cy = H / 2 - py * PX * zoom + oy;
     const mx = clientX - r.left, my = clientY - r.top;
     let best: Place | null = null, bd = 14;
@@ -198,7 +280,7 @@ export function mapPanel(travelFrom?: string, onClose?: () => void): HTMLElement
       if (p) { onClose?.(); fastTravel(p); }
     }
   });
-  view.addEventListener('wheel', (e) => { zoom = Math.max(0.6, Math.min(3, zoom * (e.deltaY < 0 ? 1.15 : 0.87))); draw(); }, { passive: true });
+  view.addEventListener('wheel', (e) => { zoom = Math.max(0.3, Math.min(1.8, zoom * (e.deltaY < 0 ? 1.15 : 0.87))); draw(); }, { passive: true });
   window.addEventListener('resize', draw, { once: true });
   return wrap;
 }

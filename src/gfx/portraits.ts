@@ -1,723 +1,858 @@
-// Expressive 48x48 pixel portraits generated from the same `Look` used for
-// sprites. Supports expressions, blinking and a talking mouth.
+// Painted dialogue portraits, built from the same `Look` as the people in
+// the world: a lit bust against a soft backdrop, with expressions that move
+// the brows, lids and mouth (and bring tears, blushes and gritted teeth), a
+// talking mouth and blinking.
 
-import { PixelBuffer, makeCanvas } from './pixel';
-import { P, SKIN } from './palette';
-import { Look } from './characters';
-import { shade, mixHex, hashStr, clamp } from '../engine/util';
+import { SKIN, SkinTone } from './palette';
+import type { Look } from './characters';
+import { hashStr, clamp, RNG } from '../engine/util';
+import { newCanvas, lit, dim, mix, rgba, lin, rad, ellipse, blade } from './paint';
 
 export type Expr = 'neutral' | 'happy' | 'laugh' | 'sad' | 'cry' | 'angry' | 'surprised' | 'worried' | 'smirk' | 'pain' | 'tender' | 'sleep';
 export const EXPRS: Expr[] = ['neutral', 'happy', 'laugh', 'sad', 'cry', 'angry', 'surprised', 'worried', 'smirk', 'pain', 'tender', 'sleep'];
 
-const S = 48;
+const S = 256;
+type G = CanvasRenderingContext2D;
 
-interface FaceGeo {
-  cx: number; yt: number; ye: number; yc: number; hw: number;
-  eyeOff: number; eyeW: number; eyeH: number;
-  noseTop: number; noseBot: number; mouthY: number; mouthW: number;
-  child: boolean;
+interface Face {
+  brow: [number, number]; // inner, outer raise (+ up) in units of R
+  open: number;           // eye opening 0..1.3
+  look: [number, number]; // iris offset
+  mouth: 'line' | 'smile' | 'grin' | 'frown' | 'open' | 'o' | 'tight' | 'teeth' | 'smirk' | 'soft' | 'wobble';
+  cheek: number;          // cheek raise 0..1
+  tears?: boolean;
+  sweat?: boolean;
+  blush?: number;
 }
 
-function faceGeo(look: Look): FaceGeo {
-  const child = look.build === 'child';
-  const jaw = look.face?.jaw || 'round';
-  let hw = jaw === 'heavy' ? 11 : jaw === 'narrow' ? 8.5 : 10;
-  if (look.build === 'fat') hw += 1;
-  if (child) hw = 10;
-  const yt = child ? 10 : 7;
-  const ye = child ? 24 : 22;
-  const yc = child ? 35 : (jaw === 'narrow' ? 36 : 35);
-  const nose = look.face?.nose || 'small';
-  const noseLen = child ? 3 : nose === 'long' || nose === 'hooked' ? 6 : nose === 'button' ? 3 : 5;
-  const mw = look.face?.mouth === 'wide' ? 8 : look.face?.mouth === 'small' ? 5 : 6;
-  return {
-    cx: 24, yt, ye, yc, hw,
-    eyeOff: child ? 5 : 5,
-    eyeW: 5, eyeH: child ? 4 : 3,
-    noseTop: ye + 1, noseBot: ye + 1 + noseLen,
-    mouthY: child ? ye + 7 : Math.min(yc - 4, ye + 2 + noseLen + 3),
-    mouthW: child ? 4 : mw,
-    child,
-  };
-}
+const FACES: Record<Expr, Face> = {
+  neutral: { brow: [0, 0], open: 1, look: [0, 0], mouth: 'line', cheek: 0 },
+  happy: { brow: [0.03, 0.02], open: 0.82, look: [0, 0], mouth: 'smile', cheek: 0.6 },
+  laugh: { brow: [0.05, 0.03], open: 0.15, look: [0, 0], mouth: 'grin', cheek: 1 },
+  sad: { brow: [0.09, -0.04], open: 0.7, look: [0, 0.35], mouth: 'frown', cheek: 0 },
+  cry: { brow: [0.12, -0.05], open: 0.45, look: [0, 0.3], mouth: 'wobble', cheek: 0.2, tears: true, blush: 0.3 },
+  angry: { brow: [-0.1, 0.05], open: 0.85, look: [0, 0], mouth: 'tight', cheek: 0 },
+  surprised: { brow: [0.12, 0.12], open: 1.3, look: [0, 0], mouth: 'o', cheek: 0 },
+  worried: { brow: [0.1, -0.02], open: 1, look: [0.25, 0], mouth: 'wobble', cheek: 0, sweat: true },
+  smirk: { brow: [0, 0.06], open: 0.8, look: [-0.25, 0], mouth: 'smirk', cheek: 0.3 },
+  pain: { brow: [0.08, -0.06], open: 0.35, look: [0, 0], mouth: 'teeth', cheek: 0.4, sweat: true },
+  tender: { brow: [0.05, 0], open: 0.7, look: [0, 0.15], mouth: 'soft', cheek: 0.4, blush: 0.35 },
+  sleep: { brow: [0, 0], open: 0, look: [0, 0], mouth: 'soft', cheek: 0 },
+};
 
-function halfWidth(g: FaceGeo, look: Look, y: number): number {
-  const jaw = look.face?.jaw || 'round';
-  if (y < g.yt) return 0;
-  if (y <= g.ye) {
-    const t = (g.ye - y) / (g.ye - g.yt);
-    return g.hw * Math.sqrt(Math.max(0, 1 - t * t * 0.98));
-  }
-  if (y > g.yc) return 0;
-  const t = (y - g.ye) / (g.yc - g.ye);
-  let taper = 0;
-  switch (jaw) {
-    case 'square': taper = Math.pow(t, 3.2) * 0.62; break;
-    case 'narrow': taper = Math.pow(t, 1.4) * 0.66; break;
-    case 'heavy': taper = Math.pow(t, 2.6) * 0.45; break;
-    default: taper = Math.pow(t, 1.9) * 0.62;
-  }
-  if (g.child) taper = Math.pow(t, 1.6) * 0.55;
-  let hw = g.hw * (1 - taper);
-  if (y >= g.yc - 1) hw = Math.min(hw, g.hw * 0.45);
-  return hw;
-}
+function skinOf(look: Look) { return SKIN[look.skin as SkinTone] || SKIN.fair; }
 
-function lipColor(skin: string) { return mixHex(skin, '#8a3a36', 0.45); }
-
-export function paintPortrait(look: Look, expr: Expr, talk: boolean, blink: boolean): PixelBuffer {
-  const g = faceGeo(look);
-  const sk = SKIN[look.skin] || SKIN.fair;
-  const skin = sk[2], skinD = sk[1], skinDD = sk[0], skinL = sk[3];
-  const fig = new PixelBuffer(S, S); // character layer (outlined later)
-  const hat = look.hat || 'none';
-  const hs = look.hairStyle;
-  const H = look.hair, HD = shade(H, -0.32), HL = shade(H, 0.25), HDD = shade(H, -0.5);
-
-  // ---------- long hair behind the head ----------
-  const coverAll = hat === 'hood' || hat === 'coif' || hat === 'wimple' || hat === 'monkhood' || hat === 'bascinet' || hat === 'sallet';
-  if (!coverAll && (hs === 'long' || hs === 'ponytail')) {
-    for (let y = g.ye - 6; y < S; y++) {
-      const extra = hs === 'long' ? 1.5 : 0;
-      const hw = g.hw + 2 + extra * Math.min(1, (y - g.ye + 6) / 10);
-      for (let x = Math.round(g.cx - hw); x <= Math.round(g.cx + hw); x++) {
-        if (hs === 'ponytail' && y > g.yc) continue;
-        fig.px(x, y, x > g.cx + hw - 3 ? HD : (x < g.cx - hw + 2 ? HL : H));
-      }
-    }
-  }
-  if (hat === 'hood' || hat === 'monkhood') {
-    const hc = look.hatColor || P.wood2;
-    for (let y = g.yt - 3; y < S; y++) {
-      const hw = y < g.ye ? (g.hw + 4) * Math.sqrt(Math.max(0, 1 - ((g.ye - y) / (g.ye - g.yt + 3)) ** 2)) : g.hw + 4 + (y - g.ye) * 0.35;
-      for (let x = Math.round(g.cx - hw); x <= Math.round(g.cx + hw); x++) {
-        fig.px(x, y, x > g.cx + hw - 3 ? shade(hc, -0.3) : hc);
-      }
-    }
-  }
-
-  // ---------- neck & shoulders ----------
-  const neckTop = g.yc - 4;
-  for (let y = neckTop; y < S; y++) {
-    const nw = g.child ? 4 : look.build === 'broad' ? 6 : look.female ? 4 : 5;
-    for (let x = g.cx - nw; x <= g.cx + nw; x++) fig.px(x, y, x > g.cx + nw - 2 ? skinDD : skinD);
-  }
-  paintShoulders(fig, look, g);
-
-  // ---------- ears ----------
-  const earCol = skin;
-  for (let y = g.ye - 1; y <= g.ye + 5; y++) {
-    const lx = Math.round(g.cx - halfWidth(g, look, g.ye) - 1);
-    const rx = Math.round(g.cx + halfWidth(g, look, g.ye) + 1);
-    if (y === g.ye - 1 || y === g.ye + 5) { fig.px(lx + 1, y, earCol); fig.px(rx - 1, y, skinD); continue; }
-    fig.px(lx, y, earCol); fig.px(lx + 1, y, skinD);
-    fig.px(rx, y, skinD); fig.px(rx - 1, y, skinD);
-  }
-  if (look.face?.earrings) { fig.px(Math.round(g.cx - g.hw - 1), g.ye + 6, P.gold3); fig.px(Math.round(g.cx + g.hw + 1), g.ye + 6, P.gold3); }
-
-  // ---------- head skin ----------
-  for (let y = g.yt; y <= g.yc; y++) {
-    const hw = halfWidth(g, look, y);
-    if (hw <= 0) continue;
-    const x0 = Math.round(g.cx - hw), x1 = Math.round(g.cx + hw);
-    for (let x = x0; x <= x1; x++) {
-      let c = skin;
-      const rel = (x - g.cx) / (hw + 0.01);
-      if (rel > 0.55) c = skinD;
-      if (rel > 0.85 && y > g.ye) c = skinDD;
-      if (rel < -0.5 && y < g.ye + 4 && y > g.yt + 2) c = skinL;
-      if (y >= g.yc - 1) c = skinD;
-      fig.px(x, y, c);
-    }
-  }
-  // cheek highlight & jaw shadow
-  for (let y = g.ye + 2; y <= g.ye + 4; y++) fig.pxOn(Math.round(g.cx - g.hw * 0.62), y, skinL);
-
-  // ---------- eyes ----------
-  const eyeCol = look.eyes || '#4a3322';
-  const lidCol = shade(skinDD, -0.35);
-  const white = '#efe8dc';
-  const closed = blink || expr === 'sleep' || expr === 'laugh' || expr === 'pain';
-  const narrow = expr === 'angry' || expr === 'smirk' || look.face?.eyeShape === 'narrow' || look.face?.eyeShape === 'sleepy' || expr === 'tender';
-  const wide = expr === 'surprised' || look.face?.eyeShape === 'wide' || g.child;
-  for (const side of [-1, 1]) {
-    const ex = g.cx + side * g.eyeOff; // eye center
-    const x0 = ex - 2, x1 = ex + 2;
-    const y = g.ye;
-    if (look.eyepatch && side === 1) {
-      for (let yy = y - 2; yy <= y + 2; yy++) for (let xx = x0 - 1; xx <= x1 + 1; xx++) fig.px(xx, yy, '#1f1a18');
-      fig.line(x0 - 1, y - 2, Math.round(g.cx - g.hw), g.yt + 6, '#1f1a18');
-      fig.line(x1 + 1, y - 2, Math.round(g.cx + g.hw), g.ye - 5, '#1f1a18');
-      continue;
-    }
-    // socket shadow
-    for (let xx = x0; xx <= x1; xx++) fig.pxOn(xx, y - 2, skinD);
-    if (closed) {
-      if (expr === 'laugh' || expr === 'happy') {
-        // ^ shaped happy closed eyes
-        fig.px(x0, y, lidCol); fig.px(x0 + 1, y - 1, lidCol); fig.px(ex, y - 1, lidCol); fig.px(x1 - 1, y - 1, lidCol); fig.px(x1, y, lidCol);
-      } else if (expr === 'pain') {
-        fig.px(x0, side < 0 ? y - 1 : y + 1, lidCol); fig.px(x0 + 1, y, lidCol); fig.px(ex, y, lidCol); fig.px(x1 - 1, y, lidCol); fig.px(x1, side < 0 ? y + 1 : y - 1, lidCol);
-      } else {
-        for (let xx = x0; xx <= x1; xx++) fig.px(xx, y + (xx === x0 || xx === x1 ? 0 : 1), lidCol);
-        fig.px(x0 + 1, y + 2, skinD); fig.px(x1 - 1, y + 2, skinD);
-      }
-    } else {
-      const h = wide ? g.eyeH : narrow ? 2 : g.eyeH - 1 + 1;
-      const top = y - (h >= 3 ? 1 : 0);
-      for (let yy = top; yy < top + h; yy++) for (let xx = x0; xx <= x1; xx++) {
-        if ((xx === x0 || xx === x1) && (yy === top + h - 1 && h > 2)) continue;
-        fig.px(xx, yy, white);
-      }
-      // iris & pupil
-      const ix = ex - (side < 0 ? 0 : 1);
-      for (let yy = top; yy < top + h; yy++) { fig.px(ix, yy, eyeCol); fig.px(ix + 1, yy, shade(eyeCol, -0.2)); }
-      fig.px(ix + (side < 0 ? 1 : 0), top + Math.min(1, h - 1), '#15100e');
-      fig.px(ix, top, '#ffffff');
-      // upper lid & lashes
-      for (let xx = x0; xx <= x1; xx++) fig.px(xx, top - 1, lidCol);
-      if (look.female && !g.child) fig.px(side < 0 ? x0 - 1 : x1 + 1, top - 1, lidCol);
-      if (narrow && expr === 'angry') { fig.px(side < 0 ? x1 : x0, top, lidCol); }
-      // lower lid
-      for (let xx = x0 + 1; xx <= x1 - 1; xx++) fig.pxOn(xx, top + h, skinD);
-    }
-    if (expr === 'cry') {
-      const tx = side < 0 ? x0 + 1 : x1 - 1;
-      for (let yy = y + 2; yy <= y + 7; yy++) if (yy % 3 !== 0) fig.px(tx + (yy > y + 4 ? -side : 0), yy, '#9cc8e8');
-    }
-    if (expr === 'sad' && !closed) fig.px(side < 0 ? x1 : x0, g.ye + 2, '#b8d8ee');
-  }
-
-  // ---------- brows ----------
-  const browCol = look.hat === 'coif' || look.hat === 'wimple' ? (look.hair) : shade(look.hair, -0.1);
-  const bThick = look.face?.brows === 'bushy' ? 2 : look.face?.brows === 'thick' ? 2 : 1;
-  for (const side of [-1, 1]) {
-    const ex = g.cx + side * g.eyeOff;
-    let inner = 0, outer = 0; // vertical offsets
-    switch (expr) {
-      case 'angry': inner = 2; outer = -1; break;
-      case 'sad': case 'cry': case 'worried': inner = -2; outer = 1; break;
-      case 'surprised': inner = -2; outer = -2; break;
-      case 'smirk': inner = side > 0 ? -1 : 0; outer = side > 0 ? -1 : 0; break;
-      case 'pain': inner = 2; outer = 0; break;
-      case 'tender': inner = -1; outer = 0; break;
-    }
-    const by = g.ye - 4;
-    const xs = [ex - 3, ex - 2, ex - 1, ex, ex + 1, ex + 2];
-    xs.forEach((xx, i) => {
-      // i=0 is left end; inner end faces the nose
-      const tInner = side < 0 ? i / 5 : 1 - i / 5;
-      const off = Math.round(outer + (inner - outer) * tInner);
-      for (let k = 0; k < bThick; k++) fig.px(xx, by + off - k, k === 0 ? browCol : shade(browCol, -0.15));
-      if (look.face?.brows === 'bushy' && i % 2 === 0) fig.px(xx, by + off - 2, browCol);
-    });
-  }
-
-  // ---------- nose ----------
-  const nose = look.face?.nose || 'small';
-  for (let y = g.noseTop; y <= g.noseBot; y++) {
-    fig.px(g.cx + 1, y, skinD);
-    if (y > g.noseTop + 1) fig.pxOn(g.cx - 1, y, skinL);
-    if (nose === 'broad' && y > g.noseBot - 2) { fig.px(g.cx + 2, y, skinD); fig.px(g.cx - 2, y, skinD); }
-    if (nose === 'hooked' && y === g.noseTop + 2) fig.px(g.cx + 2, y, skinD);
-  }
-  fig.px(g.cx - 1, g.noseBot + 1, skinDD);
-  fig.px(g.cx + 1, g.noseBot + 1, skinDD);
-  fig.px(g.cx, g.noseBot + 1, skinD);
-  if (nose === 'button' || g.child) fig.px(g.cx, g.noseBot, skinL);
-
-  // ---------- cheeks / freckles / wrinkles / scars ----------
-  if (look.face?.cheeks || g.child || expr === 'tender' || expr === 'laugh') {
-    const blush = mixHex(skin, '#d0605a', 0.35);
-    for (const side of [-1, 1]) {
-      const bx = g.cx + side * (g.eyeOff + 2);
-      fig.pxOn(bx, g.ye + 3, blush); fig.pxOn(bx + side, g.ye + 3, blush); fig.pxOn(bx, g.ye + 4, blush);
-    }
-  }
-  if (look.freckles) {
-    const fcol = mixHex(skinD, '#8a4a2a', 0.4);
-    for (const [dx, dy] of [[-6, 3], [-4, 4], [-7, 5], [4, 3], [6, 4], [7, 2], [-2, 2], [2, 3]]) fig.pxOn(g.cx + dx, g.ye + dy, fcol);
-  }
-  const wr = look.face?.wrinkles || 0;
-  if (wr >= 1) { for (const side of [-1, 1]) fig.pxOn(g.cx + side * (g.eyeOff + 3), g.ye + 1, skinD); }
-  if (wr >= 2) {
-    for (let x = g.cx - 4; x <= g.cx + 4; x++) if (x % 3 !== 0) fig.pxOn(x, g.yt + 5, skinD);
-    for (const side of [-1, 1]) { fig.pxOn(g.cx + side * 3, g.noseBot + 2, skinD); fig.pxOn(g.cx + side * 4, g.noseBot + 3, skinD); }
-  }
-  if (wr >= 3) {
-    for (let x = g.cx - 3; x <= g.cx + 3; x++) if (x % 2 === 0) fig.pxOn(x, g.yt + 7, skinD);
-    for (const side of [-1, 1]) fig.pxOn(g.cx + side * (g.eyeOff + 3), g.ye + 2, skinD);
-  }
-  if (look.scar) {
-    const sc = mixHex(skin, '#e0a8a0', 0.6);
-    for (let i = 0; i < 7; i++) fig.pxOn(g.cx + g.eyeOff - 2 + (i >> 1), g.ye - 4 + i, sc);
-  }
-
-  // ---------- mouth ----------
-  const lip = lipColor(skin), lipD = shade(lip, -0.35);
-  const my = g.mouthY, mw = g.mouthW;
-  const mx0 = g.cx - Math.floor(mw / 2), mx1 = mx0 + mw - 1;
-  const open = talk || expr === 'surprised' || expr === 'laugh';
-  const mouthDark = '#3a1a18';
-  const teeth = '#ece6da';
-  if (open) {
-    const oh = expr === 'surprised' ? 3 : expr === 'laugh' ? 3 : 2;
-    const ox0 = expr === 'surprised' ? g.cx - 1 : mx0 + 1, ox1 = expr === 'surprised' ? g.cx + 1 : mx1 - 1;
-    const lift = expr === 'happy' || expr === 'laugh' || expr === 'tender' ? -1 : 0;
-    for (let y = my; y < my + oh; y++) for (let x = ox0; x <= ox1; x++) fig.px(x, y, mouthDark);
-    if (expr === 'laugh' || expr === 'happy') for (let x = ox0; x <= ox1; x++) fig.px(x, my, teeth);
-    fig.px(ox0 - 1, my + lift, lipD); fig.px(ox1 + 1, my + lift, lipD);
-    for (let x = ox0; x <= ox1; x++) fig.pxOn(x, my + oh, lip);
-    if (expr === 'sad' || expr === 'cry' || expr === 'angry') { fig.px(ox0 - 1, my + 1, lipD); fig.px(ox1 + 1, my + 1, lipD); }
-  } else {
-    let lc = 0, rc = 0; // corner offsets (negative = up)
-    switch (expr) {
-      case 'happy': case 'tender': lc = -1; rc = -1; break;
-      case 'smirk': rc = -1; break;
-      case 'sad': case 'cry': case 'worried': lc = 1; rc = 1; break;
-      case 'angry': lc = 1; rc = 1; break;
-      case 'pain': lc = 0; rc = 0; break;
-    }
-    for (let x = mx0; x <= mx1; x++) {
-      let off = 0;
-      if (x === mx0) off = lc; else if (x === mx1) off = rc;
-      fig.px(x, my + off, lipD);
-    }
-    if (expr === 'angry' || expr === 'pain') for (let x = mx0 + 1; x <= mx1 - 1; x++) fig.px(x, my + 1, teeth);
-    // lower lip hint
-    for (let x = mx0 + 1; x <= mx1 - 1; x++) fig.pxOn(x, my + (expr === 'angry' || expr === 'pain' ? 2 : 1), lip);
-    if (look.face?.mouth === 'full' || look.female) for (let x = mx0 + 1; x <= mx1 - 1; x++) fig.pxOn(x, my - 1, mixHex(lip, skin, 0.5));
-  }
-  // chin shading
-  fig.pxOn(g.cx, g.yc - 2, skinD);
-
-  // ---------- beard ----------
-  const beard = look.beard || 'none';
-  if (beard !== 'none') paintBeard(fig, look, g, beard, open);
-
-  // ---------- hair on top / hats ----------
-  if (!coverAll) paintPortraitHair(fig, look, g);
-  paintPortraitHat(fig, look, g, expr);
-
-  fig.outline(P.ink);
-
-  // ---------- background ----------
-  const out = new PixelBuffer(S, S);
-  const bg = look.portraitBg || pickBg(look);
-  const bgD = shade(bg, -0.35), bgL = shade(bg, 0.12);
-  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-    const d = Math.hypot(x - 20, y - 16) / 40;
-    let c = d < 0.45 ? bgL : d < 0.85 ? bg : bgD;
-    // soft dither between bands
-    if (Math.abs(d - 0.45) < 0.05 && (x + y) % 2) c = bg;
-    if (Math.abs(d - 0.85) < 0.05 && (x + y) % 2) c = bgD;
-    out.px(x, y, c);
-  }
-  out.blit(fig, 0, 0);
-  return out;
-}
-
-function pickBg(look: Look) {
-  const h = hashStr(look.shirt + look.hair) % 6;
-  return ['#51657a', '#6b5a44', '#4f6a4a', '#6e4a4a', '#5a5270', '#6a6440'][h];
-}
-
-function paintShoulders(fig: PixelBuffer, look: Look, g: FaceGeo) {
-  const outer = look.outer || 'none';
-  const base = outer === 'mail' ? P.metal2 : outer === 'plate' ? P.metal3 : outer === 'none' || outer === 'apron' || outer === 'vest' ? look.shirt : (look.outerColor || look.shirt);
-  const baseD = shade(base, -0.3), baseL = shade(base, 0.15);
-  const top = g.child ? 40 : 39;
-  const broad = look.build === 'broad' || look.build === 'fat';
-  const halfTop = g.child ? 9 : broad ? 12 : look.female ? 9 : 11;
-  const halfBot = g.child ? 15 : broad ? 21 : look.female ? 16 : 19;
-  for (let y = top; y < S; y++) {
-    const t = (y - top) / (S - top);
-    const hw = Math.round(halfTop + (halfBot - halfTop) * Math.min(1, t * 1.6));
-    for (let x = g.cx - hw; x <= g.cx + hw; x++) {
-      let c = base;
-      if (x > g.cx + hw - 4) c = baseD;
-      else if (x < g.cx - hw + 3) c = baseL;
-      if (outer === 'mail' && (x + y) % 2) c = shade(c, -0.18);
-      if (outer === 'gambeson' && (x - g.cx) % 3 === 0) c = shade(c, -0.15);
-      fig.px(x, y, c);
-    }
-  }
-  const sk = SKIN[look.skin] || SKIN.fair;
-  // neckline
-  if (outer === 'none' || outer === 'vest' || outer === 'apron' || outer === 'dress' || outer === 'leather') {
-    const w = outer === 'dress' ? 6 : 3;
-    for (let y = top; y < top + (outer === 'dress' ? 3 : 4); y++) for (let x = g.cx - w + (y - top); x <= g.cx + w - (y - top); x++) fig.px(x, y, y === top ? sk[1] : sk[2]);
-    if (outer === 'none' || outer === 'leather') { fig.px(g.cx, top + 4, shade(base, -0.4)); fig.px(g.cx, top + 5, shade(base, -0.4)); }
-  }
-  if (outer === 'vest' || outer === 'leather') {
-    const vc = look.outerColor || P.wood2;
-    for (let y = top + 1; y < S; y++) {
-      for (let x = g.cx - halfBot; x <= g.cx - 4; x++) fig.pxOn(x, y, x < g.cx - halfBot + 3 ? shade(vc, 0.1) : vc);
-      for (let x = g.cx + 4; x <= g.cx + halfBot; x++) fig.pxOn(x, y, x > g.cx + halfBot - 4 ? shade(vc, -0.3) : vc);
-    }
-  }
-  if (outer === 'apron') {
-    const ac = look.apronColor || P.wood2;
-    for (let y = top + 2; y < S; y++) { fig.pxOn(g.cx - 7, y, ac); fig.pxOn(g.cx - 6, y, ac); fig.pxOn(g.cx + 6, y, shade(ac, -0.2)); fig.pxOn(g.cx + 7, y, shade(ac, -0.2)); }
-    for (let y = S - 4; y < S; y++) for (let x = g.cx - 7; x <= g.cx + 7; x++) fig.pxOn(x, y, x > g.cx + 4 ? shade(ac, -0.2) : ac);
-  }
-  if (outer === 'dress') {
-    const trim = look.trim || shade(base, 0.35);
-    for (let x = g.cx - 7; x <= g.cx + 7; x++) fig.pxOn(x, top + 3, trim);
-    if (look.apronColor) for (let y = S - 5; y < S; y++) for (let x = g.cx - 8; x <= g.cx + 8; x++) fig.pxOn(x, y, look.apronColor);
-  }
-  if (outer === 'plate') {
-    for (let y = top; y < top + 4; y++) for (let x = g.cx - 7; x <= g.cx + 7; x++) fig.pxOn(x, y, y === top ? P.metal4 : P.metal3);
-    for (let x = g.cx - 5; x <= g.cx - 2; x++) fig.pxOn(x, top + 1, P.metal5);
-  }
-  if (outer === 'tabard' || outer === 'noble' || outer === 'brigandine') {
-    const tc = look.outerColor || look.shirt;
-    if (outer === 'tabard') {
-      for (let y = top + 2; y < S; y++) for (let x = g.cx - 9; x <= g.cx + 9; x++) fig.pxOn(x, y, x > g.cx + 6 ? shade(tc, -0.3) : tc);
-      if (look.trim) { for (let y = top + 3; y < S; y++) { fig.pxOn(g.cx, y, look.trim); fig.pxOn(g.cx + 1, y, look.trim); } for (let x = g.cx - 4; x <= g.cx + 5; x++) fig.pxOn(x, top + 6, look.trim); }
-    }
-    if (outer === 'noble') {
-      // fur collar and chain
-      for (let y = top; y < top + 3; y++) for (let x = g.cx - halfTop - 2; x <= g.cx + halfTop + 2; x++) fig.pxOn(x, y, (x + y) % 3 === 0 ? '#8a7a6a' : '#c8baa6');
-      if (look.trim) for (let x = g.cx - 6; x <= g.cx + 6; x++) fig.pxOn(x, top + 5 + Math.round(Math.abs(x - g.cx) * -0.3 + 2), (x % 2) ? P.gold3 : P.gold2);
-    }
-    if (outer === 'brigandine') {
-      for (let y = top + 2; y < S; y += 3) for (let x = g.cx - halfBot + 2; x < g.cx + halfBot; x += 3) fig.pxOn(x + (y % 2), y, shade(tc, 0.45));
-    }
-  }
-  if (outer === 'robe') {
-    const rc = look.outerColor || P.wood2;
-    // hood folds on shoulders
-    for (let x = g.cx - halfTop - 1; x <= g.cx + halfTop + 1; x++) { fig.pxOn(x, top, shade(rc, 0.12)); fig.pxOn(x, top + 1, shade(rc, -0.2)); }
-  }
-  if (look.cape) {
-    const cc = look.cape;
-    for (let y = top; y < S; y++) { fig.px(g.cx - halfBot - 1, y, shade(cc, -0.2)); fig.px(g.cx + halfBot + 1, y, shade(cc, -0.35)); }
-    fig.px(g.cx - halfTop, top + 1, P.gold3); fig.px(g.cx + halfTop, top + 1, P.gold3);
-  }
-}
-
-function paintBeard(fig: PixelBuffer, look: Look, g: FaceGeo, beard: string, open: boolean) {
-  const bc = look.beardColor || look.hair;
-  const bD = shade(bc, -0.3), bL = shade(bc, 0.2);
-  const my = g.mouthY;
-  if (beard === 'stubble') {
-    for (let y = g.noseBot + 2; y <= g.yc; y++) {
-      const hw = halfWidth(g, look, y);
-      for (let x = Math.round(g.cx - hw) + 1; x <= Math.round(g.cx + hw) - 1; x++) {
-        if ((x * 7 + y * 3) % 4 === 0 && !(y === my && Math.abs(x - g.cx) < g.mouthW / 2)) fig.pxOn(x, y, bD);
-      }
-    }
-    return;
-  }
-  const moustache = () => {
-    for (let x = g.cx - Math.floor(g.mouthW / 2) - 1; x <= g.cx + Math.ceil(g.mouthW / 2); x++) {
-      fig.px(x, my - 1, x > g.cx + 1 ? bD : bc);
-      if (x < g.cx - 1 || x > g.cx + 2) fig.px(x, my, bc);
-    }
-    fig.px(g.cx - Math.floor(g.mouthW / 2) - 1, my + 1, bD);
-    fig.px(g.cx + Math.ceil(g.mouthW / 2), my + 1, bD);
-  };
-  if (beard === 'moustache') { moustache(); return; }
-  if (beard === 'goatee') {
-    moustache();
-    for (let y = my + 2; y <= g.yc + 2; y++) for (let x = g.cx - 2; x <= g.cx + 2; x++) fig.px(x, y, x > g.cx ? bD : bc);
-    return;
-  }
-  const extra = beard === 'short' ? 1 : beard === 'full' ? 3 : 8;
-  const startY = g.ye + 3;
-  for (let y = startY; y <= g.yc + extra; y++) {
-    let hw = y <= g.yc ? halfWidth(g, look, y) : Math.max(2, halfWidth(g, look, g.yc - 1) - (y - g.yc) * (beard === 'long' ? 0.6 : 1.4));
-    if (y < g.noseBot + 1) {
-      // sideburns only
-      const x0 = Math.round(g.cx - halfWidth(g, look, y));
-      const x1 = Math.round(g.cx + halfWidth(g, look, y));
-      fig.px(x0, y, bc); fig.px(x0 + 1, y, bc); fig.px(x1, y, bD); fig.px(x1 - 1, y, bD);
-      continue;
-    }
-    for (let x = Math.round(g.cx - hw); x <= Math.round(g.cx + hw); x++) {
-      // leave the mouth visible
-      if (y >= my - 0 && y <= my + (open ? 2 : 1) && Math.abs(x - g.cx) <= Math.floor(g.mouthW / 2)) continue;
-      if (y < my - 1 && Math.abs(x - g.cx) <= 1 && y <= g.noseBot + 1) continue;
-      let c = bc;
-      if (x > g.cx + hw * 0.5) c = bD;
-      if ((x + y * 2) % 5 === 0) c = bL;
-      if ((x * 3 + y) % 7 === 0) c = bD;
-      fig.px(x, y, c);
-    }
-  }
-  moustache();
-}
-
-function hairline(g: FaceGeo, x: number, style: string): number {
-  // y where hair ends above the forehead for a given column
-  const rel = (x - g.cx) / g.hw;
-  const base = g.yt + (g.child ? 6 : 6);
-  let y = base + Math.abs(rel) * 3;
-  if (Math.abs(rel) > 0.75) y = g.ye - 1;
-  if (style === 'messy') y += (x % 3 === 0 ? 2 : 0);
-  if (style === 'curly') y += (x % 2 === 0 ? 1 : 0);
-  if (style === 'long' || style === 'braids' || style === 'bun' || style === 'ponytail') {
-    // center parting
-    if (Math.abs(x - g.cx) <= 1) y = base - 1;
-  }
-  return y;
-}
-
-function paintPortraitHair(fig: PixelBuffer, look: Look, g: FaceGeo) {
-  const hs = look.hairStyle;
-  const hat = look.hat || 'none';
-  const H = look.hair, HD = shade(H, -0.32), HL = shade(H, 0.25), HDD = shade(H, -0.5);
-  if (hs === 'none') return;
-  const hatted = hat !== 'none' && hat !== 'circlet';
-  if (hs === 'bald' || hs === 'tonsure' || hs === 'balding') {
-    // side hair only
-    const sideTop = hs === 'bald' ? g.ye - 3 : hs === 'balding' ? g.ye - 6 : g.yt + 4;
-    for (let y = sideTop; y <= g.ye + 3; y++) {
-      const hw = halfWidth(g, look, y);
-      for (const s of [-1, 1]) {
-        for (let k = 0; k < 3; k++) fig.px(Math.round(g.cx + s * (hw - k)), y, s > 0 ? HD : H);
-        fig.px(Math.round(g.cx + s * (hw + 1)), y, s > 0 ? HD : H);
-      }
-    }
-    if (hs === 'tonsure') {
-      for (let x = Math.round(g.cx - g.hw) - 1; x <= Math.round(g.cx + g.hw) + 1; x++) {
-        const y = g.yt + 5 + Math.round(Math.abs(x - g.cx) * 0.25);
-        fig.px(x, y, H); fig.px(x, y + 1, HD); fig.px(x, y - 1, x < g.cx ? HL : H);
-      }
-    }
-    // scalp shine
-    const sk = SKIN[look.skin] || SKIN.fair;
-    fig.pxOn(g.cx - 4, g.yt + 2, sk[3]); fig.pxOn(g.cx - 3, g.yt + 1, sk[3]); fig.pxOn(g.cx - 5, g.yt + 3, sk[3]);
-    return;
-  }
-  if (hatted && hat !== 'strawhat' && hat !== 'cap' && hat !== 'chaperon' && hat !== 'kettle' && hat !== 'kerchief' && hat !== 'feathercap') return;
-  const volume = hs === 'curly' ? 3 : hs === 'messy' ? 2 : 1.5;
-  const cyH = g.ye - 1;
-  const ry = (g.ye - g.yt) + 3 + (hs === 'curly' ? 1 : 0);
-  const rx = g.hw + volume;
-  for (let y = g.yt - 5; y <= g.ye + 4; y++) {
-    for (let x = Math.round(g.cx - rx) - 1; x <= Math.round(g.cx + rx) + 1; x++) {
-      const dx = (x - g.cx) / rx, dy = (y - cyH) / ry;
-      const r2 = dx * dx + dy * dy;
-      if (y < cyH && r2 > 1) continue;
-      if (y >= cyH && Math.abs(dx) > 1) continue;
-      const hl = hairline(g, x, hs);
-      const outsideHead = Math.abs(x - g.cx) > halfWidth(g, look, y) - 0.5 || y < g.yt;
-      const inHairZone = y < hl || (outsideHead && y < g.ye + (hs === 'short' || hs === 'messy' || hs === 'curly' ? 1 : 4));
-      if (!inHairZone) continue;
-      if (hs === 'messy' && r2 > 0.8 && y < cyH && ((x * 7 + y) % 5 === 0)) continue;
-      if (hs === 'curly' && r2 > 0.82 && y < cyH && ((x + y) % 3 === 0)) continue;
-      let c = H;
-      if (dx > 0.45) c = HD;
-      if (dx < -0.25 && dy < -0.55) c = HL;
-      if ((x * 5 + y * 3) % (look.old ? 13 : 7) === 0) c = HD;
-      if (r2 > 0.62 && r2 < 0.78 && dx < 0.1 && dx > -0.7 && dy < -0.5) c = HL;
-      fig.px(x, y, c);
-    }
-  }
-  if (hs === 'messy') {
-    for (let x = g.cx - 5; x <= g.cx + 2; x += 2) fig.px(x, hairline(g, x, 'short') + 1, H);
-  }
-  if (hs === 'short') { for (let x = g.cx - 5; x <= g.cx - 1; x++) fig.px(x, g.yt + 7, H); }
-  if (hs === 'bun' && hat !== 'kerchief') {
-    fig.ellipse(g.cx - 4, g.yt - 8, 9, 7, H);
-    for (let x = g.cx - 2; x <= g.cx + 1; x++) fig.px(x, g.yt - 7, HL);
-    fig.px(g.cx + 3, g.yt - 5, HD);
-  }
-  if (hs === 'braids') {
-    for (const s of [-1, 1]) {
-      const bx = Math.round(g.cx + s * (g.hw + 1));
-      for (let y = g.ye; y < S; y++) {
-        const wob = (Math.floor(y / 2) % 2) ? 1 : 0;
-        const x0 = bx - 1 + (s < 0 ? -wob : wob);
-        fig.px(x0, y, (y % 3 === 0) ? HD : H);
-        fig.px(x0 + 1, y, (y % 3 === 1) ? HD : H);
-        fig.px(x0 + 2, y, HD);
-        if (y === S - 6) { fig.px(x0, y, P.clay3); fig.px(x0 + 1, y, P.clay3); fig.px(x0 + 2, y, P.clay2); }
-      }
-    }
-  }
-  if (hs === 'long') {
-    for (const s of [-1, 1]) {
-      for (let y = g.ye; y < S - 2; y++) {
-        const bx = Math.round(g.cx + s * (halfWidth(g, look, Math.min(y, g.yc)) + 1));
-        for (let k = 0; k < 3; k++) fig.px(bx + s * k, y, s > 0 ? HD : (k === 0 ? H : HL));
-      }
-    }
-  }
-}
-
-function paintPortraitHat(fig: PixelBuffer, look: Look, g: FaceGeo, expr: Expr) {
-  const hat = look.hat || 'none';
-  if (hat === 'none') return;
-  const hc = look.hatColor || '#b3a88a';
-  const hcD = shade(hc, -0.3), hcL = shade(hc, 0.18);
-  const steel = P.metal3, steelD = P.metal2, steelL = P.metal5, steelDD = P.metal1;
-  const sk = SKIN[look.skin] || SKIN.fair;
-  const faceOpening = (x: number, y: number, pad = 0) => {
-    const hw = halfWidth(g, look, y) - 2 - pad;
-    return y >= g.ye - 6 + pad && y <= g.yc - 1 && Math.abs(x - g.cx) <= hw;
-  };
-  switch (hat) {
-    case 'kerchief': case 'wimple': {
-      const col = hat === 'wimple' ? P.white : hc;
-      const colD = hat === 'wimple' ? P.plaster2 : hcD;
-      const cyH = g.ye - 1;
-      const ry = (g.ye - g.yt) + 3.5;
-      const rx = g.hw + 2.5;
-      const bottom = hat === 'wimple' ? g.yc + 5 : g.ye + 2;
-      for (let y = g.yt - 5; y < bottom; y++) {
-        for (let x = Math.round(g.cx - rx) - 1; x <= Math.round(g.cx + rx) + 1; x++) {
-          const dx = (x - g.cx) / rx, dy = (y - cyH) / ry;
-          if (y < cyH && dx * dx + dy * dy > 1) continue;
-          if (y >= cyH && Math.abs(dx) > 1) continue;
-          if (hat === 'wimple' ? faceOpening(x, y) : (y > g.yt + 5 && Math.abs(x - g.cx) < halfWidth(g, look, y) - 1)) continue;
-          let c = dx > 0.45 ? colD : col;
-          if (dx < -0.3 && dy < -0.5) c = shade(col, 0.1);
-          if ((x * 3 + y * 5) % 11 === 0) c = colD;
-          fig.px(x, y, c);
-        }
-      }
-      if (hat === 'kerchief') {
-        // folded band over the forehead
-        for (let x = Math.round(g.cx - g.hw) - 1; x <= Math.round(g.cx + g.hw) + 1; x++) {
-          fig.px(x, g.yt + 5 + Math.round(Math.abs(x - g.cx) * 0.18), colD);
-          fig.px(x, g.yt + 4 + Math.round(Math.abs(x - g.cx) * 0.18), col);
-        }
-        // a few strands of hair peeking out at the temples
-        for (const sgn of [-1, 1]) for (let y = g.yt + 6; y < g.ye; y++) fig.pxOn(Math.round(g.cx + sgn * (halfWidth(g, look, y) - 1)), y, look.hair);
-      }
-      break;
-    }
-    case 'hood': case 'monkhood': {
-      for (let y = g.yt - 4; y <= g.yc + 2; y++) {
-        const hw = (y <= g.ye ? halfWidth(g, look, Math.max(g.yt, y)) : g.hw) + 3;
-        for (let x = Math.round(g.cx - hw); x <= Math.round(g.cx + hw); x++) {
-          const topY = g.yt - 4 + Math.pow(Math.abs(x - g.cx) / (hw + 0.1), 2) * 7;
-          if (y < topY) continue;
-          if (faceOpening(x, y, -1) || (y > g.yt + 4 && Math.abs(x - g.cx) < halfWidth(g, look, y) - 0.5 && y < g.yc)) continue;
-          fig.px(x, y, x > g.cx + hw * 0.4 ? hcD : (x < g.cx - hw * 0.6 ? hcL : hc));
-        }
-      }
-      // inner shadow around the face
-      for (let y = g.yt + 5; y < g.yc; y++) {
-        const hw = halfWidth(g, look, y);
-        fig.pxOn(Math.round(g.cx - hw), y, shade(sk[1], -0.25));
-        fig.pxOn(Math.round(g.cx + hw), y, shade(sk[1], -0.35));
-      }
-      break;
-    }
-    case 'coif': case 'bascinet': {
-      const isB = hat === 'bascinet';
-      for (let y = g.yt - (isB ? 6 : 3); y < S - 2; y++) {
-        const hw = (y <= g.ye ? halfWidth(g, look, Math.max(g.yt, y)) : g.hw + (y - g.ye) * 0.3) + 2;
-        for (let x = Math.round(g.cx - hw); x <= Math.round(g.cx + hw); x++) {
-          let topY = g.yt - 3 + Math.pow(Math.abs(x - g.cx) / (hw + 0.1), 2) * 6;
-          if (isB) topY = g.yt - 7 + Math.abs(x - g.cx) * 0.9;
-          if (y < topY) continue;
-          if (faceOpening(x, y, 0) && y > (isB ? g.ye - 5 : g.ye - 6)) continue;
-          const plate = isB && y < g.ye - 4;
-          let c = plate ? (x < g.cx - 3 ? steelL : x > g.cx + hw * 0.4 ? steelD : steel) : (((x + y) & 1) ? steelD : steel);
-          if (!plate && y > g.yc + 2 && y > S - 8) c = ((x + y) & 1) ? steelDD : steelD;
-          fig.px(x, y, c);
-        }
-      }
-      if (isB) for (let x = Math.round(g.cx - g.hw) - 2; x <= Math.round(g.cx + g.hw) + 2; x++) fig.px(x, g.ye - 5, steelDD);
-      break;
-    }
-    case 'kettle': {
-      for (let y = g.yt - 5; y <= g.yt + 5; y++) {
-        const hw = y < g.yt + 4 ? g.hw + 1 - Math.max(0, (g.yt - y) * 0.9) : g.hw + 7;
-        for (let x = Math.round(g.cx - hw); x <= Math.round(g.cx + hw); x++) {
-          const brim = y >= g.yt + 4;
-          let c = brim ? (y === g.yt + 5 ? steelDD : steelD) : (x < g.cx - 3 ? steelL : x > g.cx + 4 ? steelD : steel);
-          fig.px(x, y, c);
-        }
-      }
-      break;
-    }
-    case 'sallet': {
-      const m = look.hatColor || steel;
-      const mD = shade(m, -0.3), mL = shade(m, 0.4), mDD = shade(m, -0.55);
-      const rxS = g.hw + 3, ryS = (g.ye - g.yt) + 5, cyS = g.ye;
-      for (let y = g.yt - 5; y <= g.yc + 1; y++) {
-        const hw = g.hw + 3 + Math.max(0, y - g.ye) * 0.12;
-        for (let x = Math.round(g.cx - hw); x <= Math.round(g.cx + hw); x++) {
-          const ddx = (x - g.cx) / rxS, ddy = (y - cyS) / ryS;
-          if (y < cyS && ddx * ddx + ddy * ddy > 1) continue;
-          let c = x < g.cx - 4 && y < g.ye ? mL : x > g.cx + hw * 0.4 ? mD : m;
-          if (y === g.ye - 1 || y === g.ye) c = mDD; // visor slit
-          if (y === g.ye && Math.abs(x - g.cx) > 2 && (x % 2 === 0)) c = '#6a0f0f'; // glint of eyes in the dark
-          fig.px(x, y, c);
-        }
-      }
-      // tail
-      for (let y = g.yc - 4; y <= g.yc + 3; y++) fig.px(Math.round(g.cx + g.hw + 3), y, mD);
-      break;
-    }
-    case 'cap': case 'feathercap': {
-      for (let y = g.yt - 4; y <= g.yt + 5; y++) {
-        const hw = halfWidth(g, look, Math.max(g.yt, y)) + 2;
-        for (let x = Math.round(g.cx - hw); x <= Math.round(g.cx + hw); x++) {
-          const topY = g.yt - 4 + Math.pow(Math.abs(x - g.cx) / (hw + 0.1), 2) * 6;
-          if (y < topY) continue;
-          fig.px(x, y, y === g.yt + 5 ? hcD : x > g.cx + hw * 0.4 ? hcD : x < g.cx - hw * 0.4 ? hcL : hc);
-        }
-      }
-      if (hat === 'feathercap') for (let i = 0; i < 9; i++) { fig.px(g.cx + 8 + (i >> 2), g.yt - 3 - i, P.white); fig.px(g.cx + 9 + (i >> 2), g.yt - 3 - i, '#d8d2c4'); }
-      break;
-    }
-    case 'strawhat': {
-      const s = P.thatch3, sD = P.thatch1, sL = P.thatch4;
-      for (let y = g.yt - 6; y <= g.yt + 5; y++) {
-        const brim = y >= g.yt + 3;
-        const hw = brim ? g.hw + 9 - (y - g.yt - 3) : g.hw - 2 + Math.max(0, (y - g.yt + 6) * 0.2);
-        for (let x = Math.round(g.cx - hw); x <= Math.round(g.cx + hw); x++) {
-          let c = (x + y) % 3 === 0 ? sD : (x < g.cx - 3 ? sL : s);
-          if (brim && y === g.yt + 5) c = sD;
-          if (y === g.yt + 1) c = hc === '#b3a88a' ? P.clay2 : hc;
-          fig.px(x, y, c);
-        }
-      }
-      break;
-    }
-    case 'chaperon': {
-      for (let y = g.yt - 7; y <= g.yt + 5; y++) {
-        const hw = y > g.yt + 1 ? g.hw + 3 : g.hw + 1 - Math.max(0, (g.yt - 2 - y)) * 0.8;
-        for (let x = Math.round(g.cx - hw); x <= Math.round(g.cx + hw); x++) {
-          let c = y > g.yt + 1 ? ((x + y) % 4 === 0 ? hcD : hcL) : (x > g.cx + 3 ? hcD : hc);
-          fig.px(x, y, c);
-        }
-      }
-      for (let y = g.yt + 4; y < S - 4; y++) fig.px(Math.round(g.cx + g.hw + 4), y, hcD);
-      break;
-    }
-    case 'circlet': {
-      for (let x = Math.round(g.cx - g.hw) - 1; x <= Math.round(g.cx + g.hw) + 1; x++) {
-        const y = g.yt + 5 + Math.round(Math.abs(x - g.cx) * 0.2);
-        fig.px(x, y, (x % 4 === 0) ? P.gold4 : P.gold2);
-      }
-      fig.px(g.cx, g.yt + 4, '#a82020');
-      break;
-    }
-  }
-}
-
-// ---------- cache & API ----------
+// ================================================================ API
 
 const cache = new Map<string, HTMLCanvasElement>();
 
 export function getPortrait(key: string, look: Look, expr: Expr = 'neutral', talk = false, blink = false): HTMLCanvasElement {
-  const k = `${key}|${expr}|${talk ? 1 : 0}|${blink ? 1 : 0}|${JSON.stringify(look).length}`;
+  const k = `${key}|${expr}|${talk ? 1 : 0}|${blink ? 1 : 0}|${hashStr(JSON.stringify(look))}`;
   let c = cache.get(k);
   if (c) return c;
-  const buf = paintPortrait(look, expr, talk, blink);
-  c = makeCanvas(S, S);
-  buf.drawTo(c.getContext('2d')!, 0, 0);
+  c = newCanvas(S, S);
+  const g = c.getContext('2d')!;
+  g.lineCap = 'round';
+  g.lineJoin = 'round';
+  if (key.includes('crumb')) paintDog(g, look, expr, talk, blink);
+  else paintPortrait(g, look, expr, talk, blink, key);
+  if (cache.size > 400) cache.clear();
   cache.set(k, c);
   return c;
 }
 
 export const PORTRAIT_SIZE = S;
+
+// ================================================================ painting
+
+export function paintPortrait(g: G, look: Look, expr: Expr, talk: boolean, blink: boolean, seedKey = '') {
+  const rng = new RNG(hashStr(seedKey + JSON.stringify(look)));
+  const child = look.build === 'child';
+  const R = child ? 63 : 67;
+  const cx = 128, cy = child ? 126 : 116;
+  const sk = skinOf(look);
+  const f = { ...FACES[expr] };
+  if (blink && expr !== 'sleep') f.open = 0;
+  const bg = look.portraitBg || '#5a5048';
+
+  background(g, bg, rng);
+  hairBehind(g, look, cx, cy, R);
+  bust(g, look, cx, cy, R, sk, child);
+  neck(g, cx, cy, R, sk);
+  const hat = look.hat || 'none';
+  if (hat === 'hood' || hat === 'monkhood' || hat === 'wimple' || hat === 'coif') hoodBehind(g, look, cx, cy, R);
+  head(g, look, cx, cy, R, sk, f, talk, rng, expr);
+  hairFront(g, look, cx, cy, R, rng);
+  headwear(g, look, cx, cy, R, rng);
+  // gentle key light from the upper left, rim of warm light
+  g.save();
+  g.globalCompositeOperation = 'soft-light';
+  g.fillStyle = rad(g, cx - R * 1.2, cy - R * 1.4, 10, cx - R * 0.5, cy - R * 0.5, R * 3, [[0, 'rgba(255,240,210,0.55)'], [1, 'rgba(20,16,30,0.45)']]);
+  g.fillRect(0, 0, S, S);
+  g.restore();
+  vignette(g);
+  grainAll(g, rng);
+}
+
+function grainAll(g: G, rng: RNG) {
+  const img = g.getImageData(0, 0, S, S);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const n = (rng.next() - 0.5) * 7;
+    d[i] = clamp(d[i] + n, 0, 255); d[i + 1] = clamp(d[i + 1] + n, 0, 255); d[i + 2] = clamp(d[i + 2] + n, 0, 255);
+  }
+  g.putImageData(img, 0, 0);
+}
+
+function background(g: G, bg: string, rng: RNG) {
+  g.fillStyle = rad(g, 80, 60, 10, 128, 128, 210, [[0, lit(bg, 0.35)], [0.55, bg], [1, dim(bg, 0.55)]]);
+  g.fillRect(0, 0, S, S);
+  // painterly dabs
+  for (let i = 0; i < 90; i++) {
+    const x = rng.next() * S, y = rng.next() * S, r = 8 + rng.next() * 26;
+    g.fillStyle = rgba(rng.next() < 0.5 ? lit(bg, 0.25) : dim(bg, 0.3), 0.08);
+    g.beginPath(); g.ellipse(x, y, r, r * 0.6, rng.next() * 3, 0, Math.PI * 2); g.fill();
+  }
+}
+
+function vignette(g: G) {
+  g.fillStyle = rad(g, 128, 118, 90, 128, 128, 190, [[0, 'rgba(0,0,0,0)'], [1, 'rgba(8,5,3,0.55)']]);
+  g.fillRect(0, 0, S, S);
+}
+
+// ---------------------------------------------------------------- body
+
+function clothAt(look: Look): { base: string; kind: string } {
+  const o = look.outer || 'none';
+  if (o === 'mail' || o === 'tabard') return { base: '#7c858e', kind: o };
+  if (o === 'plate') return { base: '#a2acb6', kind: o };
+  if (o === 'none' || o === 'apron' || o === 'vest') return { base: look.shirt, kind: o };
+  return { base: look.outerColor || look.shirt, kind: o };
+}
+
+function mail(g: G, x: number, y: number, w: number, h: number, base: string) {
+  g.fillStyle = lin(g, x, y, x + w, y + h, [[0, lit(base, 0.3)], [0.5, base], [1, dim(base, 0.45)]]);
+  g.fillRect(x, y, w, h);
+  g.strokeStyle = 'rgba(20,24,28,0.5)';
+  g.lineWidth = 1;
+  for (let yy = y + 3; yy < y + h; yy += 4.2) for (let xx = x + ((Math.round((yy - y) / 4.2) % 2) * 2.2); xx < x + w; xx += 4.4) { g.beginPath(); g.arc(xx, yy, 1.8, 0, Math.PI); g.stroke(); }
+}
+
+function bust(g: G, look: Look, cx: number, cy: number, R: number, sk: string[], child: boolean) {
+  const { base, kind } = clothAt(look);
+  const top = cy + R * 1.18;
+  const sw = child ? R * 1.55 : look.build === 'broad' || look.build === 'fat' ? R * 2.1 : look.female ? R * 1.7 : R * 1.9;
+  const shape = () => {
+    g.beginPath();
+    g.moveTo(cx - sw - 20, S + 5);
+    g.bezierCurveTo(cx - sw - 6, top + 50, cx - sw * 0.9, top + 8, cx - R * 0.5, top);
+    g.lineTo(cx + R * 0.5, top);
+    g.bezierCurveTo(cx + sw * 0.9, top + 8, cx + sw + 6, top + 50, cx + sw + 20, S + 5);
+    g.closePath();
+  };
+  // cape over the shoulders
+  if (look.cape) {
+    g.fillStyle = lin(g, cx - sw, 0, cx + sw, 0, [[0, lit(look.cape, 0.2)], [1, dim(look.cape, 0.45)]]);
+    g.beginPath(); g.moveTo(cx - sw - 28, S + 5); g.bezierCurveTo(cx - sw - 10, top + 30, cx - sw * 0.8, top - 2, cx, top - 4); g.bezierCurveTo(cx + sw * 0.8, top - 2, cx + sw + 10, top + 30, cx + sw + 28, S + 5); g.closePath(); g.fill();
+  }
+  shape();
+  g.fillStyle = lin(g, cx - sw, top, cx + sw, S, [[0, lit(base, 0.25)], [0.5, base], [1, dim(base, 0.45)]]);
+  g.fill();
+  g.save();
+  shape();
+  g.clip();
+  if (kind === 'mail' || kind === 'tabard') mail(g, cx - sw - 20, top - 5, sw * 2 + 40, S - top + 10, base);
+  if (kind === 'tabard') {
+    const tc = look.outerColor || '#3e6b3a';
+    g.fillStyle = lin(g, cx - R, 0, cx + R, 0, [[0, lit(tc, 0.2)], [1, dim(tc, 0.35)]]);
+    g.fillRect(cx - R * 1.05, top + 18, R * 2.1, S);
+    g.fillStyle = look.trim || '#c79a2c';
+    g.fillRect(cx - 7, top + 32, 14, S);
+    g.fillRect(cx - 30, top + 48, 60, 12);
+  }
+  if (kind === 'plate') {
+    g.fillStyle = lin(g, cx - sw, top, cx + sw * 0.6, S, [[0, '#f4f8fa'], [0.3, '#b8c2cc'], [0.65, '#7a848e'], [1, '#3e464e']]);
+    g.beginPath(); g.moveTo(cx - sw * 0.85, S + 5); g.quadraticCurveTo(cx - sw * 0.8, top + 16, cx, top + 12); g.quadraticCurveTo(cx + sw * 0.8, top + 16, cx + sw * 0.85, S + 5); g.fill();
+    g.strokeStyle = 'rgba(255,255,255,0.6)'; g.lineWidth = 2.2;
+    g.beginPath(); g.moveTo(cx - sw * 0.5, top + 30); g.quadraticCurveTo(cx - sw * 0.55, top + 60, cx - sw * 0.45, S); g.stroke();
+    for (const s of [-1, 1]) { g.fillStyle = lin(g, cx + s * sw, top, cx + s * sw * 0.6, top + 40, [[0, '#d8e0e6'], [1, '#6f7882']]); g.beginPath(); g.ellipse(cx + s * sw * 0.85, top + 22, sw * 0.32, 22, s * 0.3, 0, Math.PI * 2); g.fill(); }
+  }
+  if (kind === 'gambeson' || kind === 'brigandine') {
+    g.strokeStyle = rgba(dim(base, 0.45), 0.6); g.lineWidth = 1.4;
+    for (let x = cx - sw; x < cx + sw; x += 11) { g.beginPath(); g.moveTo(x, top); g.lineTo(x + 3, S); g.stroke(); }
+    if (kind === 'brigandine') for (let y = top + 16; y < S; y += 11) for (let x = cx - sw + 6; x < cx + sw; x += 11) ellipse(g, x, y, 1.6, 1.6, '#c8b880');
+  }
+  if (kind === 'leather') {
+    g.strokeStyle = 'rgba(20,12,6,0.6)'; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(cx, top + 8); g.lineTo(cx, S); g.stroke();
+    for (let y = top + 18; y < S; y += 14) ellipse(g, cx + 5, y, 2.4, 2.4, '#c8a060');
+  }
+  if (kind === 'noble') {
+    g.fillStyle = look.trim || '#c79a2c';
+    g.fillRect(cx - 3, top + 6, 6, S);
+    for (let y = top + 16; y < S; y += 12) { ellipse(g, cx - 9, y, 3, 3, lit(look.trim || '#c79a2c', 0.3)); ellipse(g, cx + 9, y, 3, 3, lit(look.trim || '#c79a2c', 0.3)); }
+    g.strokeStyle = look.trim || '#c79a2c'; g.lineWidth = 4;
+    g.beginPath(); g.moveTo(cx - R * 0.6, top + 2); g.quadraticCurveTo(cx, top + 22, cx + R * 0.6, top + 2); g.stroke();
+  }
+  if (kind === 'dress') {
+    const sh = look.shirt;
+    g.fillStyle = lin(g, 0, top, 0, top + 40, [[0, lit(sh, 0.2)], [1, dim(sh, 0.2)]]);
+    g.beginPath(); g.moveTo(cx - R * 0.8, top - 2); g.quadraticCurveTo(cx, top + 48, cx + R * 0.8, top - 2); g.closePath(); g.fill();
+    g.strokeStyle = rgba(dim(base, 0.5), 0.9); g.lineWidth = 1.3;
+    for (let y = top + 30; y < S; y += 9) { g.beginPath(); g.moveTo(cx - 6, y); g.lineTo(cx + 6, y + 5); g.moveTo(cx + 6, y); g.lineTo(cx - 6, y + 5); g.stroke(); }
+  }
+  if (kind === 'apron' || look.apronColor) {
+    const ac = look.apronColor || '#6b4526';
+    g.strokeStyle = dim(ac, 0.1); g.lineWidth = 6;
+    g.beginPath(); g.moveTo(cx - R * 0.95, top + 10); g.lineTo(cx - R * 0.55, S); g.moveTo(cx + R * 0.95, top + 10); g.lineTo(cx + R * 0.55, S); g.stroke();
+    if (kind === 'apron') { g.fillStyle = lin(g, 0, top + 40, 0, S, [[0, lit(ac, 0.15)], [1, dim(ac, 0.25)]]); g.fillRect(cx - R * 0.8, top + 44, R * 1.6, S); }
+  }
+  if (kind === 'vest') {
+    g.fillStyle = lin(g, cx - sw, 0, cx + sw, 0, [[0, lit(look.outerColor || '#6b4a30', 0.2)], [1, dim(look.outerColor || '#6b4a30', 0.4)]]);
+    g.beginPath(); g.moveTo(cx - sw - 20, S); g.bezierCurveTo(cx - sw, top + 40, cx - sw * 0.8, top + 6, cx - R * 0.45, top + 2); g.lineTo(cx - 12, S); g.closePath(); g.fill();
+    g.beginPath(); g.moveTo(cx + sw + 20, S); g.bezierCurveTo(cx + sw, top + 40, cx + sw * 0.8, top + 6, cx + R * 0.45, top + 2); g.lineTo(cx + 12, S); g.closePath(); g.fill();
+  }
+  if (kind === 'robe') {
+    g.strokeStyle = rgba(dim(base, 0.5), 0.6); g.lineWidth = 2.5;
+    for (const s of [-1, 1]) { g.beginPath(); g.moveTo(cx + s * R * 0.4, top + 4); g.quadraticCurveTo(cx + s * R * 0.9, top + 40, cx + s * R * 0.7, S); g.stroke(); }
+  }
+  // folds and shoulder shading
+  g.strokeStyle = rgba(dim(base, 0.5), 0.3); g.lineWidth = 2;
+  for (const s of [-1, 1]) { g.beginPath(); g.moveTo(cx + s * sw * 0.55, top + 14); g.quadraticCurveTo(cx + s * sw * 0.62, top + 50, cx + s * sw * 0.5, S); g.stroke(); }
+  g.fillStyle = rad(g, cx, top - 10, 10, cx, top, R * 1.3, [[0, 'rgba(0,0,0,0.35)'], [1, 'rgba(0,0,0,0)']]);
+  g.fillRect(0, top - 10, S, 60);
+  g.restore();
+  // neckline
+  if (kind === 'none' || kind === 'apron' || kind === 'vest' || kind === 'leather' || kind === 'gambeson') {
+    g.fillStyle = dim(look.shirt, 0.35);
+    g.beginPath(); g.moveTo(cx - R * 0.42, top + 1); g.quadraticCurveTo(cx, top + 26, cx + R * 0.42, top + 1); g.quadraticCurveTo(cx, top + 14, cx - R * 0.42, top + 1); g.fill();
+  }
+  void sk;
+}
+
+function neck(g: G, cx: number, cy: number, R: number, sk: string[]) {
+  const top = cy + R * 0.7, bot = cy + R * 1.3;
+  g.fillStyle = lin(g, cx - R * 0.35, 0, cx + R * 0.35, 0, [[0, sk[2]], [0.55, sk[2]], [1, sk[1]]]);
+  g.beginPath(); g.moveTo(cx - R * 0.33, top); g.lineTo(cx - R * 0.38, bot); g.quadraticCurveTo(cx, bot + 10, cx + R * 0.38, bot); g.lineTo(cx + R * 0.33, top); g.closePath(); g.fill();
+  // shadow under the jaw
+  g.fillStyle = lin(g, 0, top, 0, top + R * 0.35, [[0, rgba(sk[0], 0.7)], [1, rgba(sk[0], 0)]]);
+  g.fillRect(cx - R * 0.4, top, R * 0.8, R * 0.35);
+}
+
+// ---------------------------------------------------------------- head
+
+function faceShape(g: G, look: Look, cx: number, cy: number, R: number) {
+  const jaw = look.face?.jaw || 'round';
+  const jw = jaw === 'square' ? 0.8 : jaw === 'heavy' ? 0.9 : jaw === 'narrow' ? 0.56 : 0.68;
+  const chin = jaw === 'heavy' ? 1.1 : jaw === 'narrow' ? 1.14 : 1.1;
+  const cheekW = look.build === 'fat' ? 1.02 : 0.93;
+  g.beginPath();
+  g.moveTo(cx, cy - R * 1.02);
+  g.bezierCurveTo(cx + R * 0.72, cy - R * 1.02, cx + R * cheekW, cy - R * 0.6, cx + R * cheekW, cy - R * 0.02);
+  g.bezierCurveTo(cx + R * cheekW, cy + R * 0.45, cx + R * jw, cy + R * 0.78, cx + R * jw * 0.62, cy + R * 0.95);
+  g.quadraticCurveTo(cx + R * 0.2, cy + R * chin, cx, cy + R * chin);
+  g.quadraticCurveTo(cx - R * 0.2, cy + R * chin, cx - R * jw * 0.62, cy + R * 0.95);
+  g.bezierCurveTo(cx - R * jw, cy + R * 0.78, cx - R * cheekW, cy + R * 0.45, cx - R * cheekW, cy - R * 0.02);
+  g.bezierCurveTo(cx - R * cheekW, cy - R * 0.6, cx - R * 0.72, cy - R * 1.02, cx, cy - R * 1.02);
+  g.closePath();
+}
+
+function head(g: G, look: Look, cx: number, cy: number, R: number, sk: string[], f: Face, talk: boolean, rng: RNG, expr: Expr) {
+  const hat = look.hat || 'none';
+  const helmClosed = hat === 'sallet';
+  // ears
+  if (!(hat === 'hood' || hat === 'monkhood' || hat === 'wimple' || hat === 'coif' || hat === 'bascinet' || helmClosed)) {
+    for (const s of [-1, 1]) {
+      g.fillStyle = lin(g, cx + s * R * 0.9, 0, cx + s * R * 1.12, 0, [[0, sk[1]], [1, sk[2]]]);
+      g.beginPath(); g.ellipse(cx + s * R * 0.94, cy + R * 0.12, R * 0.15, R * 0.24, s * 0.15, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = rgba(sk[0], 0.6); g.lineWidth = 1.4;
+      g.beginPath(); g.ellipse(cx + s * R * 0.95, cy + R * 0.12, R * 0.08, R * 0.14, s * 0.15, s < 0 ? -1.2 : Math.PI - 1.9, s < 0 ? 1.9 : Math.PI + 1.2); g.stroke();
+      if (look.face?.earrings) ellipse(g, cx + s * R * 0.96, cy + R * 0.36, 2.4, 2.4, '#e8c55a');
+    }
+  }
+  // skin with soft shading and a painted outline
+  faceShape(g, look, cx, cy, R);
+  g.fillStyle = rad(g, cx - R * 0.35, cy - R * 0.4, R * 0.1, cx, cy, R * 1.25, [[0, lit(sk[3], 0.18)], [0.45, sk[2]], [0.85, mix(sk[2], sk[1], 0.6)], [1, sk[1]]]);
+  g.fill();
+  g.strokeStyle = rgba(dim(sk[0], 0.5), 0.6);
+  g.lineWidth = 2;
+  g.stroke();
+  g.save();
+  faceShape(g, look, cx, cy, R);
+  g.clip();
+  // side and jaw shade, warm cheeks
+  g.fillStyle = lin(g, cx + R * 0.2, 0, cx + R, 0, [[0, 'rgba(0,0,0,0)'], [1, rgba(sk[0], 0.45)]]);
+  g.fillRect(cx, cy - R * 1.2, R * 1.2, R * 2.4);
+  g.fillStyle = lin(g, 0, cy + R * 0.6, 0, cy + R * 1.15, [[0, 'rgba(0,0,0,0)'], [1, rgba(sk[0], 0.3)]]);
+  g.fillRect(cx - R, cy + R * 0.6, R * 2, R * 0.6);
+  const blush = (look.face?.cheeks || look.female || look.build === 'child' ? 0.22 : 0.1) + (f.blush ?? 0) + f.cheek * 0.08;
+  for (const s of [-1, 1]) {
+    g.fillStyle = rad(g, cx + s * R * 0.5, cy + R * (0.45 - f.cheek * 0.06), 1, cx + s * R * 0.5, cy + R * (0.45 - f.cheek * 0.06), R * 0.3, [[0, rgba('#e0605a', blush)], [1, 'rgba(224,96,90,0)']]);
+    g.fillRect(cx + s * R * 0.5 - R * 0.35, cy, R * 0.7, R);
+  }
+  // cheekbone light and temple shade
+  g.fillStyle = rad(g, cx - R * 0.45, cy + R * 0.22, 1, cx - R * 0.45, cy + R * 0.22, R * 0.35, [[0, rgba(lit(sk[3], 0.4), 0.35)], [1, 'rgba(255,255,255,0)']]);
+  g.fillRect(cx - R, cy - R * 0.2, R, R);
+  for (const s2 of [-1, 1]) {
+    g.fillStyle = rad(g, cx + s2 * R * 0.95, cy - R * 0.3, 1, cx + s2 * R * 0.95, cy - R * 0.3, R * 0.4, [[0, rgba(sk[0], 0.3)], [1, rgba(sk[0], 0)]]);
+    g.fillRect(cx + s2 * R * 0.95 - R * 0.5, cy - R * 0.8, R, R);
+  }
+  // wrinkles and age
+  const wr = look.face?.wrinkles ?? (look.old ? 2 : 0);
+  g.strokeStyle = rgba(sk[0], 0.35); g.lineWidth = 1.2;
+  if (wr >= 1) for (const s of [-1, 1]) { g.beginPath(); g.moveTo(cx + s * R * 0.3, cy + R * 0.45); g.quadraticCurveTo(cx + s * R * 0.44, cy + R * 0.65, cx + s * R * 0.36, cy + R * 0.82); g.stroke(); }
+  if (wr >= 2) for (let k = 0; k < wr; k++) { g.beginPath(); g.moveTo(cx - R * 0.4, cy - R * (0.45 + k * 0.1)); g.quadraticCurveTo(cx, cy - R * (0.5 + k * 0.1), cx + R * 0.4, cy - R * (0.45 + k * 0.1)); g.stroke(); }
+  if (wr >= 2) for (const s of [-1, 1]) for (let k = 0; k < 2; k++) { g.beginPath(); g.moveTo(cx + s * R * 0.64, cy + R * (0.06 + k * 0.08)); g.lineTo(cx + s * R * 0.76, cy + R * (0.02 + k * 0.1)); g.stroke(); }
+  if (look.freckles) {
+    for (let k = 0; k < 26; k++) {
+      const s = rng.next() < 0.5 ? -1 : 1;
+      ellipse(g, cx + s * R * (0.12 + rng.next() * 0.5), cy + R * (0.2 + rng.next() * 0.35), 1 + rng.next() * 0.8, 0.9, rgba('#9a5a34', 0.55));
+    }
+  }
+  g.restore();
+
+  if (!helmClosed) {
+    eyes(g, look, cx, cy, R, sk, f, expr);
+    nose(g, look, cx, cy, R, sk);
+    mouth(g, look, cx, cy, R, sk, f, talk);
+  }
+  // tears and sweat
+  if (f.tears) {
+    for (const s of [-1, 1]) {
+      const x = cx + s * R * 0.34, y = cy + R * 0.2;
+      g.fillStyle = lin(g, 0, y, 0, y + R * 0.7, [[0, 'rgba(200,230,255,0.9)'], [1, 'rgba(200,230,255,0.2)']]);
+      g.beginPath(); g.moveTo(x - 2, y); g.quadraticCurveTo(x - 3.5, y + R * 0.4, x - 1, y + R * 0.66); g.quadraticCurveTo(x + 1.5, y + R * 0.4, x + 2, y); g.fill();
+      ellipse(g, x - 0.5, y + R * 0.2, 1, 3, 'rgba(255,255,255,0.8)');
+    }
+  }
+  if (f.sweat) {
+    const x = cx + R * 0.78, y = cy - R * 0.45;
+    g.fillStyle = rad(g, x - 1, y - 1, 0.5, x, y, 5, [[0, '#ffffff'], [1, '#a8d0f0']]);
+    g.beginPath(); g.moveTo(x, y - 7); g.quadraticCurveTo(x + 5, y + 2, x, y + 4); g.quadraticCurveTo(x - 5, y + 2, x, y - 7); g.fill();
+  }
+  if (look.scar) {
+    g.strokeStyle = rgba('#e8b0a0', 0.95); g.lineWidth = 3;
+    g.beginPath(); g.moveTo(cx + R * 0.28, cy - R * 0.4); g.quadraticCurveTo(cx + R * 0.42, cy + R * 0.05, cx + R * 0.34, cy + R * 0.55); g.stroke();
+    g.strokeStyle = rgba('#8a3a2a', 0.55); g.lineWidth = 1;
+    g.beginPath(); g.moveTo(cx + R * 0.3, cy - R * 0.4); g.quadraticCurveTo(cx + R * 0.44, cy + R * 0.05, cx + R * 0.36, cy + R * 0.55); g.stroke();
+    for (let k = 0; k < 4; k++) { const t = 0.15 + k * 0.22; const x = cx + R * (0.3 + t * 0.1), y = cy - R * 0.4 + t * R * 0.95; g.beginPath(); g.moveTo(x - 3, y); g.lineTo(x + 3, y + 1); g.stroke(); }
+  }
+  beard(g, look, cx, cy, R, f, talk);
+}
+
+function eyes(g: G, look: Look, cx: number, cy: number, R: number, sk: string[], f: Face, expr: Expr) {
+  const face = look.face || {};
+  const shape = face.eyeShape || 'round';
+  const ew = R * (shape === 'wide' ? 0.2 : shape === 'narrow' ? 0.19 : 0.185) * (look.build === 'child' ? 1.12 : 1);
+  const eh0 = R * (shape === 'narrow' ? 0.09 : shape === 'sleepy' ? 0.085 : shape === 'wide' ? 0.125 : 0.11) * (look.build === 'child' ? 1.25 : 1);
+  const ey = cy + R * 0.1;
+  const iris = look.eyes || '#4a3322';
+  const open = clamp(f.open * (shape === 'sleepy' ? 0.8 : 1), 0, 1.35);
+  for (const s of [-1, 1]) {
+    const ex = cx + s * R * 0.37;
+    // brow
+    const bt = face.brows === 'bushy' ? 4.2 : face.brows === 'thick' ? 3.4 : face.brows === 'thin' ? 1.8 : 2.6;
+    const inner = f.brow[0] * R, outer = f.brow[1] * R;
+    g.strokeStyle = dim(look.beardColor && look.hairStyle === 'bald' ? look.beardColor : look.hair, 0.25);
+    g.lineWidth = bt;
+    g.beginPath();
+    g.moveTo(ex - s * ew * 1.05, ey - R * 0.2 - inner);
+    g.quadraticCurveTo(ex + s * ew * 0.2, ey - R * 0.3 - (inner + outer) * 0.6, ex + s * ew * 1.25, ey - R * 0.2 - outer);
+    g.stroke();
+    if (face.brows === 'bushy') { g.lineWidth = 1; for (let k = 0; k < 6; k++) { const t = k / 5; const x = ex - s * ew + s * t * ew * 2.2; g.beginPath(); g.moveTo(x, ey - R * 0.2 - inner * (1 - t) - outer * t); g.lineTo(x + s * 2, ey - R * 0.26 - inner * (1 - t) - outer * t); g.stroke(); } }
+    // eye socket shade
+    g.fillStyle = rad(g, ex, ey - 1, 1, ex, ey, ew * 1.8, [[0, rgba(sk[0], 0.28)], [1, rgba(sk[0], 0)]]);
+    g.beginPath(); g.ellipse(ex, ey, ew * 1.8, ew * 1.3, 0, 0, Math.PI * 2); g.fill();
+    if (look.eyepatch && s < 0) {
+      g.fillStyle = lin(g, ex - ew, ey - ew, ex + ew, ey + ew, [[0, '#3a302a'], [1, '#0e0a08']]);
+      g.beginPath(); g.ellipse(ex, ey + 1, ew * 1.35, ew * 1.1, 0.1, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = '#1a120e'; g.lineWidth = 2.2;
+      g.beginPath(); g.moveTo(ex - ew * 1.2, ey - 3); g.lineTo(cx + R * 0.9, cy - R * 0.55); g.moveTo(ex + ew * 1.2, ey - 2); g.lineTo(cx - R * 0.95, cy - R * 0.2); g.stroke();
+      continue;
+    }
+    const eh = eh0 * open;
+    if (open < 0.12) {
+      // closed: a soft curved lash line (smiling lids for laughter)
+      g.strokeStyle = dim(sk[0], 0.35); g.lineWidth = 1.8;
+      g.beginPath();
+      if (expr === 'laugh' || expr === 'happy') { g.moveTo(ex - ew, ey + 1); g.quadraticCurveTo(ex, ey - eh0 * 1.2, ex + ew, ey + 1); }
+      else { g.moveTo(ex - ew, ey); g.quadraticCurveTo(ex, ey + eh0 * 0.9, ex + ew, ey); }
+      g.stroke();
+      continue;
+    }
+    // white, iris, pupil, glint
+    g.save();
+    g.beginPath();
+    g.moveTo(ex - ew, ey);
+    g.quadraticCurveTo(ex, ey - eh * 1.9, ex + ew, ey);
+    g.quadraticCurveTo(ex, ey + eh * 1.3, ex - ew, ey);
+    g.closePath();
+    g.fillStyle = '#f6f1e8';
+    g.fill();
+    g.clip();
+    const ix = ex + f.look[0] * ew * 0.6, iy = ey + f.look[1] * eh * 0.6;
+    const ir = Math.min(ew * 0.55, eh0 * 1.25);
+    g.fillStyle = rad(g, ix - ir * 0.3, iy - ir * 0.4, 0.5, ix, iy, ir, [[0, lit(iris, 0.45)], [0.6, iris], [1, dim(iris, 0.5)]]);
+    g.beginPath(); g.arc(ix, iy, ir, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#120c08';
+    g.beginPath(); g.arc(ix, iy, ir * 0.48, 0, Math.PI * 2); g.fill();
+    g.fillStyle = 'rgba(0,0,0,0.25)';
+    g.fillRect(ex - ew, ey - eh * 2, ew * 2, eh * 0.9);
+    g.restore();
+    ellipse(g, ix - ir * 0.35, iy - ir * 0.4, ir * 0.28, ir * 0.24, 'rgba(255,255,255,0.95)');
+    // lids and lashes
+    g.strokeStyle = dim(sk[0], 0.5); g.lineWidth = look.female ? 2.4 : 1.8;
+    g.beginPath(); g.moveTo(ex - ew * 1.05, ey + 0.5); g.quadraticCurveTo(ex, ey - eh * 1.95, ex + ew * 1.08, ey - 0.5); g.stroke();
+    if (look.female) { g.lineWidth = 1.3; g.beginPath(); g.moveTo(ex + s * ew * 0.95, ey - eh * 0.3); g.lineTo(ex + s * ew * 1.35, ey - eh * 0.9); g.stroke(); }
+    g.strokeStyle = rgba(sk[0], 0.5); g.lineWidth = 1;
+    g.beginPath(); g.moveTo(ex - ew * 0.8, ey + eh * 0.9); g.quadraticCurveTo(ex, ey + eh * 1.5, ex + ew * 0.8, ey + eh * 0.9); g.stroke();
+    if (shape === 'sleepy') { g.fillStyle = sk[2]; g.beginPath(); g.moveTo(ex - ew * 1.1, ey - eh * 0.3); g.quadraticCurveTo(ex, ey - eh * 2.2, ex + ew * 1.1, ey - eh * 0.3); g.quadraticCurveTo(ex, ey - eh * 1.1, ex - ew * 1.1, ey - eh * 0.3); g.fill(); }
+  }
+}
+
+function nose(g: G, look: Look, cx: number, cy: number, R: number, sk: string[]) {
+  const n = look.face?.nose || 'small';
+  const len = R * (n === 'long' || n === 'hooked' ? 0.48 : n === 'button' ? 0.3 : 0.38) * (look.build === 'child' ? 0.8 : 1);
+  const w = R * (n === 'broad' ? 0.2 : n === 'button' ? 0.13 : 0.15);
+  const top = cy + R * 0.08, tip = top + len;
+  // bridge light and side shadow
+  g.fillStyle = lin(g, cx - w, 0, cx + w * 1.4, 0, [[0, rgba(lit(sk[3], 0.3), 0.5)], [0.4, 'rgba(0,0,0,0)'], [1, rgba(sk[0], 0.35)]]);
+  g.beginPath(); g.moveTo(cx - w * 0.3, top); g.lineTo(cx + w * 0.4, top); g.lineTo(cx + w * 1.2, tip); g.lineTo(cx - w * 1.1, tip); g.closePath(); g.fill();
+  if (n === 'hooked') { g.strokeStyle = rgba(sk[0], 0.5); g.lineWidth = 1.6; g.beginPath(); g.moveTo(cx + w * 0.3, top + len * 0.3); g.quadraticCurveTo(cx + w * 0.9, top + len * 0.45, cx + w * 0.4, tip - 1); g.stroke(); }
+  // tip and nostrils
+  g.fillStyle = rad(g, cx - w * 0.3, tip - w * 0.5, 0.5, cx, tip - w * 0.2, w * 1.2, [[0, lit(sk[2], 0.2)], [1, sk[2]]]);
+  g.beginPath(); g.ellipse(cx, tip - w * 0.25, w * 0.95, w * 0.75, 0, 0, Math.PI * 2); g.fill();
+  g.fillStyle = rgba(sk[0], 0.7);
+  for (const s of [-1, 1]) { g.beginPath(); g.ellipse(cx + s * w * 0.62, tip + w * 0.12, w * 0.32, w * 0.2, s * 0.3, 0, Math.PI * 2); g.fill(); }
+  g.fillStyle = rgba(sk[0], 0.3);
+  g.beginPath(); g.ellipse(cx + w * 0.2, tip + w * 0.55, w * 1.1, w * 0.25, 0, 0, Math.PI * 2); g.fill();
+}
+
+function mouth(g: G, look: Look, cx: number, cy: number, R: number, sk: string[], f: Face, talk: boolean) {
+  const face = look.face || {};
+  const mw = R * (face.mouth === 'wide' ? 0.3 : face.mouth === 'small' ? 0.19 : 0.25) * (look.build === 'child' ? 0.85 : 1);
+  const my = cy + R * 0.7;
+  const lip = mix(sk[1], '#b04a44', 0.45), lipD = dim(lip, 0.35);
+  let kind = f.mouth;
+  if (talk) kind = kind === 'grin' ? 'grin' : kind === 'o' ? 'o' : kind === 'teeth' ? 'teeth' : 'open';
+  const open = (o: number, curve: number) => {
+    g.fillStyle = '#3a1612';
+    g.beginPath();
+    g.moveTo(cx - mw, my - curve);
+    g.quadraticCurveTo(cx, my - curve * 0.2 - o * 0.25, cx + mw, my - curve);
+    g.quadraticCurveTo(cx, my + o + curve * 0.5, cx - mw, my - curve);
+    g.fill();
+    // teeth and tongue
+    g.save(); g.clip();
+    g.fillStyle = '#f2ece0';
+    g.fillRect(cx - mw, my - curve - 2, mw * 2, o * 0.42 + 1);
+    g.fillStyle = '#b8565a';
+    g.beginPath(); g.ellipse(cx, my + o * 0.9, mw * 0.6, o * 0.45, 0, 0, Math.PI * 2); g.fill();
+    g.restore();
+    g.strokeStyle = lipD; g.lineWidth = 1.6;
+    g.beginPath(); g.moveTo(cx - mw, my - curve); g.quadraticCurveTo(cx, my + o + curve * 0.5, cx + mw, my - curve); g.stroke();
+  };
+  g.lineCap = 'round';
+  switch (kind) {
+    case 'line': case 'soft': {
+      const c = kind === 'soft' ? 2.2 : 0.8;
+      g.strokeStyle = lipD; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(cx - mw, my - c * 0.4); g.quadraticCurveTo(cx, my + c, cx + mw, my - c * 0.4); g.stroke();
+      g.fillStyle = rgba(lip, 0.8);
+      g.beginPath(); g.ellipse(cx, my + 4, mw * 0.55, 2.4, 0, 0, Math.PI * 2); g.fill();
+      break;
+    }
+    case 'smile': {
+      g.strokeStyle = lipD; g.lineWidth = 2.2;
+      g.beginPath(); g.moveTo(cx - mw * 1.1, my - 4); g.quadraticCurveTo(cx, my + 7, cx + mw * 1.1, my - 4); g.stroke();
+      g.lineWidth = 1.2;
+      for (const s of [-1, 1]) { g.beginPath(); g.moveTo(cx + s * mw * 1.1, my - 4); g.lineTo(cx + s * mw * 1.25, my - 6); g.stroke(); }
+      g.fillStyle = rgba(lip, 0.7);
+      g.beginPath(); g.ellipse(cx, my + 6.5, mw * 0.5, 2, 0, 0, Math.PI * 2); g.fill();
+      break;
+    }
+    case 'grin': open(R * 0.2, 5); break;
+    case 'open': open(R * 0.1, 1); break;
+    case 'o':
+      g.fillStyle = '#3a1612';
+      g.beginPath(); g.ellipse(cx, my + 2, mw * 0.45, R * 0.12, 0, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = lipD; g.lineWidth = 2; g.stroke();
+      break;
+    case 'frown': case 'wobble': {
+      g.strokeStyle = lipD; g.lineWidth = 2.2;
+      g.beginPath();
+      if (kind === 'frown') { g.moveTo(cx - mw, my + 4); g.quadraticCurveTo(cx, my - 4, cx + mw, my + 4); }
+      else { g.moveTo(cx - mw, my + 2); g.bezierCurveTo(cx - mw * 0.4, my - 3, cx + mw * 0.3, my + 4, cx + mw, my + 1); }
+      g.stroke();
+      break;
+    }
+    case 'tight':
+      g.strokeStyle = lipD; g.lineWidth = 2.6;
+      g.beginPath(); g.moveTo(cx - mw * 0.9, my + 2); g.lineTo(cx + mw * 0.9, my + 2); g.stroke();
+      g.lineWidth = 1.2;
+      for (const s of [-1, 1]) { g.beginPath(); g.moveTo(cx + s * mw * 0.9, my + 2); g.lineTo(cx + s * mw * 1.05, my + 4.5); g.stroke(); }
+      break;
+    case 'teeth':
+      g.fillStyle = '#f2ece0';
+      g.fillRect(cx - mw, my - 3, mw * 2, 7);
+      g.strokeStyle = 'rgba(80,40,30,0.8)'; g.lineWidth = 1;
+      g.strokeRect(cx - mw, my - 3, mw * 2, 7);
+      g.beginPath(); g.moveTo(cx - mw, my + 0.5); g.lineTo(cx + mw, my + 0.5); g.stroke();
+      for (let k = -2; k <= 2; k++) { g.beginPath(); g.moveTo(cx + k * mw * 0.35, my - 3); g.lineTo(cx + k * mw * 0.35, my + 4); g.stroke(); }
+      break;
+    case 'smirk':
+      g.strokeStyle = lipD; g.lineWidth = 2.2;
+      g.beginPath(); g.moveTo(cx - mw, my + 1); g.quadraticCurveTo(cx + mw * 0.2, my + 3, cx + mw * 1.1, my - 5); g.stroke();
+      break;
+  }
+}
+
+function beard(g: G, look: Look, cx: number, cy: number, R: number, f: Face, talk: boolean) {
+  const b = look.beard || 'none';
+  if (b === 'none' || look.hat === 'sallet') return;
+  const bc = look.beardColor || look.hair;
+  const my = cy + R * 0.7;
+  const fill = lin(g, cx - R, cy, cx + R, cy + R * 1.4, [[0, lit(bc, 0.25)], [0.5, bc], [1, dim(bc, 0.4)]]);
+  const strands = (x0: number, y0: number, x1: number, y1: number, n: number) => {
+    g.lineWidth = 1.2;
+    for (let k = 0; k < n; k++) {
+      const t = k / (n - 1);
+      g.strokeStyle = rgba(k % 3 === 0 ? lit(bc, 0.4) : dim(bc, 0.35), 0.55);
+      const x = x0 + (x1 - x0) * t;
+      g.beginPath(); g.moveTo(x, y0 + Math.abs(t - 0.5) * 10); g.quadraticCurveTo(x + (t - 0.5) * 6, (y0 + y1) / 2, x + (t - 0.5) * 10, y1 - Math.abs(t - 0.5) * 16); g.stroke();
+    }
+  };
+  if (b === 'stubble') {
+    g.save(); faceShape(g, look, cx, cy, R); g.clip();
+    g.fillStyle = rgba(dim(bc, 0.15), 0.3);
+    g.beginPath(); g.ellipse(cx, cy + R * 0.82, R * 0.8, R * 0.45, 0, 0, Math.PI * 2); g.fill();
+    for (let k = 0; k < 160; k++) { const a = Math.random() * Math.PI, d = Math.random(); ellipse(g, cx + Math.cos(a) * R * 0.75 * d * 1.1, cy + R * 0.55 + Math.sin(a) * R * 0.5 * d, 0.7, 0.7, rgba(dim(bc, 0.3), 0.45)); }
+    g.restore();
+    return;
+  }
+  // moustache
+  if (b !== 'goatee' || true) {
+    g.fillStyle = fill;
+    g.beginPath();
+    g.moveTo(cx, my - R * 0.1);
+    g.bezierCurveTo(cx - R * 0.2, my - R * 0.2, cx - R * 0.42, my - R * 0.08, cx - R * 0.46, my + R * 0.1);
+    g.quadraticCurveTo(cx - R * 0.3, my + R * 0.02, cx, my + (talk ? -R * 0.04 : R * 0.01));
+    g.quadraticCurveTo(cx + R * 0.3, my + R * 0.02, cx + R * 0.46, my + R * 0.1);
+    g.bezierCurveTo(cx + R * 0.42, my - R * 0.08, cx + R * 0.2, my - R * 0.2, cx, my - R * 0.1);
+    g.fill();
+  }
+  if (b === 'moustache') return;
+  const len = b === 'goatee' ? 0.3 : b === 'short' ? 0.25 : b === 'full' ? 0.5 : 1.1;
+  g.fillStyle = fill;
+  g.beginPath();
+  if (b === 'goatee') {
+    g.moveTo(cx - R * 0.22, my + R * 0.12);
+    g.quadraticCurveTo(cx - R * 0.2, my + R * 0.6, cx, my + R * 0.66);
+    g.quadraticCurveTo(cx + R * 0.2, my + R * 0.6, cx + R * 0.22, my + R * 0.12);
+    g.quadraticCurveTo(cx, my + R * 0.2, cx - R * 0.22, my + R * 0.12);
+  } else {
+    g.moveTo(cx - R * 0.92, cy + R * 0.1);
+    g.bezierCurveTo(cx - R * 0.96, cy + R * (0.9 + len * 0.4), cx - R * 0.5, cy + R * (1.1 + len), cx, cy + R * (1.18 + len));
+    g.bezierCurveTo(cx + R * 0.5, cy + R * (1.1 + len), cx + R * 0.96, cy + R * (0.9 + len * 0.4), cx + R * 0.92, cy + R * 0.1);
+    g.lineTo(cx + R * 0.84, cy + R * 0.12);
+    g.quadraticCurveTo(cx + R * 0.72, my + R * 0.05, cx + R * 0.34, my + R * 0.12);
+    g.quadraticCurveTo(cx, my + R * (f.mouth === 'grin' || talk ? 0.3 : 0.2), cx - R * 0.34, my + R * 0.12);
+    g.quadraticCurveTo(cx - R * 0.72, my + R * 0.05, cx - R * 0.84, cy + R * 0.12);
+    g.closePath();
+  }
+  g.fill();
+  strands(cx - R * 0.8, cy + R * 0.5, cx + R * 0.8, cy + R * (1.15 + len), b === 'goatee' ? 5 : 16);
+}
+
+// ---------------------------------------------------------------- hair
+
+function hairFill(g: G, look: Look, cx: number, cy: number, R: number) {
+  const h = look.hair;
+  return lin(g, cx - R, cy - R * 1.2, cx + R * 0.8, cy + R * 0.6, [[0, lit(h, 0.35)], [0.35, h], [1, dim(h, 0.45)]]);
+}
+
+function strandLines(g: G, look: Look, pts: [number, number, number, number][], rng: RNG) {
+  const h = look.hair;
+  for (const [x0, y0, x1, y1] of pts) {
+    g.strokeStyle = rgba(rng.next() < 0.6 ? dim(h, 0.4) : lit(h, 0.45), 0.5);
+    g.lineWidth = 1 + rng.next() * 0.8;
+    g.beginPath(); g.moveTo(x0, y0); g.quadraticCurveTo((x0 + x1) / 2 + (rng.next() - 0.5) * 8, (y0 + y1) / 2, x1, y1); g.stroke();
+  }
+}
+
+function hairBehind(g: G, look: Look, cx: number, cy: number, R: number) {
+  const st = look.hairStyle;
+  const hat = look.hat || 'none';
+  if (hat === 'hood' || hat === 'monkhood' || hat === 'wimple' || hat === 'coif' || hat === 'bascinet' || hat === 'sallet') return;
+  if (st === 'long' || st === 'braids' || st === 'ponytail' || st === 'curly' || st === 'bun') {
+    const L = st === 'long' ? R * 2.2 : st === 'curly' ? R * 1.3 : R * 1.05;
+    g.fillStyle = lin(g, cx - R, 0, cx + R, 0, [[0, dim(look.hair, 0.15)], [1, dim(look.hair, 0.55)]]);
+    g.beginPath();
+    g.moveTo(cx - R * 1.08, cy - R * 0.2);
+    g.bezierCurveTo(cx - R * 1.35, cy + L * 0.4, cx - R * 1.25, cy + L * 0.8, cx - R * 1.1, cy + L);
+    g.lineTo(cx + R * 1.1, cy + L);
+    g.bezierCurveTo(cx + R * 1.25, cy + L * 0.8, cx + R * 1.35, cy + L * 0.4, cx + R * 1.08, cy - R * 0.2);
+    g.closePath();
+    g.fill();
+  }
+}
+
+function hairFront(g: G, look: Look, cx: number, cy: number, R: number, rng: RNG) {
+  const hat = look.hat || 'none';
+  if (hat === 'hood' || hat === 'monkhood' || hat === 'wimple' || hat === 'coif' || hat === 'bascinet' || hat === 'sallet') return;
+  let st = look.hairStyle;
+  if (hat === 'kerchief' && st !== 'bald' && st !== 'tonsure') st = 'short';
+  if (st === 'none') return;
+  const fill = hairFill(g, look, cx, cy, R);
+  if (st === 'bald') {
+    ellipse(g, cx - R * 0.3, cy - R * 0.75, R * 0.3, R * 0.14, 'rgba(255,248,235,0.4)');
+    return;
+  }
+  if (st === 'balding' || st === 'tonsure') {
+    // hair ring around the sides, bald crown
+    g.fillStyle = fill;
+    for (const s of [-1, 1]) {
+      g.beginPath();
+      g.moveTo(cx + s * R * 0.62, cy - R * 0.7);
+      g.bezierCurveTo(cx + s * R * 1.1, cy - R * 0.62, cx + s * R * 1.12, cy - R * 0.1, cx + s * R * 1.02, cy + R * 0.35);
+      g.lineTo(cx + s * R * 0.92, cy + R * 0.3);
+      g.bezierCurveTo(cx + s * R * 0.92, cy - R * 0.1, cx + s * R * 0.85, cy - R * 0.5, cx + s * R * 0.55, cy - R * 0.62);
+      g.closePath();
+      g.fill();
+    }
+    if (st === 'tonsure') { g.fillStyle = fill; g.beginPath(); g.ellipse(cx, cy - R * 0.72, R * 0.72, R * 0.24, 0, 0, Math.PI * 2); g.fill(); ellipse(g, cx, cy - R * 0.84, R * 0.5, R * 0.18, rad(g, cx - R * 0.2, cy - R * 0.9, 1, cx, cy - R * 0.84, R * 0.5, [[0, lit(skinOf(look)[3], 0.3)], [1, skinOf(look)[2]]])); }
+    ellipse(g, cx - R * 0.25, cy - R * 0.82, R * 0.3, R * 0.12, 'rgba(255,248,235,0.35)');
+    return;
+  }
+  // crown and fringe
+  const fringeY = st === 'messy' ? cy - R * 0.38 : st === 'curly' ? cy - R * 0.42 : cy - R * 0.5;
+  const hairPath = () => {
+  g.beginPath();
+  g.moveTo(cx - R * 1.06, cy + (st === 'long' || st === 'braids' ? R * 0.9 : R * 0.1));
+  g.bezierCurveTo(cx - R * 1.2, cy - R * 1.2, cx + R * 1.2, cy - R * 1.2, cx + R * 1.06, cy + (st === 'long' || st === 'braids' ? R * 0.9 : R * 0.1));
+  g.lineTo(cx + R * 0.94, cy + (st === 'long' || st === 'braids' ? R * 0.9 : R * 0.1));
+  g.bezierCurveTo(cx + R * 0.95, cy - R * 0.2, cx + R * 0.85, fringeY, cx + R * 0.55, fringeY);
+  if (st === 'messy') {
+    for (let k = 0; k < 7; k++) { const x = cx + R * 0.55 - (k + 1) * R * 0.157; g.lineTo(x + R * 0.08, fringeY + R * 0.14 + rng.next() * R * 0.06); g.lineTo(x, fringeY); }
+  } else if (st === 'curly') {
+    for (let k = 0; k < 5; k++) { const x = cx + R * 0.55 - (k + 0.5) * R * 0.22; g.quadraticCurveTo(x + R * 0.11, fringeY + R * 0.2, x, fringeY); }
+  } else if (look.female || st === 'bun' || st === 'ponytail' || st === 'long' || st === 'braids') {
+    g.quadraticCurveTo(cx + R * 0.25, fringeY - R * 0.15, cx, fringeY - R * 0.3);
+    g.quadraticCurveTo(cx - R * 0.25, fringeY - R * 0.15, cx - R * 0.55, fringeY);
+  } else {
+    g.bezierCurveTo(cx + R * 0.2, fringeY + R * 0.14, cx - R * 0.3, fringeY + R * 0.02, cx - R * 0.55, fringeY + R * 0.06);
+  }
+  g.bezierCurveTo(cx - R * 0.85, fringeY, cx - R * 0.95, cy - R * 0.2, cx - R * 0.94, cy + (st === 'long' || st === 'braids' ? R * 0.9 : R * 0.1));
+  g.closePath();
+  };
+  // the hair casts a soft shadow onto the brow
+  g.save();
+  faceShape(g, look, cx, cy, R);
+  g.clip();
+  g.translate(R * 0.04, R * 0.1);
+  hairPath();
+  g.fillStyle = rgba(skinOf(look)[0], 0.32);
+  g.fill();
+  g.restore();
+  hairPath();
+  g.fillStyle = fill;
+  g.fill();
+  g.strokeStyle = rgba(dim(look.hair, 0.6), 0.55);
+  g.lineWidth = 1.8;
+  g.stroke();
+  if (st === 'curly') {
+    // ringlets: small shaded curls over the crown
+    for (let k = 0; k < 22; k++) {
+      const a = Math.PI * 1.04 + rng.next() * Math.PI * 0.92, d = 0.72 + rng.next() * 0.3;
+      const x = cx + Math.cos(a) * R * d * 1.0, y = cy - R * 0.12 + Math.sin(a) * R * d * 1.02;
+      const r = R * (0.13 + rng.next() * 0.05);
+      g.fillStyle = rad(g, x - r * 0.3, y - r * 0.4, 0.5, x, y, r, [[0, lit(look.hair, 0.4)], [1, dim(look.hair, 0.25)]]);
+      g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = rgba(dim(look.hair, 0.45), 0.4); g.lineWidth = 1;
+      g.beginPath(); g.arc(x, y, r * 0.6, 0.6, 3.6); g.stroke();
+    }
+  }
+  if (st === 'bun') ellipse(g, cx, cy - R * 1.1, R * 0.36, R * 0.26, fill);
+  if (st === 'braids') for (const s of [-1, 1]) for (let k = 0; k < 7; k++) {
+    const x = cx + s * R * 0.98, y = cy + R * 0.45 + k * R * 0.2;
+    ellipse(g, x, y, R * 0.15, R * 0.12, k % 2 ? dim(look.hair, 0.25) : lit(look.hair, 0.1));
+    if (k === 6) ellipse(g, x, y + R * 0.16, R * 0.1, R * 0.07, '#b83a3a');
+  }
+  // strands and a sheen
+  const pts: [number, number, number, number][] = [];
+  for (let k = 0; k < 16; k++) { const t = k / 15; pts.push([cx - R * 0.9 + t * R * 1.8, cy - R * 1.0 + Math.abs(t - 0.5) * R * 0.3, cx - R * 0.8 + t * R * 1.6, fringeY + R * 0.05]); }
+  strandLines(g, look, pts, rng);
+  g.strokeStyle = rgba(lit(look.hair, 0.6), 0.35); g.lineWidth = 4;
+  g.beginPath(); g.arc(cx - R * 0.1, cy - R * 0.2, R * 0.78, Math.PI * 1.15, Math.PI * 1.45); g.stroke();
+}
+
+// ---------------------------------------------------------------- headwear
+
+function hoodBehind(g: G, look: Look, cx: number, cy: number, R: number) {
+  const hat = look.hat!;
+  const col = hat === 'wimple' ? '#ece6d8' : hat === 'coif' ? '#848d96' : look.hatColor || '#5a4a3a';
+  if (hat === 'coif') { g.save(); g.beginPath(); g.ellipse(cx, cy + R * 0.2, R * 1.3, R * 1.45, 0, 0, Math.PI * 2); g.clip(); mail(g, cx - R * 1.4, cy - R * 1.4, R * 2.8, R * 3.2, col); g.restore(); return; }
+  g.fillStyle = lin(g, cx - R * 1.3, 0, cx + R * 1.3, 0, [[0, lit(col, 0.2)], [1, dim(col, 0.45)]]);
+  g.beginPath(); g.ellipse(cx, cy + R * 0.25, R * 1.32, R * 1.45, 0, 0, Math.PI * 2); g.fill();
+}
+
+function headwear(g: G, look: Look, cx: number, cy: number, R: number, rng: RNG) {
+  const hat = look.hat || 'none';
+  if (hat === 'none') return;
+  const hc = look.hatColor || '#6b4a30';
+  const cloth = (c: string) => lin(g, cx - R * 1.2, cy - R * 1.3, cx + R, cy + R * 0.2, [[0, lit(c, 0.3)], [0.5, c], [1, dim(c, 0.45)]]);
+  const steel = '#9aa3ad';
+  const metal = (c: string) => lin(g, cx - R * 1.1, cy - R * 1.2, cx + R * 0.9, cy + R * 0.4, [[0, lit(c, 0.6)], [0.35, c], [1, dim(c, 0.5)]]);
+  switch (hat) {
+    case 'cap': case 'feathercap':
+      g.fillStyle = cloth(hc);
+      g.beginPath(); g.moveTo(cx - R * 1.08, cy - R * 0.4); g.bezierCurveTo(cx - R * 1.2, cy - R * 1.5, cx + R * 1.2, cy - R * 1.5, cx + R * 1.08, cy - R * 0.4); g.quadraticCurveTo(cx, cy - R * 0.62, cx - R * 1.08, cy - R * 0.4); g.fill();
+      g.fillStyle = dim(hc, 0.3); g.beginPath(); g.ellipse(cx, cy - R * 0.45, R * 1.08, R * 0.14, 0, 0, Math.PI); g.fill();
+      if (hat === 'feathercap') { blade(g, cx + R * 0.5, cy - R * 0.9, R * 1.3, -Math.PI / 2 + 0.7, -R * 0.2, R * 0.28, '#efe8d8'); blade(g, cx + R * 0.5, cy - R * 0.9, R * 1.1, -Math.PI / 2 + 0.65, -R * 0.15, R * 0.12, '#b8322a'); }
+      break;
+    case 'strawhat': {
+      const bc = look.hatColor || '#d8b870';
+      g.fillStyle = lin(g, cx - R * 1.8, 0, cx + R * 1.8, 0, [[0, lit(bc, 0.3)], [0.5, bc], [1, dim(bc, 0.4)]]);
+      g.beginPath(); g.ellipse(cx, cy - R * 0.55, R * 1.75, R * 0.42, 0, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = rgba(dim(bc, 0.45), 0.6); g.lineWidth = 1;
+      for (let k = 1; k < 6; k++) { g.beginPath(); g.ellipse(cx, cy - R * 0.55, R * 1.75 * (k / 6), R * 0.42 * (k / 6), 0, 0, Math.PI * 2); g.stroke(); }
+      g.fillStyle = cloth(bc);
+      g.beginPath(); g.moveTo(cx - R * 0.85, cy - R * 0.6); g.quadraticCurveTo(cx - R * 0.8, cy - R * 1.45, cx, cy - R * 1.45); g.quadraticCurveTo(cx + R * 0.8, cy - R * 1.45, cx + R * 0.85, cy - R * 0.6); g.closePath(); g.fill();
+      g.fillStyle = '#6b3a2a'; g.fillRect(cx - R * 0.85, cy - R * 0.78, R * 1.7, R * 0.14);
+      break;
+    }
+    case 'kerchief':
+      g.fillStyle = cloth(hc);
+      g.beginPath(); g.moveTo(cx - R * 1.1, cy - R * 0.05); g.bezierCurveTo(cx - R * 1.25, cy - R * 1.35, cx + R * 1.25, cy - R * 1.35, cx + R * 1.1, cy - R * 0.05); g.quadraticCurveTo(cx + R * 0.8, cy - R * 0.62, cx, cy - R * 0.66); g.quadraticCurveTo(cx - R * 0.8, cy - R * 0.62, cx - R * 1.1, cy - R * 0.05); g.fill();
+      g.strokeStyle = rgba(dim(hc, 0.4), 0.6); g.lineWidth = 1.5;
+      for (let k = 0; k < 4; k++) { g.beginPath(); g.moveTo(cx - R * 0.8 + k * R * 0.4, cy - R * 1.05); g.quadraticCurveTo(cx - R * 0.7 + k * R * 0.4, cy - R * 0.8, cx - R * 0.75 + k * R * 0.42, cy - R * 0.62); g.stroke(); }
+      break;
+    case 'hood': case 'monkhood': case 'wimple': {
+      const col = hat === 'wimple' ? '#ece6d8' : hc;
+      g.fillStyle = cloth(col);
+      g.beginPath();
+      g.moveTo(cx - R * 1.35, cy + R * 1.35);
+      g.bezierCurveTo(cx - R * 1.6, cy - R * 1.6, cx + R * 1.6, cy - R * 1.6, cx + R * 1.35, cy + R * 1.35);
+      g.lineTo(cx + R * 0.82, cy + R * 1.05);
+      g.bezierCurveTo(cx + R * 1.02, cy - R * 0.2, cx + R * 0.8, cy - R * 0.85, cx, cy - R * 0.88);
+      g.bezierCurveTo(cx - R * 0.8, cy - R * 0.85, cx - R * 1.02, cy - R * 0.2, cx - R * 0.82, cy + R * 1.05);
+      g.closePath();
+      g.fill();
+      g.strokeStyle = rgba(dim(col, 0.5), 0.6); g.lineWidth = 2;
+      g.beginPath(); g.moveTo(cx - R * 0.9, cy + R * 0.9); g.bezierCurveTo(cx - R * 1.12, cy - R * 0.3, cx - R * 0.85, cy - R * 0.98, cx, cy - R * 1.0); g.bezierCurveTo(cx + R * 0.85, cy - R * 0.98, cx + R * 1.12, cy - R * 0.3, cx + R * 0.9, cy + R * 0.9); g.stroke();
+      if (hat === 'wimple') { g.fillStyle = '#e2dccd'; g.beginPath(); g.moveTo(cx - R * 0.75, cy + R * 0.85); g.quadraticCurveTo(cx, cy + R * 1.45, cx + R * 0.75, cy + R * 0.85); g.lineTo(cx + R * 0.9, cy + R * 1.6); g.lineTo(cx - R * 0.9, cy + R * 1.6); g.closePath(); g.fill(); }
+      break;
+    }
+    case 'coif': {
+      g.save();
+      g.beginPath();
+      g.moveTo(cx - R * 1.3, cy + R * 1.4); g.bezierCurveTo(cx - R * 1.5, cy - R * 1.55, cx + R * 1.5, cy - R * 1.55, cx + R * 1.3, cy + R * 1.4);
+      g.lineTo(cx + R * 0.78, cy + R * 1.0); g.bezierCurveTo(cx + R * 0.98, cy - R * 0.2, cx + R * 0.78, cy - R * 0.8, cx, cy - R * 0.82); g.bezierCurveTo(cx - R * 0.78, cy - R * 0.8, cx - R * 0.98, cy - R * 0.2, cx - R * 0.78, cy + R * 1.0);
+      g.closePath(); g.clip();
+      mail(g, cx - R * 1.6, cy - R * 1.6, R * 3.2, R * 3.2, '#848d96');
+      g.restore();
+      break;
+    }
+    case 'kettle':
+      g.fillStyle = metal(steel);
+      g.beginPath(); g.ellipse(cx, cy - R * 0.5, R * 1.6, R * 0.34, 0, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.moveTo(cx - R * 1.0, cy - R * 0.55); g.bezierCurveTo(cx - R * 1.05, cy - R * 1.6, cx + R * 1.05, cy - R * 1.6, cx + R * 1.0, cy - R * 0.55); g.closePath(); g.fill();
+      g.strokeStyle = 'rgba(255,255,255,0.6)'; g.lineWidth = 3;
+      g.beginPath(); g.moveTo(cx - R * 0.5, cy - R * 1.25); g.quadraticCurveTo(cx - R * 0.8, cy - R * 1.0, cx - R * 0.82, cy - R * 0.65); g.stroke();
+      break;
+    case 'bascinet':
+      g.save(); g.beginPath(); g.moveTo(cx - R * 1.3, cy + R * 1.4); g.bezierCurveTo(cx - R * 1.45, cy - R * 0.2, cx - R * 1.2, cy - R * 0.3, cx - R * 1.0, cy - R * 0.3); g.lineTo(cx + R * 1.0, cy - R * 0.3); g.bezierCurveTo(cx + R * 1.2, cy - R * 0.3, cx + R * 1.45, cy - R * 0.2, cx + R * 1.3, cy + R * 1.4); g.lineTo(cx + R * 0.8, cy + R * 1.05); g.quadraticCurveTo(cx + R, cy - R * 0.1, cx, cy - R * 0.4); g.quadraticCurveTo(cx - R, cy - R * 0.1, cx - R * 0.8, cy + R * 1.05); g.closePath(); g.clip();
+      mail(g, cx - R * 1.6, cy - R * 0.5, R * 3.2, R * 2, '#848d96'); g.restore();
+      g.fillStyle = metal(steel);
+      g.beginPath(); g.moveTo(cx - R * 1.05, cy - R * 0.25); g.bezierCurveTo(cx - R * 1.1, cy - R * 1.3, cx - R * 0.3, cy - R * 1.55, cx, cy - R * 1.85); g.bezierCurveTo(cx + R * 0.3, cy - R * 1.55, cx + R * 1.1, cy - R * 1.3, cx + R * 1.05, cy - R * 0.25); g.quadraticCurveTo(cx, cy - R * 0.5, cx - R * 1.05, cy - R * 0.25); g.fill();
+      break;
+    case 'sallet': {
+      const m = look.hatColor || steel;
+      g.fillStyle = metal(m);
+      g.beginPath(); g.moveTo(cx - R * 1.2, cy + R * 0.95); g.bezierCurveTo(cx - R * 1.35, cy - R * 1.5, cx + R * 1.35, cy - R * 1.5, cx + R * 1.2, cy + R * 0.95); g.quadraticCurveTo(cx, cy + R * 1.2, cx - R * 1.2, cy + R * 0.95); g.fill();
+      // visor slit, with a cold glint of eyes behind
+      g.fillStyle = '#080605';
+      g.beginPath(); g.moveTo(cx - R * 0.9, cy + R * 0.02); g.lineTo(cx + R * 0.9, cy + R * 0.02); g.lineTo(cx + R * 0.85, cy + R * 0.2); g.lineTo(cx - R * 0.85, cy + R * 0.2); g.closePath(); g.fill();
+      for (const s of [-1, 1]) ellipse(g, cx + s * R * 0.35, cy + R * 0.11, 2.2, 1.2, 'rgba(230,200,160,0.55)');
+      g.strokeStyle = 'rgba(255,255,255,0.35)'; g.lineWidth = 3;
+      g.beginPath(); g.moveTo(cx - R * 0.6, cy - R * 1.0); g.quadraticCurveTo(cx - R * 1.0, cy - R * 0.6, cx - R * 1.0, cy - R * 0.1); g.stroke();
+      for (let k = 0; k < 5; k++) ellipse(g, cx - R * 0.8 + k * R * 0.4, cy + R * 0.55, 1.6, 1.6, lit(m, 0.4));
+      break;
+    }
+    case 'chaperon':
+      g.fillStyle = cloth(hc);
+      g.beginPath(); g.ellipse(cx, cy - R * 0.75, R * 1.25, R * 0.5, 0, 0, Math.PI * 2); g.fill();
+      for (let k = 0; k < 7; k++) { const a = Math.PI + (k / 6) * Math.PI; ellipse(g, cx + Math.cos(a) * R * 0.95, cy - R * 0.75 + Math.sin(a) * R * 0.32, R * 0.3, R * 0.2, k % 2 ? hc : dim(hc, 0.25)); }
+      g.fillStyle = dim(hc, 0.2);
+      g.beginPath(); g.moveTo(cx + R * 0.9, cy - R * 0.6); g.quadraticCurveTo(cx + R * 1.6, cy + R * 0.3, cx + R * 1.35, cy + R * 1.6); g.lineTo(cx + R * 1.05, cy + R * 1.5); g.quadraticCurveTo(cx + R * 1.2, cy + R * 0.3, cx + R * 0.7, cy - R * 0.5); g.fill();
+      break;
+    case 'circlet':
+      g.strokeStyle = lin(g, cx - R, 0, cx + R, 0, [[0, '#f6e39a'], [0.5, '#c79a2c'], [1, '#8a6a18']]);
+      g.lineWidth = 4;
+      g.beginPath(); g.ellipse(cx, cy - R * 0.55, R * 1.0, R * 0.22, 0, 0.1, Math.PI - 0.1); g.stroke();
+      ellipse(g, cx, cy - R * 0.33, 4, 4, '#b8322a');
+      break;
+  }
+  void rng;
+}
+
+// ---------------------------------------------------------------- the dog
+
+function paintDog(g: G, look: Look, expr: Expr, talk: boolean, blink: boolean) {
+  const rng = new RNG(7);
+  const coat = look.hair || '#8a5a32';
+  const light = '#e8dcc8';
+  background(g, look.portraitBg || '#6b5a44', rng);
+  const cx = 128, cy = 120;
+  // chest
+  g.fillStyle = lin(g, 60, 190, 200, 256, [[0, lit(light, 0.1)], [1, dim(light, 0.25)]]);
+  g.beginPath(); g.moveTo(40, 260); g.quadraticCurveTo(60, 170, 128, 165); g.quadraticCurveTo(196, 170, 216, 260); g.fill();
+  g.fillStyle = lin(g, 40, 0, 216, 0, [[0, lit(coat, 0.2)], [1, dim(coat, 0.4)]]);
+  g.beginPath(); g.moveTo(30, 260); g.quadraticCurveTo(40, 190, 90, 172); g.quadraticCurveTo(100, 230, 80, 260); g.fill();
+  g.beginPath(); g.moveTo(226, 260); g.quadraticCurveTo(216, 190, 166, 172); g.quadraticCurveTo(156, 230, 176, 260); g.fill();
+  // ears (floppy)
+  for (const s of [-1, 1]) {
+    g.fillStyle = lin(g, cx + s * 60, 60, cx + s * 80, 170, [[0, dim(coat, 0.1)], [1, dim(coat, 0.5)]]);
+    g.beginPath(); g.moveTo(cx + s * 38, 70); g.bezierCurveTo(cx + s * 95, 60, cx + s * 100, 150, cx + s * 78, 170); g.bezierCurveTo(cx + s * 60, 150, cx + s * 58, 110, cx + s * 30, 95); g.fill();
+  }
+  // head
+  g.fillStyle = rad(g, cx - 20, cy - 40, 5, cx, cy, 80, [[0, lit(coat, 0.3)], [0.6, coat], [1, dim(coat, 0.35)]]);
+  g.beginPath(); g.ellipse(cx, cy - 10, 58, 55, 0, 0, Math.PI * 2); g.fill();
+  // blaze and muzzle
+  g.fillStyle = lin(g, 0, cy - 60, 0, cy + 40, [[0, 'rgba(232,220,200,0)'], [0.4, light], [1, light]]);
+  g.beginPath(); g.moveTo(cx - 8, cy - 62); g.quadraticCurveTo(cx - 16, cy - 10, cx - 36, cy + 30); g.quadraticCurveTo(cx, cy + 50, cx + 36, cy + 30); g.quadraticCurveTo(cx + 16, cy - 10, cx + 8, cy - 62); g.fill();
+  g.fillStyle = rad(g, cx - 8, cy + 18, 4, cx, cy + 25, 40, [[0, '#f6f0e4'], [1, '#c8baa0']]);
+  g.beginPath(); g.ellipse(cx, cy + 25, 36, 26, 0, 0, Math.PI * 2); g.fill();
+  // eyes
+  const f = FACES[expr];
+  const open = blink ? 0 : Math.max(0.2, Math.min(1.1, f.open));
+  for (const s of [-1, 1]) {
+    const ex = cx + s * 26, ey = cy - 14;
+    if (open < 0.25) { g.strokeStyle = '#2a1810'; g.lineWidth = 3; g.beginPath(); g.moveTo(ex - 9, ey); g.quadraticCurveTo(ex, ey + (expr === 'happy' || expr === 'laugh' ? -6 : 5), ex + 9, ey); g.stroke(); continue; }
+    g.fillStyle = '#1a0e08';
+    g.beginPath(); g.ellipse(ex, ey, 10, 10 * open, 0, 0, Math.PI * 2); g.fill();
+    g.fillStyle = rad(g, ex - 2, ey - 2, 1, ex, ey, 9, [[0, '#7a4a28'], [1, '#2a1810']]);
+    g.beginPath(); g.ellipse(ex, ey, 8, 8 * open, 0, 0, Math.PI * 2); g.fill();
+    ellipse(g, ex - 3, ey - 3 * open, 3, 2.6 * open, 'rgba(255,255,255,0.95)');
+    ellipse(g, ex + 3, ey + 3 * open, 1.3, 1.1 * open, 'rgba(255,255,255,0.6)');
+    // soft brows
+    g.strokeStyle = dim(coat, 0.35); g.lineWidth = 3;
+    g.beginPath(); g.moveTo(ex - 8, ey - 14 + (expr === 'sad' || expr === 'worried' ? -4 * s * -1 : 0)); g.quadraticCurveTo(ex, ey - 18, ex + 8, ey - 14); g.stroke();
+  }
+  // nose
+  g.fillStyle = rad(g, cx - 5, cy + 6, 1, cx, cy + 10, 16, [[0, '#6a5a58'], [1, '#141010']]);
+  g.beginPath(); g.moveTo(cx - 13, cy + 4); g.quadraticCurveTo(cx, cy - 2, cx + 13, cy + 4); g.quadraticCurveTo(cx + 10, cy + 18, cx, cy + 18); g.quadraticCurveTo(cx - 10, cy + 18, cx - 13, cy + 4); g.fill();
+  ellipse(g, cx - 4, cy + 5, 4, 2, 'rgba(255,255,255,0.5)');
+  // mouth and tongue
+  g.strokeStyle = '#3a2418'; g.lineWidth = 2.5;
+  g.beginPath(); g.moveTo(cx, cy + 18); g.lineTo(cx, cy + 28); g.moveTo(cx - 22, cy + 28); g.quadraticCurveTo(cx - 10, cy + 36, cx, cy + 28); g.quadraticCurveTo(cx + 10, cy + 36, cx + 22, cy + 28); g.stroke();
+  if (expr === 'happy' || expr === 'laugh' || talk || expr === 'tender') {
+    g.fillStyle = lin(g, 0, cy + 30, 0, cy + 58, [[0, '#e87a80'], [1, '#b84a52']]);
+    g.beginPath(); g.moveTo(cx - 10, cy + 30); g.quadraticCurveTo(cx - 12, cy + 56, cx, cy + 58); g.quadraticCurveTo(cx + 12, cy + 56, cx + 10, cy + 30); g.fill();
+    g.strokeStyle = 'rgba(120,30,40,0.6)'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(cx, cy + 34); g.lineTo(cx, cy + 50); g.stroke();
+  }
+  if (f.tears) for (const s of [-1, 1]) ellipse(g, cx + s * 30, cy + 2, 3, 6, 'rgba(200,230,255,0.8)');
+  vignette(g);
+}
+
 export { clamp };

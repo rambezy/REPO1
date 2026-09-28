@@ -41,7 +41,7 @@ export interface MapObject {
   name?: string;
   key?: string;
   occluder?: boolean;
-  windows?: { x: number; y: number }[];
+  windows?: { x: number; y: number; w?: number; h?: number }[];
   smoke?: { x: number; y: number } | null;
   /** extra draw data (e.g. building spec for re-painting when burned) */
   data?: Record<string, unknown>;

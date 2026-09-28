@@ -16,6 +16,7 @@ import { here } from '../world/world';
 import { TILE } from '../engine/util';
 import { input } from '../engine/input';
 import { drawText } from '../gfx/font';
+import { paintedMap } from './worldmap';
 
 let els: Record<string, HTMLElement> = {};
 const cache: Record<string, string> = {};
@@ -24,7 +25,7 @@ function setStyle(k: string, prop: string, v: string) { const key = k + '.' + pr
 function setShow(k: string, on: boolean) { const key = k + '.show'; const v = on ? '1' : '0'; if (cache[key] !== v) { cache[key] = v; els[k].hidden = !on; } }
 
 let mini: HTMLCanvasElement;
-let miniBase: { mapId: string; version: number; canvas: HTMLCanvasElement } | null = null;
+let miniBase: { mapId: string; version: number; canvas: HTMLCanvasElement; scale: number } | null = null;
 
 export function buildHUD() {
   const h = UI.hud;
@@ -47,7 +48,7 @@ export function buildHUD() {
   bars.append(els.hpbar, els.stbar, els.needs);
   els.obj = el('div', { cls: 'hud-obj' });
   const mm = el('div', { cls: 'hud-minimap' });
-  mini = makeCanvas(96, 96);
+  mini = makeCanvas(192, 192);
   mm.appendChild(mini);
   els.mini = mm;
   els.quick = el('div', { cls: 'hud-quick' });
@@ -139,7 +140,10 @@ function terrainColor(t: number): string {
 
 function drawMinimap() {
   const m = G.map;
-  if (!miniBase || miniBase.mapId !== m.id || miniBase.version !== m.version) {
+  if (m.id === 'overworld' && (!miniBase || miniBase.mapId !== m.id || miniBase.version !== m.version)) {
+    // the overworld uses the painted parchment map, at 6 pixels to the tile
+    miniBase = { mapId: m.id, version: m.version, canvas: paintedMap(), scale: 6 };
+  } else if (!miniBase || miniBase.mapId !== m.id || miniBase.version !== m.version) {
     const c = makeCanvas(m.w, m.h);
     const ctx = c.getContext('2d')!;
     const img = ctx.createImageData(m.w, m.h);
@@ -155,17 +159,19 @@ function drawMinimap() {
       if (o.kind === 'building' && o.solid) ctx.fillRect(Math.floor(o.solid.x / TILE), Math.floor(o.solid.y / TILE), Math.ceil(o.solid.w / TILE), Math.ceil(o.solid.h / TILE));
       if (o.kind === 'tree') { ctx.fillStyle = '#1f3a1c'; ctx.fillRect(Math.floor(o.x / TILE), Math.floor(o.y / TILE), 1, 1); ctx.fillStyle = '#6a4a30'; }
     }
-    miniBase = { mapId: m.id, version: m.version, canvas: c };
+    miniBase = { mapId: m.id, version: m.version, canvas: c, scale: 1 };
   }
   const ctx = mini.getContext('2d')!;
-  ctx.imageSmoothingEnabled = false;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
   const p = G.player;
   const R = 48; // tiles shown across
   const zoom = mini.width / R;
   const px = p.x / TILE, py = p.y / TILE;
   ctx.fillStyle = '#0b0807';
   ctx.fillRect(0, 0, mini.width, mini.height);
-  ctx.drawImage(miniBase.canvas, px - R / 2, py - R / 2, R, R, 0, 0, mini.width, mini.height);
+  const ms = miniBase.scale;
+  ctx.drawImage(miniBase.canvas, (px - R / 2) * ms, (py - R / 2) * ms, R * ms, R * ms, 0, 0, mini.width, mini.height);
   // darken at night
   const dk = m.outdoor ? darkness() * 0.45 : 0;
   if (dk > 0) { ctx.fillStyle = `rgba(8,10,30,${dk})`; ctx.fillRect(0, 0, mini.width, mini.height); }
@@ -213,36 +219,49 @@ export function drawObjectiveOverlay(ctx: CanvasRenderingContext2D) {
   if (G.mode !== 'play' || !G.player) return;
   const cam = G.cam;
   for (const mk of markerPositions()) {
-    const sx = mk.x - Math.round(cam.x), sy = mk.y - Math.round(cam.y);
+    const sx = mk.x - cam.x, sy = mk.y - cam.y;
     const on = sx > 6 && sy > 6 && sx < G.viewW - 6 && sy < G.viewH - 6;
-    const bob = Math.sin(G.clock * 4) * 2;
+    const bob = Math.sin(G.clock * 3.2) * 1.6;
+    const gold = mk.far ? '#d8c8a0' : '#f0c040';
     if (on) {
+      // a gilded diamond hovering over the goal, with a soft glow
       const y = sy - 30 + bob;
-      ctx.fillStyle = '#1b1410';
-      ctx.beginPath(); ctx.moveTo(sx - 5, y - 1); ctx.lineTo(sx + 5, y - 1); ctx.lineTo(sx, y + 7); ctx.fill();
-      ctx.fillStyle = mk.far ? '#d8c8a0' : '#f0c040';
-      ctx.beginPath(); ctx.moveTo(sx - 3, y); ctx.lineTo(sx + 3, y); ctx.lineTo(sx, y + 5); ctx.fill();
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const glow = ctx.createRadialGradient(sx, y, 0, sx, y, 9);
+      glow.addColorStop(0, 'rgba(255,210,110,0.45)');
+      glow.addColorStop(1, 'rgba(255,210,110,0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(sx - 10, y - 10, 20, 20);
+      ctx.restore();
+      ctx.fillStyle = 'rgba(20,14,10,0.85)';
+      ctx.beginPath(); ctx.moveTo(sx, y - 7); ctx.lineTo(sx + 5.5, y); ctx.lineTo(sx, y + 8); ctx.lineTo(sx - 5.5, y); ctx.closePath(); ctx.fill();
+      const g = ctx.createLinearGradient(sx - 4, y - 5, sx + 4, y + 6);
+      g.addColorStop(0, '#fff2b8'); g.addColorStop(0.5, gold); g.addColorStop(1, '#a8741c');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.moveTo(sx, y - 5.6); ctx.lineTo(sx + 4.2, y); ctx.lineTo(sx, y + 6.4); ctx.lineTo(sx - 4.2, y); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.beginPath(); ctx.moveTo(sx, y - 4.4); ctx.lineTo(sx + 1.4, y - 1); ctx.lineTo(sx - 1.6, y - 0.6); ctx.closePath(); ctx.fill();
     } else {
-      const px = G.player.x - Math.round(cam.x), py = G.player.y - 10 - Math.round(cam.y);
+      const px = G.player.x - cam.x, py = G.player.y - 10 - cam.y;
       const ang = Math.atan2(sy - py, sx - px);
-      const m = 14;
-      const ex = Math.max(m, Math.min(G.viewW - m, px + Math.cos(ang) * 1000));
-      const ey = Math.max(m, Math.min(G.viewH - m, py + Math.sin(ang) * 1000));
-      // clamp along the ray
+      const m = 16;
       const kx = Math.cos(ang) !== 0 ? ((Math.cos(ang) > 0 ? G.viewW - m : m) - px) / Math.cos(ang) : Infinity;
       const ky = Math.sin(ang) !== 0 ? ((Math.sin(ang) > 0 ? G.viewH - m : m) - py) / Math.sin(ang) : Infinity;
       const k = Math.min(kx, ky);
       const ax = px + Math.cos(ang) * k, ay = py + Math.sin(ang) * k;
       ctx.save();
-      ctx.translate(Math.round(ax || ex), Math.round(ay || ey));
+      ctx.translate(ax, ay);
       ctx.rotate(ang);
-      ctx.fillStyle = '#1b1410';
-      ctx.beginPath(); ctx.moveTo(7, 0); ctx.lineTo(-5, -6); ctx.lineTo(-5, 6); ctx.fill();
-      ctx.fillStyle = '#f0c040';
-      ctx.beginPath(); ctx.moveTo(5, 0); ctx.lineTo(-3, -4); ctx.lineTo(-3, 4); ctx.fill();
+      ctx.fillStyle = 'rgba(20,14,10,0.85)';
+      ctx.beginPath(); ctx.moveTo(8, 0); ctx.lineTo(-5, -7); ctx.lineTo(-2, 0); ctx.lineTo(-5, 7); ctx.closePath(); ctx.fill();
+      const g = ctx.createLinearGradient(-4, -5, 6, 5);
+      g.addColorStop(0, '#fff2b8'); g.addColorStop(0.5, gold); g.addColorStop(1, '#a8741c');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.moveTo(6, 0); ctx.lineTo(-3.6, -5.2); ctx.lineTo(-1.2, 0); ctx.lineTo(-3.6, 5.2); ctx.closePath(); ctx.fill();
       ctx.restore();
       const d = Math.round(Math.hypot(mk.x - G.player.x, mk.y - G.player.y) / TILE);
-      drawText(ctx, String(d), Math.round(ax - Math.cos(ang) * 14), Math.round(ay - Math.sin(ang) * 14) - 3, '#f0c040', '#1b1410', 1, 'center');
+      drawText(ctx, String(d), ax - Math.cos(ang) * 15, ay - Math.sin(ang) * 15 - 4, '#f0d070', '#1b1410', 1, 'center');
     }
   }
 }

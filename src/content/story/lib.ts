@@ -212,14 +212,21 @@ export function propObj(type: string, tx: number, ty: number, o: { variant?: num
 }
 
 const groundIcons = new Map<string, HTMLCanvasElement>();
+/** An item's icon lying in the grass: painted at 4 texels per world unit. */
 function groundIcon(itemId: string): HTMLCanvasElement {
   let c = groundIcons.get(itemId);
   if (c) return c;
   const src = iconCanvas(item(itemId).icon);
-  c = makeCanvas(14, 13);
+  const k = 4;
+  c = makeCanvas(14 * k, 13 * k);
   const ctx = c.getContext('2d')!;
-  ctx.imageSmoothingEnabled = false;
-  ctx.fillStyle = 'rgba(10,6,4,0.35)';
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.scale(k, k);
+  const g = ctx.createRadialGradient(7, 11, 0, 7, 11, 6);
+  g.addColorStop(0, 'rgba(10,6,4,0.45)');
+  g.addColorStop(1, 'rgba(10,6,4,0)');
+  ctx.fillStyle = g;
   ctx.beginPath();
   ctx.ellipse(7, 11, 6, 2, 0, 0, Math.PI * 2);
   ctx.fill();
@@ -237,7 +244,7 @@ export function groundItem(key: string, map: string, itemId: string, tx: number,
       const c = groundIcon(itemId);
       return {
         kind: 'item', type: 'item', x: tx * TILE + 8 + (o.dx ?? 0), y: ty * TILE + 12 + (o.dy ?? 0),
-        sprite: { canvas: c, ox: 7, oy: 12, w: c.width, h: c.height }, flat: true,
+        sprite: { canvas: c, ox: 7, oy: 12, w: 14, h: 13 }, flat: true,
         interact: { type: 'item', item: itemId, count: o.count ?? 1, key, owner: o.owner },
         data: { glint: o.glint ?? true },
       };
@@ -256,14 +263,25 @@ function drawGlints(ctx: CanvasRenderingContext2D) {
   for (const o of G.map.queryObjects(x0 - 16, y0 - 16, x0 + G.viewW + 16, y0 + G.viewH + 32)) {
     if (o.hidden || !o.data?.glint) continue;
     const ph = (G.clock * 1.3 + o.id * 0.37) % 2.2;
-    if (ph > 0.6) continue;
-    const k = Math.sin((ph / 0.6) * Math.PI);
-    const x = Math.round(o.x + 3), y = Math.round(o.y - 11);
+    if (ph > 0.7) continue;
+    const k = Math.sin((ph / 0.7) * Math.PI);
+    const x = o.x + 3, y = o.y - 11;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
     ctx.globalAlpha = k;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, 4);
+    g.addColorStop(0, 'rgba(255,246,216,0.9)');
+    g.addColorStop(1, 'rgba(255,220,150,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x - 4, y - 4, 8, 8);
     ctx.fillStyle = '#fff6d8';
-    ctx.fillRect(x, y - 2, 1, 5);
-    ctx.fillRect(x - 2, y, 5, 1);
-    ctx.globalAlpha = 1;
+    const r = 1.2 + k * 2.4;
+    ctx.beginPath();
+    ctx.moveTo(x, y - r); ctx.lineTo(x + 0.35, y - 0.35); ctx.lineTo(x + r, y); ctx.lineTo(x + 0.35, y + 0.35);
+    ctx.lineTo(x, y + r); ctx.lineTo(x - 0.35, y + 0.35); ctx.lineTo(x - r, y); ctx.lineTo(x - 0.35, y - 0.35);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
   }
 }
 
