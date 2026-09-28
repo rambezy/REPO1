@@ -867,3 +867,13 @@ export const TOWN_TALK: Record<string, string[][]> = {
     ['Heard someone found relics out past the butte.', 'Heard someone never came back from the butte.', 'Same someone.'],
   ],
 };
+
+/** What bounty hunters call out when they find who they came for. */
+export const HUNTER_LINES = [
+  'There. {name}. You\'re worth {amount} chits to the {faction}.',
+  '{name}! By order of the {faction}: come quietly, or come carried.',
+  'Nothing personal, {name}. You\'re just worth more asleep.',
+  'That\'s the face on the paper. Take them!',
+  'We\'ve walked a long way for you, {name}. Don\'t make it longer.',
+  '{amount} chits, and all we have to do is catch you. Easy money.',
+];

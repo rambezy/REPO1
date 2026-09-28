@@ -2,7 +2,7 @@
 // blocks, where the doorways are, and which floor a character stands on.
 import { S } from './ctx';
 import { WObj } from './objects';
-import type { StructPrim } from '../world/nav';
+import type { StructPrim, Ring } from '../world/nav';
 import type { BuildingData, Door } from '../world/towns';
 
 /** Footprints of furniture that blocks movement: half width, half depth. */
@@ -139,4 +139,19 @@ export function floorAt(x: number, z: number): number {
 export function navDirty(o: WObj) {
   const r = o.kind === 'building' ? Math.hypot(o.data.w, o.data.d) / 2 + 2 : o.kind === 'wall' ? o.data.len / 2 + 2 : 4;
   S.nav.invalidate(o.x - r, o.z - r, o.x + r, o.z + r);
+}
+
+let ringsOf: unknown = null, ringsN = -1, rings: Ring[] = [];
+/** The walls of walled towns as rings with gates, for planning long routes. */
+export function townRings(): Ring[] {
+  const W = S.W;
+  if (W !== ringsOf || W.towns.size !== ringsN) {
+    ringsOf = W; ringsN = W.towns.size; rings = [];
+    for (const t of W.towns.values()) {
+      if (t.plan.walls === 'none' || !t.gates.length) continue;
+      const g = t.gates[0];
+      rings.push({ x: t.site.x, z: t.site.z, r: Math.hypot(g.x - t.site.x, g.z - t.site.z), gates: t.gates });
+    }
+  }
+  return rings;
 }

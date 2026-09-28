@@ -7,7 +7,7 @@ import { sel } from './control';
 import { newGame, NewGameSetup, placeOres } from './newgame';
 import { buildStructures } from './world';
 import { serialize, apply, writeSave, readSave, SaveMeta, SAVE_VERSION } from '../sim/save';
-import { structuresIn } from '../sim/structures';
+import { structuresIn, townRings } from '../sim/structures';
 import { emit } from '../core/events';
 import { closeTop } from '../ui/dom';
 import { RNG } from '../core/rng';
@@ -27,6 +27,7 @@ export function resetWorld() {
   G.charViews.clear();
   G.nav.reset();
   G.nav.structures = structuresIn;
+  G.nav.rings = townRings;
   S.weather = new Weather();
   S.weather.seed();
   sel.clear();

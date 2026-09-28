@@ -197,7 +197,7 @@ function despawn(sq: Squad) {
 /** Advances an off-screen squad along its route. */
 function moveAbstract(sq: Squad, dt: number) {
   if (!sq.route || sq.ri >= sq.route.length / 2) return true;
-  let d = (sq.kind === 'raid' || sq.kind === 'herd' ? 2.2 : 1.8) * dt;
+  let d = (sq.kind === 'raid' || sq.kind === 'herd' || sq.kind === 'bounty' ? 2.2 : 1.8) * dt;
   while (d > 0 && sq.ri < sq.route.length / 2) {
     const tx = sq.route[sq.ri * 2], tz = sq.route[sq.ri * 2 + 1];
     const l = Math.hypot(tx - sq.x, tz - sq.z);

@@ -7,7 +7,7 @@ import { buildSite } from '../world/sites';
 import { SETTLEMENT } from '../content/layout';
 import { RNG, hash3 } from '../core/rng';
 import { populateTown, populateSite } from '../sim/populate';
-import { structuresIn } from '../sim/structures';
+import { structuresIn, townRings } from '../sim/structures';
 import { anchors } from '../sim/sim';
 import { tickExplore } from '../ui/map';
 import { emit } from '../core/events';
@@ -16,6 +16,7 @@ import type { Char } from '../sim/char';
 export function buildStructures() {
   const W = G.W, T = G.T;
   G.nav.structures = structuresIn;
+  G.nav.rings = townRings;
   for (const site of T.sites) {
     const rng = new RNG(hash3(site.seed, 1234, 5));
     if (site.kind === 'town') {

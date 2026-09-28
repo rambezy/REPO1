@@ -51,8 +51,10 @@ into a single HTML file.
   novice, a veteran and finally the Champion for the purse and the Karuk's
   respect.
 - **Break the law** carefully: theft, pickpocketing, lockpicking, sneak
-  attacks, freeing slaves. Witnesses report you and guards come for you.
-  Prison sentences end; slavers carry the beaten off in chains.
+  attacks, freeing slaves. Witnesses report you and guards come for you,
+  and a big enough price on your head sends bounty hunters across the
+  waste after you. Prison sentences end; slavers carry the beaten off in
+  chains.
 - **Build a base**: 50 buildings and pieces of furniture, 72 recipes, a
   research tree of 31 topics gated by relics, farms, power, turrets and
   walls. Grow a base big enough and raiders, starvelings and tax

@@ -7,7 +7,7 @@ import { Squad } from './squad';
 let t = 0;
 
 export function isRouted(sq: Squad | undefined) {
-  return !!sq && (!!sq.flags.loop || sq.task.k === 'travel' || sq.task.k === 'patrol' || sq.task.k === 'raid');
+  return !!sq && (!!sq.flags.loop || sq.task.k === 'travel' || sq.task.k === 'patrol' || sq.task.k === 'raid' || sq.task.k === 'hunt');
 }
 
 export function tickSquads(dt: number) {
@@ -42,7 +42,7 @@ export function tickSquads(dt: number) {
         if (lag) continue;
         const x = sq.route[sq.ri * 2], z = sq.route[sq.ri * 2 + 1];
         goTo(L, x, z);
-        L.move = sq.kind === 'raid' ? 'run' : 'walk';
+        L.move = sq.kind === 'raid' || sq.kind === 'bounty' ? 'run' : 'walk';
         sq.ri++;
       }
       sq.x = L.x; sq.z = L.z;

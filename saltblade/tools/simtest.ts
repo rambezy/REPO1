@@ -20,7 +20,8 @@ import { tickWorldEvents } from '../src/sim/worldevents';
 import { tickArena } from '../src/sim/arena';
 import { tickDeeds } from '../src/sim/deeds';
 import { tickChatter, chatter } from '../src/sim/chatter';
-import { structuresIn } from '../src/sim/structures';
+import { tickHunters } from '../src/sim/hunters';
+import { structuresIn, townRings } from '../src/sim/structures';
 import { buildTown } from '../src/world/towns';
 import { buildSite } from '../src/world/sites';
 import { SETTLEMENT } from '../src/content/layout';
@@ -43,6 +44,7 @@ Object.assign(S, { W, T, nav, clock: new Clock(), rng: new RNG(99), time: 0 });
 S.weather = new Weather();
 S.weather.seed();
 nav.structures = structuresIn;
+nav.rings = townRings;
 const notices: string[] = [];
 const said: string[] = [];
 chatter.needView = false;
@@ -114,6 +116,7 @@ while (S.clock.day < 1 + days) {
   guard('tickArena', () => tickArena(dt));
   guard('tickDeeds', () => tickDeeds(dt));
   guard('tickChatter', () => tickChatter(dt));
+  guard('tickHunters', () => tickHunters(dt));
   steps++;
   popT -= dt;
   if (popT <= 0) {

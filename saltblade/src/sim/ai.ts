@@ -272,7 +272,8 @@ function runTask(c: Char, dt: number): boolean {
   const task = B.task;
   const o = S.W.char(task.id);
   task.t += dt;
-  if (!o || task.t > 120) { B.task = null; return false; }
+  // a long walk with a captive is allowed; anything else is given up after two minutes
+  if (!o || task.t > (c.carrying ? 3600 : 120)) { if (c.carrying) dropCarried(c); B.task = null; return false; }
   switch (task.k) {
     case 'aid': {
       if (!o.body.needsAid() || o.status === 'dead') { B.task = null; c.act = null; return false; }
@@ -316,10 +317,14 @@ function runTask(c: Char, dt: number): boolean {
     case 'eat': {
       if (o.carriedBy && o.carriedBy !== c.id) { B.task = null; return false; }
       if (o.status === 'up') { B.task = null; return false; }
+      // nobody pays for a corpse, except the Mawkin
+      if (o.status === 'dead' && task.k !== 'eat') { if (c.carrying === o.id) dropCarried(c); B.task = null; return false; }
       if (!c.carrying) {
         if (!near(c, o.x, o.z, 1.3)) { goTo(c, o.x, o.z); c.move = 'run'; return true; }
         pickUp(c, o);
         if (task.k === 'capture') o.shackled = true;
+        // a live captive is worth more: bind the worst of the bleeding
+        if (task.k !== 'eat') for (let l = 0; l < 7; l++) { o.body.bleed[l] *= 0.15; o.body.treated[l] = Math.max(o.body.treated[l], 0.3); }
         const dest = captureDestination(c, task.k);
         task.dx = dest[0]; task.dz = dest[1];
         return true;
@@ -383,6 +388,7 @@ function deliverCaptive(c: Char, o: Char, kind: string) {
       if (o.faction === 'player') S.fx.notice(`${o.name} has been thrown in a cage.`, 'bad');
     } else if (kind === 'capture') {
       o.mem.enslavedBy = c.faction;
+      o.bounty[c.faction] = 0; // sold is as good as punished
       if (o.faction === 'player') S.fx.notice(`${o.name} has been taken by slavers.`, 'bad');
     }
   }

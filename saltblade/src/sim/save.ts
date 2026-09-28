@@ -105,7 +105,7 @@ export function serialize(extra: Record<string, any> = {}): any {
     squads: [...W.squads.values()].map((s) => s.serialize()),
     objs: [...W.objs.values()].map(objToJSON),
     shops: [...W.shops.values()],
-    towns: [...W.towns.entries()].filter(([id]) => !W.populated.has(id)).map(([, t]) => townToJSON(t)),
+    towns: [...W.towns.values()].map((t) => townToJSON(t)),
     ...extra,
   };
 }

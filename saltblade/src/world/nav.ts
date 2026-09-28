@@ -24,6 +24,9 @@ export interface StructPrim {
 
 export type StructProvider = (x0: number, z0: number, x1: number, z1: number) => StructPrim[];
 
+/** A town wall: a ring round (x, z) with gates in it. */
+export interface Ring { x: number; z: number; r: number; gates: { x: number; z: number; a: number }[] }
+
 export class Nav {
   coarse: Uint8Array;
   private tiles = new Map<number, Uint8Array>();
@@ -31,6 +34,8 @@ export class Nav {
   private coarseA = new GridAStar(CN * CN);
   private fineA = new GridAStar(200 * 200);
   structures: StructProvider = () => [];
+  /** Town walls, so long routes go round them and in by a gate. */
+  rings: () => Ring[] = () => [];
   frame = 0;
   stats = { coarse: 0, fine: 0, fineNodes: 0 };
 
@@ -283,25 +288,104 @@ export class Path {
   idx = 0;
   coarse: number[] = [];
   cidx = 0;
+  /** coarse waypoints that must be walked through, not cut past (gates) */
+  pins: Set<number> | null = null;
   failed = false;
   constructor(public gx: number, public gz: number) {}
   get done() { return this.idx >= this.pts.length / 2 && this.cidx >= this.coarse.length / 2; }
 }
 
 const FINE_DIRECT = 90;
+const inside = (w: Ring, x: number, z: number) => Math.hypot(x - w.x, z - w.z) < w.r;
+
+/** Points round the outside of a wall from one angle to another, the short way. */
+function arc(w: Ring, from: number, to: number, R: number): number[] {
+  const out: number[] = [];
+  const span = Math.atan2(Math.sin(to - from), Math.cos(to - from));
+  const steps = Math.floor(Math.abs(span) / 0.3);
+  for (let s = 1; s <= steps; s++) { const a = from + (span * s) / (steps + 1); out.push(w.x + Math.sin(a) * R, w.z + Math.cos(a) * R); }
+  return out;
+}
+
+/**
+ * Coarse routes know nothing of town walls. A route that only passes a walled
+ * town is bent round the outside of it; a route into or out of one goes round
+ * to the gate nearest where it met the wall, and through it.
+ */
+export function routeWalls(pts: number[], ax: number, az: number, bx: number, bz: number, rings: Ring[]): { pts: number[]; pins: Set<number> } {
+  let cur = pts;
+  // passing by: push anything inside the wall out round it
+  for (const w of rings) {
+    if (inside(w, ax, az) || inside(w, bx, bz)) continue;
+    const R = w.r + 14;
+    const out: number[] = [];
+    let lastA: number | null = null;
+    for (let k = 0; k < cur.length / 2; k++) {
+      const x = cur[k * 2], z = cur[k * 2 + 1];
+      if (Math.hypot(x - w.x, z - w.z) >= w.r + 6) { out.push(x, z); lastA = null; continue; }
+      const a = Math.atan2(x - w.x, z - w.z);
+      if (lastA !== null) out.push(...arc(w, lastA, a, R));
+      out.push(w.x + Math.sin(a) * R, w.z + Math.cos(a) * R);
+      lastA = a;
+    }
+    cur = out;
+  }
+  // going in or out: by the gate
+  const out: number[] = [];
+  const pins = new Set<number>();
+  let px = ax, pz = az;
+  for (let k = 0; k < cur.length / 2; k++) {
+    const x = cur[k * 2], z = cur[k * 2 + 1];
+    for (const w of rings) {
+      const in0 = inside(w, px, pz), in1 = inside(w, x, z);
+      if (in0 === in1 || !w.gates.length) continue;
+      const ox = in0 ? x : px, oz = in0 ? z : pz;
+      const aw = Math.atan2(ox - w.x, oz - w.z);
+      let g = w.gates[0], best = Infinity;
+      for (const q of w.gates) {
+        const da = Math.abs(Math.atan2(Math.sin(q.a - aw), Math.cos(q.a - aw)));
+        if (da < best) { best = da; g = q; }
+      }
+      const round = arc(w, aw, g.a, w.r + 14);
+      const sx = Math.sin(g.a), sz = Math.cos(g.a);
+      const gOut = [g.x + sx * 8, g.z + sz * 8], gIn = [g.x - sx * 7, g.z - sz * 7];
+      if (!in0) {
+        out.push(...round, ...gOut);
+        pins.add(out.length / 2 - 1);
+        out.push(...gIn);
+        pins.add(out.length / 2 - 1);
+      } else {
+        out.push(...gIn);
+        pins.add(out.length / 2 - 1);
+        out.push(...gOut);
+        pins.add(out.length / 2 - 1);
+        for (let s = round.length / 2 - 1; s >= 0; s--) out.push(round[s * 2], round[s * 2 + 1]);
+      }
+    }
+    out.push(x, z);
+    px = x; pz = z;
+  }
+  return { pts: out, pins };
+}
 
 /** Plans a path from a to b. Short trips are planned fine immediately. */
 export function planPath(nav: Nav, ax: number, az: number, bx: number, bz: number): Path | null {
   const p = new Path(bx, bz);
   const d = Math.hypot(bx - ax, bz - az);
   if (d < 0.6) return p;
-  if (d < FINE_DIRECT) {
+  const rings = nav.rings();
+  const crosses = rings.some((w) => inside(w, ax, az) !== inside(w, bx, bz));
+  if (d < FINE_DIRECT && !crosses) {
     const f = nav.fine(ax, az, bx, bz, 24, 30000, true);
     if (f) { p.pts = f; p.idx = 1; return p; }
   }
   const c = nav.coarsePath(ax, az, bx, bz);
   if (!c) return null;
-  p.coarse = c;
+  if (rings.length) {
+    const r = routeWalls(c, ax, az, bx, bz, rings);
+    p.coarse = r.pts;
+    if (r.pins.size) p.pins = r.pins;
+  } else p.coarse = c;
   p.cidx = 0;
   refine(nav, p, ax, az);
   return p;
@@ -313,7 +397,7 @@ export function refine(nav: Nav, p: Path, x: number, z: number): boolean {
   const n = p.coarse.length / 2;
   // aim at a coarse waypoint ~60 m ahead (or the goal)
   let k = p.cidx;
-  while (k < n - 1 && Math.hypot(p.coarse[k * 2] - x, p.coarse[k * 2 + 1] - z) < 60) k++;
+  while (k < n - 1 && !p.pins?.has(k) && Math.hypot(p.coarse[k * 2] - x, p.coarse[k * 2 + 1] - z) < 60) k++;
   const tx = p.coarse[k * 2], tz = p.coarse[k * 2 + 1];
   const f = nav.fine(x, z, tx, tz, 16, 20000, true);
   p.cidx = k + 1;
