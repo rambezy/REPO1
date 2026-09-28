@@ -6,6 +6,7 @@ import { WObj } from '../sim/objects';
 import { buildBuilding, buildWallPiece, buildField, buildProp, BuildingMeshes } from './buildings';
 import { GeoBuilder, geoRand } from './geo';
 import { buildingAt } from '../sim/structures';
+import { buildSiteMesh } from './baseView';
 
 const TILE = 256;
 const FAR = 2600;
@@ -182,7 +183,7 @@ export class StructViews {
         return { root: m, key };
       }
       case 'site':
-        return null; // drawn by the base-building view
+        return { root: buildSiteMesh(o), key };
       default: {
         const { mesh, glow } = buildProp(o);
         const root = new THREE.Group();

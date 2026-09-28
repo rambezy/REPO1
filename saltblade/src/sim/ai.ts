@@ -15,6 +15,7 @@ import { LI } from './body';
 import { runOrder } from './orders';
 import { runRoutine } from './routine';
 import { runJobs } from './jobs';
+import { wantsToTalk } from './encounters';
 
 export const SIGHT_DAY = 42;
 export const SIGHT_NIGHT = 24;
@@ -189,6 +190,8 @@ function npcAI(c: Char, dt: number, think: boolean) {
     const attacker = S.W.char(c.lastHitBy);
     const provoked = attacker && attacker.alive && attacker.up && S.time - c.lastHitT < 12 ? attacker : null;
     let target = provoked ?? e;
+    // some would rather talk (and extort) first
+    if (target && !provoked && target.faction === 'player' && wantsToTalk(c)) target = null;
     // animals: grazers flee instead of fighting unless cornered
     if (c.animal && target) {
       const a = ANIMAL[c.animal];

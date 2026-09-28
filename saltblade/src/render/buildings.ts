@@ -192,6 +192,95 @@ export function drawFurniture(g: GeoBuilder, def: string, x: number, y: number, 
       g.push().translate(-0.5, 0.9, -0.1).box(0.5, 0.35, 0.35, { color: 0x6a7078 }).pop();
       if (glow) glow.push().translate(x, y + 1.2, z).box(0.3, 0.2, 0.02, { color: [0.6, 2.6, 4] }).pop();
       break;
+    case 'refinery':
+    case 'furnace': {
+      const big = def === 'furnace';
+      g.push().block(big ? 2.6 : 2.2, 0.4, big ? 2.6 : 2.2, { color: 0x5a544c }).pop();
+      g.push().translate(0, 0.4, 0).cyl(big ? 1.0 : 0.8, big ? 1.2 : 1.0, big ? 2.4 : 2, 8, { color: 0x6a5e52, grad: 0.3 }).pop();
+      g.push().translate(0.5, 0.4, 0.5).cyl(0.2, 0.25, big ? 4.2 : 3.4, 6, { color: 0x3a3632 }).pop();
+      g.push().translate(0, 0.9, big ? 1.2 : 1).box(0.7, 0.6, 0.1, { color: 0x2a2420 }).pop();
+      if (glow) glow.push().translate(x + Math.sin(rot) * (big ? 1.25 : 1.05), y + 0.9, z + Math.cos(rot) * (big ? 1.25 : 1.05)).box(0.5, 0.4, 0.05, { color: [5, 1.8, 0.4] }).pop();
+      break;
+    }
+    case 'stonecutter':
+      g.push().block(2.6, 0.9, 2, { color: 0x6a6660 }).pop();
+      g.push().translate(0, 1.2, 0).rotateX(Math.PI / 2).cyl(0.7, 0.7, 0.1, 12, { color: 0x9a9a9e }).pop();
+      g.push().translate(-0.8, 0.9, 0.6).block(0.8, 0.6, 0.6, { color: 0xa8a298 }).pop();
+      break;
+    case 'loom':
+      for (const px of [-0.8, 0.8]) g.push().translate(px, 0, 0).block(0.12, 1.6, 1.2, { color: wood }).pop();
+      g.push().translate(0, 1.5, 0).box(1.8, 0.1, 0.1, { color: wood }).pop();
+      g.push().translate(0, 0.9, 0).box(1.5, 0.9, 0.04, { color: 0xc8b89a }).pop();
+      break;
+    case 'tannery':
+      for (const px of [-0.8, 0.8]) g.push().translate(px, 0, 0).cyl(0.06, 0.07, 1.8, 4, { color: wood }).pop();
+      g.push().translate(0, 1.7, 0).rotateZ(Math.PI / 2).cyl(0.05, 0.05, 1.8, 4, { color: wood }).pop();
+      g.push().translate(0, 1.05, 0).rotateX(0.15).box(1.3, 1.2, 0.04, { color: 0x8a6a4a }).pop();
+      break;
+    case 'mill':
+      g.push().cyl(0.9, 1.0, 1.1, 10, { color: 0x8a8274 }).pop();
+      g.push().translate(0, 1.1, 0).cyl(0.8, 0.8, 0.25, 10, { color: 0x9a948a }).pop();
+      g.push().translate(0, 1.35, 0).rotateZ(Math.PI / 2).cyl(0.06, 0.06, 2.2, 4, { color: wood }).pop();
+      break;
+    case 'still':
+      g.push().translate(0, 0, 0).cyl(0.7, 0.8, 1.3, 10, { color: 0xa06a3a, grad: 0.2 }).pop();
+      g.push().translate(0, 1.3, 0).sphere(0.7, 10, 5, { color: 0xb07a44 }).pop();
+      g.push().translate(0.6, 1.5, 0).rotateZ(-1.0).cyl(0.06, 0.06, 1.1, 5, { color: 0x8a5a30 }).pop();
+      g.push().translate(1.1, 0, 0).cyl(0.3, 0.3, 0.6, 8, { color: 0x6a5238 }).pop();
+      break;
+    case 'press':
+      for (const px of [-0.7, 0.7]) g.push().translate(px, 0, 0).block(0.2, 2, 0.2, { color: 0x4a4a4c }).pop();
+      g.push().translate(0, 1.9, 0).box(1.6, 0.25, 0.4, { color: 0x4a4a4c }).pop();
+      g.push().translate(0, 0.3, 0).block(1.2, 0.6, 1.2, { color: 0x5a4a38 }).pop();
+      g.push().translate(0, 1.2, 0).cyl(0.08, 0.08, 0.7, 5, { color: 0x8a8a8a }).pop();
+      break;
+    case 'electronics':
+    case 'machineshop':
+      g.push().translate(0, 0.9, 0).box(def === 'machineshop' ? 2.8 : 1.9, 0.1, 0.9, { color: 0x4a5058 }).pop();
+      for (const [px, pz] of [[-0.85, -0.35], [0.85, -0.35], [-0.85, 0.35], [0.85, 0.35]]) g.push().translate(px * (def === 'machineshop' ? 1.4 : 1), 0, pz).block(0.1, 0.9, 0.1, { color: 0x3a3e44 }).pop();
+      g.push().translate(-0.4, 0.95, -0.1).box(0.5, 0.4, 0.4, { color: 0x6a7078 }).pop();
+      if (def === 'machineshop') g.push().translate(0.8, 0.95, 0).cyl(0.2, 0.2, 0.7, 8, { color: 0x8a8a8e }).pop();
+      if (glow) glow.push().translate(x, y + 1.3, z).box(0.3, 0.2, 0.02, { color: [0.6, 2.6, 4] }).pop();
+      break;
+    case 'anvil_bench':
+      g.push().translate(-0.6, 0, 0).block(0.5, 0.55, 0.4, { color: 0x3a3a3a }).pop();
+      g.push().translate(-0.6, 0.6, 0).box(0.9, 0.2, 0.36, { color: 0x4a4a4c }).pop();
+      g.push().translate(0.6, 0, 0).cyl(0.5, 0.6, 0.9, 8, { color: 0x6a5e52 }).pop();
+      if (glow) glow.push().translate(x + Math.cos(rot) * 0.6, y + 0.95, z - Math.sin(rot) * 0.6).ico(0.3, 0, { color: [5, 1.8, 0.4] }).pop();
+      break;
+    case 'dummy':
+      g.cyl(0.06, 0.08, 1.2, 4, { color: wood });
+      g.push().translate(0, 1.2, 0).cyl(0.22, 0.25, 0.7, 6, { color: 0xb8a070 }).pop();
+      g.push().translate(0, 2.05, 0).sphere(0.18, 6, 4, { color: 0xb8a070 }).pop();
+      g.push().translate(0, 1.6, 0).rotateZ(Math.PI / 2).cyl(0.05, 0.05, 1.1, 4, { color: wood }).pop();
+      break;
+    case 'windmill':
+      g.push().cyl(0.25, 0.4, 7, 6, { color: 0x6a6a6e }).pop();
+      g.push().translate(0, 7, 0.35).rotateX(Math.PI / 2).cyl(0.25, 0.25, 0.5, 6, { color: 0x5a5a5e }).pop();
+      for (let i = 0; i < 3; i++) g.push().translate(0, 7, 0.65).rotateZ((i / 3) * Math.PI * 2 + (data?.spin ?? 0)).translate(0, 1.4, 0).box(0.35, 2.8, 0.05, { color: 0xd8d0c0 }).pop();
+      break;
+    case 'generator':
+      g.push().block(1.8, 1.2, 1.4, { color: 0x5a5e62 }).pop();
+      g.push().translate(0.5, 1.2, 0.3).cyl(0.12, 0.12, 0.9, 6, { color: 0x3a3a3a }).pop();
+      g.push().translate(-0.4, 1.25, 0).cyl(0.35, 0.35, 0.1, 8, { color: 0x7a5a3a }).pop();
+      if (glow) glow.push().translate(x, y + 0.7, z + 0.71).box(0.4, 0.15, 0.02, { color: [3, 2.4, 0.4] }).pop();
+      break;
+    case 'turret':
+      g.push().block(1.8, 1.4, 1.8, { color: 0x6a5e52 }).pop();
+      g.push().translate(0, 1.4, 0).cyl(0.5, 0.6, 0.4, 8, { color: 0x4a4a4c }).pop();
+      g.push().translate(0, 2.0, 0.4).rotateX(Math.PI / 2).cyl(0.12, 0.16, 1.8, 6, { color: 0x3a3a3c }).pop();
+      g.push().translate(0, 2.0, 0.2).box(1.8, 0.12, 0.2, { color: 0x6a5238 }).pop();
+      break;
+    case 'banner':
+      g.cyl(0.05, 0.06, 4, 5, { color: 0x4a3a2a });
+      g.push().translate(0.45, 3.2, 0).box(0.9, 1.4, 0.03, { color: 0x9a3a2a }).pop();
+      break;
+    case 'stove':
+      g.push().block(1.4, 1.0, 0.9, { color: 0x4a4a4c }).pop();
+      g.push().translate(0.4, 1.0, -0.2).cyl(0.1, 0.12, 1.6, 6, { color: 0x3a3a3c }).pop();
+      g.push().translate(-0.3, 1.02, 0.1).cyl(0.2, 0.2, 0.15, 8, { color: 0x6a5a4a }).pop();
+      if (glow) glow.push().translate(x, y + 0.5, z + 0.46).box(0.5, 0.2, 0.02, { color: [5, 1.6, 0.3] }).pop();
+      break;
     case 'wreckage': {
       const sc = data?.s ?? 1.5;
       g.push().scale(sc).rotateZ(0.3).translate(0, 0.4, 0).box(3, 0.15, 1.6, { color: 0x6a5e56 }).pop();

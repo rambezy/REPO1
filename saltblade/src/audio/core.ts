@@ -134,6 +134,7 @@ function noise(ctx: BaseAudioContext, kind: 'white' | 'pink' | 'brown', chans: n
 function impulse(ctx: BaseAudioContext, secs: number): AudioBuffer {
   const sr = ctx.sampleRate, len = Math.floor(sr * secs), pre = Math.floor(sr * 0.015);
   const buf = ctx.createBuffer(2, len, sr);
+  const e = [0, 0];
   for (let c = 0; c < 2; c++) {
     const d = buf.getChannelData(c);
     let lp = 0;
@@ -141,7 +142,11 @@ function impulse(ctx: BaseAudioContext, secs: number): AudioBuffer {
       const x = (i - pre) / (len - pre);
       lp += (Math.random() * 2 - 1 - lp) * (0.85 - 0.7 * x);
       d[i] = lp * Math.exp(-5.5 * x) * (1 - x);
+      e[c] += d[i] * d[i];
     }
   }
+  // equal energy in both ears so the tail does not lean to one side
+  const k = Math.sqrt(e[0] / e[1]), d = buf.getChannelData(1);
+  for (let i = 0; i < len; i++) d[i] *= k;
   return buf;
 }

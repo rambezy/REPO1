@@ -28,6 +28,10 @@ import { setupUI } from './ui/index';
 import { StructViews } from './render/structView';
 import { tickPopulation } from './game/world';
 import { tickSquads } from './sim/squads';
+import { tickEncounters } from './sim/encounters';
+import { tickWorld, hireMercs } from './sim/worldsim';
+import { tickBase } from './sim/base';
+import { on } from './core/events';
 
 function loadingScreen() {
   const el = document.createElement('div');
@@ -87,6 +91,7 @@ export async function boot() {
   setupFx();
   attachControl();
   setupUI();
+  on('hire:mercs', (pid: number, n: number, days: number) => hireMercs(pid, n, days));
   const cr = SETTLEMENT.crossroad;
   G.cam.lookAt(cr.u * WORLD, cr.v * WORLD, 120);
   newGame(location.hash.includes('fight') ? 'fight' : 'wanderer');
@@ -114,6 +119,9 @@ function step(dt: number) {
     const h = Math.min(left, 0.05);
     simStep(h, focus);
     tickSquads(h);
+    tickEncounters(h);
+    tickWorld(h);
+    tickBase(h);
     left -= h;
   }
   tickPopulation(dt);

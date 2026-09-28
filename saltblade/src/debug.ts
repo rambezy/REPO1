@@ -27,6 +27,28 @@ export function attachDebug() {
       return true;
     },
     speed(s: number) { G.speed = s; return s; },
+    give(id: string, n = 1, q = 2) { const c = G.W.playerChars()[0]; return c.inv.add(id, n, q); },
+    async site(key: string, dx = 6, dz = 0, rot = 0) {
+      const base = await import('./sim/base');
+      const { BUILDABLE } = await import('./content/buildables');
+      const c = G.W.playerChars()[0];
+      const b = BUILDABLE[key];
+      const x = c.x + dx, z = c.z + dz;
+      const ok = base.canPlace(b, x, z, rot);
+      if (!ok.ok) return ok.why;
+      const s = base.placeSite(b, x, z, rot);
+      c.jobs.unshift({ k: 'build', obj: s.id, label: 'Build' });
+      return s.id;
+    },
+    objs(kind?: string, r = 50) { const c = G.W.playerChars()[0]; return [...G.W.objs.values()].filter((o: any) => (!kind || o.kind === kind) && Math.hypot(o.x - c.x, o.z - c.z) < r).map((o: any) => ({ id: o.id, kind: o.kind, def: o.def, p: o.progress, built: o.built })); },
+    unlockAll() { import('./content/buildables').then((m) => m.TECHS.forEach((t: any) => G.W.research.done.add(t.key))); return true; },
+    npcs(role?: string, r = 200) {
+      const p = G.W.playerChars()[0];
+      return [...G.W.chars.values()].filter((c: any) => c.faction !== 'player' && (!role || c.role === role) && Math.hypot(c.x - p.x, c.z - p.z) < r).slice(0, 20).map((c: any) => ({ id: c.id, n: c.name, role: c.role, f: c.faction, shop: c.shop, rec: c.recruitable, x: +c.x.toFixed(1), z: +c.z.toFixed(1) }));
+    },
+    talk(id: number) { import('./core/events').then((m) => m.emit('ui:talk', G.W.playerChars()[0].id, id)); return true; },
+    trade(id: number) { import('./core/events').then((m) => m.emit('ui:trade', G.W.playerChars()[0].id, id)); return true; },
+    near2(id: number) { const c = G.W.chars.get(id); const p = G.W.playerChars()[0]; p.x = c.x + 1.2; p.z = c.z + 1.2; p.path = null; p.hasGoal = false; (window as any).__sb.cam(c.x, c.z, 10, 0.6, 0.7); return true; },
     tp(x: number, z: number) { const c = G.W.playerChars()[0]; c.x = x; c.z = z; c.path = null; c.hasGoal = false; return true; },
     bld(use: string, near = 'crossroad') {
       const site = G.T.sites.find((s: any) => s.key === near);

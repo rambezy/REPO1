@@ -13,13 +13,19 @@ import { selected, closeMenu } from '../game/control';
 import { RACE } from '../content/races';
 import { ANIMAL } from '../content/animals';
 import { Clock } from '../sim/clock';
+import { openDialogue } from './dialogue';
+import { openTrade } from './trade';
+import { setupBuild } from './build';
 
 export function setupUI() {
   buildHUD();
+  setupBuild();
   on('ui:char', () => { if (isOpen('char')) closeWindow('char'); else openCharWindow(); });
   on('ui:loot', (looter: number, target: any) => openLoot(looter, target));
   on('world:drop', (x: number, z: number, items: any[]) => dropOnGround(x, z, items));
   on('ui:inspect', (id: number) => inspect(id));
+  on('ui:talk', (pid: number, nid: number) => openDialogue(pid, nid));
+  on('ui:trade', (pid: number, nid: number) => { import('./dialogue').then((m) => m.closeDialogue()); openTrade(pid, nid); });
   on('ui:log', () => { if (isOpen('log')) closeWindow('log'); else openLog(); });
   on('gear', () => refreshCharWindow());
   on('sel', () => { if (isOpen('char')) { const c = selected()[0]; if (c) openCharWindow(c); } });
