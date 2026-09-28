@@ -160,6 +160,8 @@ const C = {
   goldD: hexPack('#7a5418'),
   goldL: hexPack('#e0b850'),
   carpetEdge: hexPack('#4a1414'),
+  capIn: hexPack('#2a2521'),
+  capEdge: hexPack('#9a8e7a'),
   merlonLit: hexPack('#a8a296'),
   merlon: hexPack('#86827a'),
   merlonGap: hexPack('#2e2c28'),
@@ -222,7 +224,12 @@ export function renderGround(src: GroundSource, ccx: number, ccy: number, tr: nu
   const used = new Set<number>();
   for (let k = 0; k < tt.length; k++) used.add(tt[k]);
   const need = new Set<MatName>();
-  for (const t of used) for (const n of MATS_FOR[t] || []) need.add(n);
+  for (const t of used) for (const n of MATS_FOR[t] || []) {
+    // indoors: warm slabs underfoot and on the wall tops, walls without moss
+    if (!src.outdoor && n === 'flag') need.add('flagwarm');
+    else if (!src.outdoor && n === 'stoneFace') need.add('stoneFaceIn');
+    else need.add(n);
+  }
   if (!src.outdoor) need.add('flagwarm');
   const tx = {} as Record<MatName, MatTex>;
   for (const n of need) tx[n] = tex.get(n);
@@ -419,7 +426,14 @@ export function renderGround(src: GroundSource, ccx: number, ccy: number, tr: nu
           if (mode === 1) {
             // top surface
             let base: number;
-            if (t === T.WALL_STONE) {
+            if (t === T.WALL_STONE && !src.outdoor) {
+              // the dark coping of an inside wall, lit along the room side
+              base = lerpC(shadeC(samp(tx.flagwarm, gx, gy), 0.55), C.capIn, 0.6);
+              const room = (dx: number, dy: number) => { const n = cellAt(src, cx + dx, cy + dy); return !WALL[n] && n !== T.WALL_DARK; };
+              if ((room(1, 0) && lx > TS - 1.1) || (room(-1, 0) && lx < 1.1) || (room(0, 1) && ly > TS - 1.1)) base = lerpC(base, C.capEdge, 0.55);
+              c = base;
+              break;
+            } else if (t === T.WALL_STONE) {
               base = samp(tx.flag, gx, gy);
               if (wallModeC(cx, cy + 1) >= 2 && ly >= 11) {
                 // parapet along the outer edge
@@ -445,7 +459,7 @@ export function renderGround(src: GroundSource, ccx: number, ccy: number, tr: nu
             const fyT = Math.floor(fy * tr);
             if (t === T.ROCK) c = samp(tx.rockFace, gx, fyT);
             else if (t === T.WALL_CAVE) c = samp(tx.caveFace, gx, fyT);
-            else if (t === T.WALL_STONE) c = samp(tx.stoneFace, gx, fyT);
+            else if (t === T.WALL_STONE) c = samp(src.outdoor ? tx.stoneFace : tx.stoneFaceIn, gx, fyT);
             else if (t === T.WALL_WOOD) c = samp(tx.logFace, gx, fyT);
             else c = samp(tx.plasterFace, gx, fyT);
             // ends of a wall run are shaded like corners

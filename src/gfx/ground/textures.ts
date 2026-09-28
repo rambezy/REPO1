@@ -532,49 +532,78 @@ function paintCobble(tr: number, seed: number, S = 96): MatTex {
 }
 
 function paintFlagstone(tr: number, seed: number, S = 96, warm = false): MatTex {
+  // big, slightly irregular slabs worn smooth: a floor, not a wall of bricks
   const { c, g } = surface(S, S, tr);
   const rng = new RNG(seed);
-  g.fillStyle = '#4c4842';
+  g.fillStyle = warm ? '#3b342b' : '#3f3b35';
   g.fillRect(0, 0, S, S);
-  const rowH = 8;
-  const cols = warm ? ['#a89a86', '#9a8c78', '#b2a490', '#928470', '#a09482'] : ['#8e8a82', '#9a958c', '#86827a', '#a39e94', '#7e7a72'];
-  for (let r = 0; r < S / rowH; r++) {
-    let x = rng.next() * 6;
-    const y = r * rowH;
+  const cols = warm
+    ? ['#8f826e', '#857864', '#998b76', '#7d705e', '#8a7e6a', '#94866f', '#827563']
+    : ['#8a867e', '#817d75', '#938f86', '#7a766e', '#8e897f', '#86827a'];
+  const rows = [12, 14, 11, 13, 12, 10, 14, 10]; // sums to S so the rows tile
+  let y = 0;
+  for (const rh of rows) {
+    let x = rng.next() * 9;
     const start = x;
     while (x < S + start) {
-      const w = 8 + rng.next() * 7;
-      const w2 = Math.min(w, S + start - x);
+      const W = Math.min(11 + rng.next() * 11, S + start - x);
+      // everything random is drawn up front so wrapped copies match
       const col = pick(rng, cols);
-      const X0 = x, W = w2;
-      wrap(S, S, X0 + W / 2, y + rowH / 2, W, (cx, cy) => {
-        const x0 = cx - W / 2 + 0.3, y0 = cy - rowH / 2 + 0.3, ww = W - 0.6, hh = rowH - 0.6;
-        const gr = g.createLinearGradient(x0, y0, x0 + ww * 0.3, y0 + hh);
-        gr.addColorStop(0, lit(col, 0.18));
-        gr.addColorStop(1, dim(col, 0.12));
-        g.fillStyle = gr;
-        g.fillRect(x0, y0, ww, hh);
-        g.fillStyle = 'rgba(255,248,230,0.18)';
-        g.fillRect(x0, y0, ww, 0.35);
-        g.fillRect(x0, y0, 0.35, hh);
-        g.fillStyle = 'rgba(10,8,6,0.3)';
-        g.fillRect(x0, y0 + hh - 0.4, ww, 0.4);
-        g.fillRect(x0 + ww - 0.4, y0, 0.4, hh);
-        for (let k = 0; k < 3; k++) softSpot(g, x0 + rng.next() * ww, y0 + rng.next() * hh, 1 + rng.next() * 2.5, rng.next() < 0.5 ? '#6a645a' : '#b0aa9c', 0.25);
-        if (rng.next() < 0.25) {
-          g.strokeStyle = 'rgba(30,26,22,0.5)';
-          g.lineWidth = 0.18;
+      const ins = [0, 1, 2, 3].map(() => 0.2 + rng.next() * 0.28);
+      const jit = [0, 1, 2, 3, 4, 5, 6, 7].map(() => (rng.next() - 0.5) * 0.4);
+      const spots = [0, 1, 2, 3].map(() => [rng.next(), rng.next(), 1.5 + rng.next() * 3, rng.next() < 0.5 ? 1 : 0]);
+      const crack = rng.next() < 0.2 ? [rng.next(), ...[0, 1, 2, 3, 4].map(() => rng.next() - 0.5)] : null;
+      const worn = rng.next() < 0.3;
+      const chip = rng.next() < 0.12 ? Math.floor(rng.next() * 4) : -1;
+      const X0 = x, Y0 = y;
+      wrap(S, S, X0 + W / 2, Y0 + rh / 2, Math.max(W, rh), (cx, cy) => {
+        const l = cx - W / 2 + ins[0], r = cx + W / 2 - ins[1], t = cy - rh / 2 + ins[2], b = cy + rh / 2 - ins[3];
+        const q = [[l + jit[0], t + jit[1]], [r + jit[2], t + jit[3]], [r + jit[4], b + jit[5]], [l + jit[6], b + jit[7]]];
+        const quad = () => {
           g.beginPath();
-          let px = x0 + rng.next() * ww, py = y0;
+          g.moveTo(q[0][0], q[0][1]);
+          for (let k = 1; k < 4; k++) g.lineTo(q[k][0], q[k][1]);
+          g.closePath();
+        };
+        const gr = g.createLinearGradient(l, t, r, b);
+        gr.addColorStop(0, lit(col, 0.06));
+        gr.addColorStop(1, dim(col, 0.1));
+        g.fillStyle = gr;
+        quad();
+        g.fill();
+        g.save();
+        quad();
+        g.clip();
+        for (const [u, v, rr, light] of spots) softSpot(g, l + u * (r - l), t + v * (b - t), rr, light ? lit(col, 0.25) : dim(col, 0.3), 0.22);
+        if (worn) softSpot(g, (l + r) / 2, (t + b) / 2, Math.min(r - l, b - t) * 0.55, lit(col, 0.2), 0.16);
+        if (crack) {
+          g.strokeStyle = 'rgba(28,24,20,0.45)';
+          g.lineWidth = 0.16;
+          g.beginPath();
+          let px = l + crack[0] * (r - l), py = t;
           g.moveTo(px, py);
-          for (let k = 0; k < 4; k++) { px += (rng.next() - 0.5) * 2; py += hh / 4; g.lineTo(px, py); }
+          for (let k = 1; k <= 5; k++) { px += crack[k] * 2.2; py = t + ((b - t) * k) / 5; g.lineTo(px, py); }
           g.stroke();
         }
+        g.restore();
+        // soft bevel: light along the top and left, shade along the bottom and right
+        g.lineWidth = 0.3;
+        g.strokeStyle = 'rgba(255,246,226,0.12)';
+        g.beginPath(); g.moveTo(q[3][0], q[3][1]); g.lineTo(q[0][0], q[0][1]); g.lineTo(q[1][0], q[1][1]); g.stroke();
+        g.strokeStyle = 'rgba(20,16,12,0.3)';
+        g.beginPath(); g.moveTo(q[1][0], q[1][1]); g.lineTo(q[2][0], q[2][1]); g.lineTo(q[3][0], q[3][1]); g.stroke();
+        if (chip >= 0) {
+          const [px, py] = q[chip];
+          const sx = chip === 0 || chip === 3 ? 1 : -1, sy = chip < 2 ? 1 : -1;
+          g.fillStyle = 'rgba(40,34,28,0.8)';
+          g.beginPath(); g.moveTo(px, py); g.lineTo(px + sx * 1.6, py); g.lineTo(px, py + sy * 1.3); g.closePath(); g.fill();
+        }
       });
-      x += w;
+      x += W;
     }
+    y += rh;
   }
-  noiseGrain(c, 7, seed + 1);
+  noiseGrain(c, 6, seed + 1);
   return toTex(c);
 }
 
@@ -750,13 +779,15 @@ function paintPlasterFace(tr: number, seed: number, S = 64, H = 32): MatTex {
   return toTex(c);
 }
 
-function paintStoneFace(tr: number, seed: number, S = 64, H = 32, cave = false): MatTex {
+function paintStoneFace(tr: number, seed: number, S = 64, H = 32, cave = false, inside = false): MatTex {
   const { c, g } = surface(S, H, tr);
   const rng = new RNG(seed);
-  g.fillStyle = cave ? '#1c1816' : '#3a3834';
+  g.fillStyle = cave ? '#1c1816' : inside ? '#403930' : '#3a3834';
   g.fillRect(0, 0, S, H);
-  const cols = cave ? ['#3a332d', '#443c34', '#2e2824', '#4a423a'] : ['#7c7870', '#8a857c', '#6e6a62', '#94907f', '#747066', '#827c70'];
-  const rowH = 5.5;
+  const cols = cave ? ['#3a332d', '#443c34', '#2e2824', '#4a423a']
+    : inside ? ['#8c8274', '#807668', '#978c7c', '#7a7064', '#867c6e']
+    : ['#7c7870', '#8a857c', '#6e6a62', '#94907f', '#747066', '#827c70'];
+  const rowH = inside ? 6.4 : 5.5;
   for (let r = 0; r * rowH < H; r++) {
     let x = (r % 2) * 5 + rng.next() * 2;
     const y = r * rowH;
@@ -783,13 +814,13 @@ function paintStoneFace(tr: number, seed: number, S = 64, H = 32, cave = false):
       x += w;
     }
   }
-  // moss and damp at the foot
+  // moss and damp at the foot (indoors just a little grime)
   const mg = g.createLinearGradient(0, H - 8, 0, H);
   mg.addColorStop(0, 'rgba(40,50,25,0)');
-  mg.addColorStop(1, cave ? 'rgba(10,8,6,0.6)' : 'rgba(40,52,24,0.55)');
+  mg.addColorStop(1, cave ? 'rgba(10,8,6,0.6)' : inside ? 'rgba(30,24,18,0.4)' : 'rgba(40,52,24,0.55)');
   g.fillStyle = mg;
   g.fillRect(0, H - 8, S, 8);
-  if (!cave) for (let i = 0; i < 30; i++) {
+  if (!cave && !inside) for (let i = 0; i < 30; i++) {
     const x = rng.next() * S, y = H - rng.next() * 7;
     wrap(S, H, x, y, 2, (X, Y) => ellipse(g, X, Y, 0.8 + rng.next(), 0.5, pick(rng, ['#4a6a2c', '#3e5a26', '#587a34'])), false);
   }
@@ -996,6 +1027,7 @@ const MAKERS = {
   carpet: (tr: number) => paintCarpet(tr, 54),
   plasterFace: (tr: number) => paintPlasterFace(tr, 61),
   stoneFace: (tr: number) => paintStoneFace(tr, 62),
+  stoneFaceIn: (tr: number) => paintStoneFace(tr, 70, 64, 32, false, true),
   caveFace: (tr: number) => paintStoneFace(tr, 63, 64, 32, true),
   logFace: (tr: number) => paintLogFace(tr, 64),
   rockFace: (tr: number) => paintRockFace(tr, 65),

@@ -243,7 +243,9 @@ export class Actor {
     }
     if (this.animal) {
       const f = this.frameIndex();
-      drawAnimal(ctx, this.animal, this.pose === 'dead' ? 1 : this.dir, f, this.x, this.y, this.flash, this.alpha);
+      // a continuous gait: the same cadence as the old four-frame cycle
+      const phase = this.pose === 'walk' ? (this.animT * (this.running ? 3 : 1.75)) % 1 : undefined;
+      drawAnimal(ctx, this.animal, this.pose === 'dead' ? 1 : this.dir, f, this.x, this.y, this.flash, this.alpha, phase);
       return;
     }
     if (!this.look) return;
