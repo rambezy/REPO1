@@ -23,6 +23,7 @@ import { fitProsthetic } from '../sim/health';
 import { setupHints } from './hints';
 import { openBook } from './read';
 import { DEEDS } from '../sim/deeds';
+import { setupCodex, toggleCodex } from './codex';
 import { saveGame, loadSlot } from '../game/session';
 import { G } from '../state';
 
@@ -30,6 +31,7 @@ export function setupUI() {
   buildHUD();
   setupBuild();
   setupHints();
+  setupCodex();
   on('ui:char', () => { if (isOpen('char')) closeWindow('char'); else openCharWindow(); });
   on('ui:loot', (looter: number, target: any) => openLoot(looter, target));
   on('world:drop', (x: number, z: number, items: any[]) => dropOnGround(x, z, items));
@@ -41,6 +43,7 @@ export function setupUI() {
   on('ui:menu', () => openGameMenu());
   on('ui:map', () => toggleMap());
   on('ui:factions', () => toggleFactions());
+  on('ui:codex', () => toggleCodex());
   on('ui:read', (key: string, cid?: number) => openBook(key, cid));
   on('ui:prosthetic', (cid: number, uid: number) => {
     const c = S.W.char(cid);
@@ -59,6 +62,7 @@ export function setupUI() {
       case 'KeyB': emit('ui:build'); return true;
       case 'KeyU': emit('ui:research'); return true;
       case 'KeyO': emit('ui:factions'); return true;
+      case 'KeyK': toggleCodex(); return true;
       case 'Escape':
         closeMenu();
         if (!closeTop()) emit('ui:menu');

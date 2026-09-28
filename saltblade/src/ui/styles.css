@@ -441,3 +441,17 @@ p.small { font-size: 12.5px; }
 .deed.done { opacity: 1; background: rgba(60,48,28,.7); border-left: 3px solid var(--accent); }
 .deedname { font: 600 15px var(--cond); }
 .deeddesc { font-size: 13px; color: var(--ink-dim); }
+
+/* ---------------- codex and region banner ---------------- */
+.codexlist { display: flex; flex-direction: column; gap: 6px; max-height: 62vh; overflow: auto; padding-right: 4px; }
+.cxentry { background: rgba(38,33,26,.55); border-radius: 3px; padding: 8px 12px; }
+.cxentry.link { cursor: pointer; }
+.cxentry.link:hover { background: rgba(60,50,36,.75); }
+.cxtitle { font: 600 16px var(--cond); }
+.cxtext { font-size: 13.5px; line-height: 1.45; color: var(--ink-dim); margin-top: 2px; }
+.regionbanner { position: absolute; left: 50%; top: 18%; transform: translateX(-50%); text-align: center; pointer-events: none; z-index: 25; transition: opacity 1.2s ease; text-shadow: 0 2px 12px rgba(0,0,0,.85); max-width: min(640px, calc(100vw - 32px)); animation: rbin 1.4s ease; }
+.regionbanner.out { opacity: 0; }
+@keyframes rbin { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+.rbname { font: 700 clamp(26px, 4vw, 40px) var(--title); letter-spacing: .12em; color: var(--accent); }
+.rbdesc { font: italic 15px var(--font); color: var(--ink); margin-top: 6px; }
+@media (prefers-reduced-motion: reduce) { .regionbanner { animation: none; } }

@@ -10,6 +10,8 @@ import { populateTown, populateSite } from '../sim/populate';
 import { structuresIn } from '../sim/structures';
 import { anchors } from '../sim/sim';
 import { tickExplore } from '../ui/map';
+import { emit } from '../core/events';
+import type { Char } from '../sim/char';
 
 export function buildStructures() {
   const W = G.W, T = G.T;
@@ -55,11 +57,25 @@ export function tickPopulation(dt: number) {
     for (const c of mine) if (Math.abs(c.x - o.x) < 60 && Math.abs(c.z - o.z) < 60) { W.rel.met.add(o.faction); break; }
   }
   // discover places your people see
+  const regions: number[] = W.flags.regionsSeen ?? (W.flags.regionsSeen = []);
   for (const c of mine) {
+    if (!c.alive) continue;
     const s = G.T.siteAt(c.x, c.z, 60);
     if (s && !W.discovered.has(s.id)) {
       W.discovered.add(s.id);
       if (s.kind === 'town' || s.landmark) S.fx.notice(`Discovered ${s.name}.`, 'good');
     }
+    // a region seen for the first time
+    const r = G.T.regionIdAt(c.x, c.z);
+    if (!regions.includes(r)) {
+      regions.push(r);
+      if (regions.length > 1 || W.log.length > 1) emit('region:enter', r);
+    }
+  }
+  // creatures your people have seen
+  const beasts: string[] = W.flags.beastsSeen ?? (W.flags.beastsSeen = []);
+  for (const o of W.active) {
+    if (!o.animal || beasts.includes(o.animal)) continue;
+    if (mine.some((c: Char) => Math.abs(c.x - o.x) < 50 && Math.abs(c.z - o.z) < 50)) beasts.push(o.animal);
   }
 }
