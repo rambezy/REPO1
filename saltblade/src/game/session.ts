@@ -32,6 +32,7 @@ export function resetWorld() {
   sel.clear();
   emit('sel');
   emit('world:reset');
+  document.getElementById('gameover')?.remove();
 }
 
 /** A world with its towns and ruins but nobody of yours in it (the title backdrop). */

@@ -187,6 +187,18 @@ export function openMap() {
         if (view.zoom >= 3) label(s.name, sx, sy + 10, 'rgba(60,34,20,0.85)', 10);
       }
     }
+    // bounties you have heard about
+    for (const b of S.W.bountyBoard) {
+      if (b.status !== 'open' || !(S.W.seenSites.has(b.site) || S.W.discovered.has(b.site))) continue;
+      const s = G.T.sites.find((x) => x.id === b.site);
+      if (!s) continue;
+      const [sx, sy] = toScreen(s.x, s.z);
+      if (sx < -20 || sy < -20 || sx > size + 20 || sy > size + 20) continue;
+      ctx.strokeStyle = '#b02a1a'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(sx, sy, 8, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(sx - 4, sy - 4); ctx.lineTo(sx + 4, sy + 4); ctx.moveTo(sx + 4, sy - 4); ctx.lineTo(sx - 4, sy + 4); ctx.stroke();
+      if (view.zoom >= 1.4) label(`${b.name}: ${b.reward.toLocaleString()}c`, sx, sy - 14, '#7a1a0e', 11);
+    }
     // your base
     const pb = playerBase();
     if (pb) {

@@ -423,3 +423,14 @@ p.small { font-size: 12.5px; }
 .booktext.poem p { white-space: pre-line; font-style: italic; text-align: center; }
 .booklearn { margin-top: 12px; text-align: center; color: var(--good); font: 600 14px var(--cond); }
 .pst b.warn { color: var(--warn); }
+
+/* ---------------- game over ---------------- */
+#gameover { position: absolute; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center; background: radial-gradient(ellipse at center, rgba(20,10,6,.55), rgba(8,6,4,.9)); pointer-events: auto; animation: goin 1.6s ease; }
+@keyframes goin { from { opacity: 0; } to { opacity: 1; } }
+.gocard { width: min(560px, calc(100vw - 32px)); text-align: center; display: flex; flex-direction: column; gap: 14px; padding: 26px 24px; }
+.gotitle { font: 700 clamp(26px, 5vw, 40px)/1.1 var(--title); color: #c8603a; letter-spacing: .06em; text-wrap: balance; }
+.gostats { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px 22px; font: 16px var(--cond); }
+.gostats b { color: var(--accent); font-size: 22px; }
+.gonames { font: 14px var(--cond); }
+.gobtns { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
+@media (prefers-reduced-motion: reduce) { #gameover, .hintbox { animation: none; } }

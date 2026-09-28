@@ -222,6 +222,7 @@ function infoTab(c: Char, el: HTMLElement) {
       c.mem.backstory ? h('p', { class: 'story' }, c.mem.backstory) : null,
       h('div', {}, `Kills ${c.stats.kills} · Knock-outs ${c.stats.kos} · Times downed ${c.stats.downed}`),
       h('div', {}, `Walked ${(c.stats.dist / 1000).toFixed(1)} km`),
+      c.mem.read?.length ? h('div', { class: 'dim' }, `Has read ${c.mem.read.length} ${c.mem.read.length === 1 ? 'book' : 'books'}`) : null,
       bounties.length ? h('div', { class: 'bad' }, `Wanted — ${bounties.join(', ')} (total ${totalBounty(c)}c)`) : h('div', { class: 'dim' }, 'Not wanted by anyone.'),
     ),
   ));

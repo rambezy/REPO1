@@ -37,6 +37,7 @@ import { tickWorldEvents } from './sim/worldevents';
 import { tickAutosave, startNewGame } from './game/session';
 import { showTitle, tickTitle } from './ui/title';
 import { tickHints } from './ui/hints';
+import { tickGameOver } from './ui/gameover';
 import { loadSettings, applySettings } from './game/settings';
 import { setupAudio, tickAudio } from './game/audiohook';
 import { Weather, WEATHER_NAME } from './sim/weather';
@@ -162,6 +163,7 @@ function step(dt: number) {
   if (G.mode === 'title') tickTitle(dt);
   tickAudio(dt);
   tickHints(dt);
+  tickGameOver(dt);
   G.cam.update(dt, G.T);
   G.cam.apply(G.R.camera, G.T);
   const t = G.cam.target;

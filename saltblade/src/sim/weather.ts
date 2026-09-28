@@ -66,6 +66,11 @@ export class Weather {
 
   private hazards(c: Char, dt: number) {
     if (!c.alive || c.carriedBy || c.animal) return;
+    // townsfolk at home know when to get indoors; travellers and your people take their chances
+    if (c.faction !== 'player' && c.site) {
+      const home = S.T.sites.find((s) => s.id === c.site);
+      if (home && home.kind === 'town' && Math.hypot(home.x - c.x, home.z - c.z) < home.r + 100) return;
+    }
     const s = this.at(c.x, c.z);
     if (s.i < 0.15 || (s.kind !== 'acid' && s.kind !== 'gas')) return;
     const b = buildingAt(c.x, c.z, 0);
