@@ -63,6 +63,11 @@ into a single HTML file.
   sack the weak ones. Fight at a town's gates and it remembers. When a
   faction's leader falls, its war parties stop for a while and its enemies
   warm to whoever did it.
+- **Listen**: your people talk among themselves on the road about hunger,
+  the weather, the country they cross, the money and the friends they have
+  lost. The named characters have their own voices, and some share a past.
+  Karuk, Hollows and Thrum each talk their own way, and townsfolk gossip as
+  you pass. Chatter can be turned off in the options.
 - **Keep a record**: a journal of what happened, 28 deeds to earn, and a
   Codex of the places, regions, factions, creatures and books you have
   come across.

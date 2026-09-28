@@ -362,6 +362,15 @@ function furnish(W: World, info: TownInfo | null, b: WObj, d: BuildingData, owne
     case 'tent':
     case 'dome':
     case 'container': {
+      if (d.shop) {
+        // a trading dome: a wax counter at the back, one bedroll for the keeper
+        const counter = add('counter', 'counter', 0, hd - 1.6, Math.PI, { inv: new Grid(12, 10), locked: lock(rng, 35), shop: d.shop, data: { len: Math.min(3, d.w * 0.35) } });
+        info?.shops.push({ kind: d.shop, building: b, counter, spot: spot(0, hd - 2.7, Math.PI) });
+        d.shopId = counter.id;
+        bed(-hw + 0.8, -hd + 1.2, Math.PI / 2, 'bedroll');
+        add('crate', 'crate', hw - 0.5, -hd + 0.6, 0, { inv: new Grid(6, 6), locked: lock(rng, 30) });
+        break;
+      }
       const beds = d.use === 'container' ? 1 : Math.max(1, Math.min(4, Math.floor((d.w * d.d) / 26)));
       for (let i = 0; i < beds; i++) {
         const lx = -hw + 0.8 + (i % 2) * (hw * 2 - 1.6), lz = -hd + 1.2 + Math.floor(i / 2) * 2.6;

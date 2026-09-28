@@ -5,7 +5,7 @@ import { S } from './ctx';
 import { goTo, stop, near } from './move';
 import { emit } from '../core/events';
 import { pickUp } from './ai';
-import { dropCarried, findMedkit, worstLimb, treatLimb } from './health';
+import { dropCarried, findMedkit, limbToTreat, treatLimb } from './health';
 import { train, versus } from './train';
 import { canSee } from './ai';
 import { ITEM } from '../content/items';
@@ -101,9 +101,9 @@ export function runOrder(c: Char, dt: number) {
       const t = S.W.char(o.id);
       if (!t || t.status === 'dead') { c.order = null; c.act = null; return; }
       if (!walkTo(c, t.x, t.z, 1.4)) return;
-      const kit = findMedkit(c, t.robot);
+      const kit = findMedkit(c, t.robot, t);
       if (!kit) { S.fx.notice(`${c.name} has no ${t.robot ? 'repair kit' : 'medical supplies'}.`, 'info'); c.order = null; return; }
-      const l = worstLimb(t.body);
+      const l = limbToTreat(t.body, !!kit.def.med?.splint);
       if (l < 0) { c.order = null; c.act = null; S.fx.notice(`${t.name} is patched up.`, 'good'); return; }
       c.act = 'medic' as any; c.act = 'loot'; c.actDur = 1.6;
       c.brain.aidT = (c.brain.aidT ?? 0) + dt;

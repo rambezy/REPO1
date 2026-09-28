@@ -177,14 +177,37 @@ export function worstLimb(b: Body): number {
   return score > 5 ? best : -1;
 }
 
-/** Finds a medical item in a character's inventory (or pack) suited for the patient. */
-export function findMedkit(c: Char, robot: boolean) {
+/** A leg broken past standing and not yet splinted, or -1. */
+export function brokenLeg(b: Body): number {
+  for (const l of [LI.lleg, LI.rleg]) if (b.has(l) && b.hp[l] <= 0 && !(b.splint & (1 << l))) return l;
+  return -1;
+}
+
+/**
+ * Finds a medical item in a character's inventory (or pack) suited for the
+ * patient: a splint for a broken leg, otherwise dressings or repair kits.
+ */
+export function findMedkit(c: Char, robot: boolean, patient?: Char) {
+  const wantSplint = !!patient && !robot && brokenLeg(patient.body) >= 0;
+  let dressing: { grid: Grid; it: Item; def: (typeof ITEM)[string] } | null = null;
   for (const g of [c.inv, c.eq.back?.inv]) {
     if (!g) continue;
-    const it = g.first((d) => !!d.med && !!d.med.robot === robot && !d.med.splint);
-    if (it) return { grid: g, it, def: ITEM[it.id] };
+    if (wantSplint) {
+      const s = g.first((d) => !!d.med?.splint);
+      if (s) return { grid: g, it: s, def: ITEM[s.id] };
+    }
+    if (!dressing) {
+      const it = g.first((d) => !!d.med && !!d.med.robot === robot && !d.med.splint);
+      if (it) dressing = { grid: g, it, def: ITEM[it.id] };
+    }
   }
-  return null;
+  return dressing;
+}
+
+/** Which limb to treat with a kit: the broken leg for a splint, else the worst. */
+export function limbToTreat(b: Body, splint: boolean): number {
+  const leg = splint ? brokenLeg(b) : -1;
+  return leg >= 0 ? leg : worstLimb(b);
 }
 
 /**

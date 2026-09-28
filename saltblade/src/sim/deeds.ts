@@ -51,12 +51,16 @@ export function tickDeeds(dt: number) {
   const W = S.W;
   const done: Record<string, number> = W.flags.deeds ?? (W.flags.deeds = {});
   const mine = W.playerChars();
+  // what is already true when a game begins (a band of four, a homestead) is noted quietly
+  const quiet = !W.flags.deedsBegun;
+  W.flags.deedsBegun = true;
   for (const d of DEEDS) {
     if (done[d.key] !== undefined) continue;
     let ok = false;
     try { ok = d.check(W, mine); } catch { ok = false; }
     if (!ok) continue;
     done[d.key] = S.clock.t;
+    if (quiet) continue;
     W.say(`Deed: ${d.name}. ${d.desc}`, 'story', S.clock.t);
     S.fx.notice(`Deed: ${d.name}`, 'good');
   }

@@ -5,6 +5,7 @@ import { saveGame, loadSlot, snapshot } from './game/session';
 import { spawnRaid } from './sim/raids';
 import { launchCampaign } from './sim/worldevents';
 import { playerBase } from './sim/base';
+import { chatNow } from './sim/chatter';
 
 export function attachDebug() {
   const w = window as unknown as Record<string, unknown>;
@@ -79,6 +80,7 @@ export function attachDebug() {
     campaign(key: string) { launchCampaign(key); const sq = [...G.W.squads.values()].filter((s: any) => s.flags.townRaid).pop(); return sq ? { name: sq.name, n: sq.members.length, target: G.T.sites.find((s: any) => s.id === sq.flags.townRaid)?.name } : null; },
     raid() { const b = playerBase(); if (!b) return 'no base'; spawnRaid(b.x, b.z, b.n); return b; },
     load: (slot = '1') => loadSlot(slot),
+    chat() { chatNow(); return true; },
     saveSize() { const j = JSON.stringify(snapshot()); return j.length; },
     /** Forces the weather in the camera's region. */
     weather(kind: string, i = 1) {

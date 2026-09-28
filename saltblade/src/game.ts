@@ -36,6 +36,7 @@ import { tickRaids } from './sim/raids';
 import { tickWorldEvents } from './sim/worldevents';
 import { tickArena } from './sim/arena';
 import { tickDeeds } from './sim/deeds';
+import { tickChatter } from './sim/chatter';
 import { tickAutosave, startNewGame } from './game/session';
 import { showTitle, tickTitle } from './ui/title';
 import { tickHints } from './ui/hints';
@@ -172,6 +173,7 @@ function step(dt: number) {
     tickWorldEvents(h);
     tickArena(h);
     if (G.mode === 'play') tickDeeds(h);
+    tickChatter(h);
     S.weather.tick(h);
     left -= h;
   }

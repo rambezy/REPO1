@@ -1,6 +1,7 @@
 // Player preferences, kept in the browser between sessions.
 import { G } from '../state';
 import { setVolumes, getVolumes } from '../audio';
+import { chatter } from '../sim/chatter';
 
 export interface Settings {
   quality: 'low' | 'medium' | 'high';
@@ -12,6 +13,7 @@ export interface Settings {
   names: 'always' | 'hover';
   pauseOnKO: boolean;
   hints: boolean;
+  chatter: boolean;
   master: number;
   music: number;
   sfx: number;
@@ -19,7 +21,7 @@ export interface Settings {
 }
 
 export const DEFAULTS: Settings = {
-  quality: 'high', shadows: true, viewDist: 1, autosave: 8, edgeScroll: false, uiScale: 1, names: 'hover', pauseOnKO: true, hints: true,
+  quality: 'high', shadows: true, viewDist: 1, autosave: 8, edgeScroll: false, uiScale: 1, names: 'hover', pauseOnKO: true, hints: true, chatter: true,
   master: 0.8, music: 0.5, sfx: 0.8, ambience: 0.6,
 };
 
@@ -45,6 +47,7 @@ export function applySettings() {
   if (G.charViews) G.charViews.range = 420 * s.viewDist;
   if (G.props) G.props.distMul = s.viewDist;
   if (G.overlay) G.overlay.showAllNames = s.names === 'always';
+  chatter.on = s.chatter;
   document.documentElement.style.setProperty('--ui-scale', String(s.uiScale));
   setVolumes({ master: s.master, music: s.music, sfx: s.sfx, ambience: s.ambience });
 }

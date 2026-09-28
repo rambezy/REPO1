@@ -9,7 +9,7 @@ import { goTo, stop, near } from './move';
 import { ANIMAL } from '../content/animals';
 import { FACTION } from '../content/factions';
 import { ITEM } from '../content/items';
-import { findMedkit, worstLimb, treatLimb, dropCarried } from './health';
+import { findMedkit, limbToTreat, treatLimb, dropCarried } from './health';
 import { angleTo } from '../core/math';
 import { LI } from './body';
 import { runOrder } from './orders';
@@ -251,7 +251,7 @@ function postFight(c: Char): boolean {
   S.W.hash.near(c.x, c.z, 30, (o, d2) => {
     if (o === c || o.carriedBy || o.cage || o.status === 'dead') return;
     if (o.status === 'ko' || o.body.bleeding() > 0.15) {
-      if (o.faction === c.faction && o.body.needsAid() && findMedkit(c, o.robot) && d2 < bd) { best = o; bd = d2; kind = 'aid'; return; }
+      if (o.faction === c.faction && o.body.needsAid() && findMedkit(c, o.robot, o) && d2 < bd) { best = o; bd = d2; kind = 'aid'; return; }
       if (o.status !== 'ko') return;
       if (o.faction !== c.faction && !o.animal) {
         if (f?.captures === 'slavery' && c.role !== 'resident' && d2 < bd && !o.robot) { best = o; bd = d2; kind = 'capture'; }
@@ -282,11 +282,12 @@ function runTask(c: Char, dt: number): boolean {
       task.w = (task.w ?? 0) + dt;
       if (task.w > 1.2) {
         task.w = 0;
-        const kit = findMedkit(c, o.robot);
+        const kit = findMedkit(c, o.robot, o);
         if (!kit) { B.task = null; return false; }
-        const l = worstLimb(o.body);
+        const splint = !!kit.def.med!.splint;
+        const l = limbToTreat(o.body, splint);
         if (l < 0) { B.task = null; return false; }
-        const used = treatLimb(c, o, l, kit.def.med!.points * 0.3, kit.def.med!.quality, false);
+        const used = treatLimb(c, o, l, kit.def.med!.points * 0.3, kit.def.med!.quality, splint);
         (kit.it as any).used = ((kit.it as any).used ?? 0) + used;
         if ((kit.it as any).used >= kit.def.med!.points) { kit.it.n--; (kit.it as any).used = 0; if (kit.it.n <= 0) kit.grid.remove(kit.it); }
       }

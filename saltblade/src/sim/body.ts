@@ -76,6 +76,7 @@ export class Body {
       if (!this.has(i)) continue;
       if (this.bleed[i] > 0.02) return true;
       if (this.hp[i] < this.max[i] * 0.75 && this.treated[i] < 0.5) return true;
+      if (i >= 5 && this.hp[i] <= 0 && !(this.splint & (1 << i))) return true; // a broken leg wants a splint
     }
     return false;
   }

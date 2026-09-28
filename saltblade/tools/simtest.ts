@@ -17,6 +17,9 @@ import { tickBase } from '../src/sim/base';
 import { tickRunaways, tickStealth } from '../src/sim/crime';
 import { tickRaids } from '../src/sim/raids';
 import { tickWorldEvents } from '../src/sim/worldevents';
+import { tickArena } from '../src/sim/arena';
+import { tickDeeds } from '../src/sim/deeds';
+import { tickChatter, chatter } from '../src/sim/chatter';
 import { structuresIn } from '../src/sim/structures';
 import { buildTown } from '../src/world/towns';
 import { buildSite } from '../src/world/sites';
@@ -41,7 +44,9 @@ S.weather = new Weather();
 S.weather.seed();
 nav.structures = structuresIn;
 const notices: string[] = [];
-S.fx = { ...S.fx, notice: (text: string) => { notices.push(text); } } as typeof S.fx;
+const said: string[] = [];
+chatter.needView = false;
+S.fx = { ...S.fx, notice: (text: string) => { notices.push(text); }, say: (c, text: string) => { if (c.faction === 'player' || said.length < 400) said.push(`${c.name.split(' ')[0]} (${c.faction}): ${text}`); } } as typeof S.fx;
 let talks = 0;
 on('ui:talk', () => { talks++; });
 
@@ -54,6 +59,12 @@ W.rebuildObjHash();
 postBounties();
 markHousesForSale();
 console.log(`structures: ${W.objs.size} objects, ${W.towns.size} towns, ${W.bountyBoard.length} bounties`);
+for (const info of W.towns.values()) {
+  const want = SETTLEMENT[info.site.settlement!]?.shops ?? [];
+  const have = info.shops.map((x) => x.kind);
+  const missing = want.filter((k) => !have.includes(k));
+  if (missing.length) console.log(`  ${info.site.name} is missing shops: ${missing.join(', ')}`);
+}
 
 // a squad of three to tour the waste
 const sq = new Squad(); sq.faction = 'player'; sq.kind = 'player'; sq.name = 'Test'; W.addSquad(sq); W.playerSquads.push(sq.id);
@@ -100,6 +111,9 @@ while (S.clock.day < 1 + days) {
   guard('tickRaids', () => tickRaids(dt));
   guard('tickWorldEvents', () => tickWorldEvents(dt));
   guard('weather', () => S.weather.tick(dt));
+  guard('tickArena', () => tickArena(dt));
+  guard('tickDeeds', () => tickDeeds(dt));
+  guard('tickChatter', () => tickChatter(dt));
   steps++;
   popT -= dt;
   if (popT <= 0) {
@@ -136,6 +150,8 @@ console.log(`\n${days} days in ${secs.toFixed(0)} s (${(steps / secs).toFixed(0)
 console.log(`chars ${W.chars.size} (${dead} dead), squads ${W.squads.size}, objects ${W.objs.size}, populated ${W.populated.size}/${T.sites.length}, talks ${talks}, saves ${saves}`);
 console.log(`weather seen: ${[...weatherSeen].join(', ')}; sacked: ${JSON.stringify(W.flags.sacked ?? {})}; leaderless: ${JSON.stringify(W.flags.leaderless ?? {})}`);
 console.log(`log tail:\n  ${W.log.slice(-12).map((l) => l.text).join('\n  ')}`);
+const mine = said.filter((l) => l.includes('(player)'));
+console.log(`chatter: ${mine.length} lines from your people, ${said.length - mine.length} from townsfolk. A few:\n  ${[...mine.slice(0, 8), ...said.filter((l) => !l.includes('(player)')).slice(0, 6)].join('\n  ')}`);
 if (errors.size) {
   console.log(`\nERRORS (${errors.size} kinds):`);
   for (const [k, v] of errors) console.log(`- ${k} ×${v.n}\n${v.stack}`);
