@@ -13,6 +13,7 @@ import { knockOut, dropCarried } from './health';
 import { ITEM } from '../content/items';
 import { freeFromCage } from './orders';
 import { strengthOf } from './combat';
+import { bountiesFor, claimValue, claimBounty } from './bounties';
 
 export interface DCtx { p: Char; n: Char; vars: Record<string, any>; }
 export interface DChoice { t: string | ((c: DCtx) => string); next?: string; if?: (c: DCtx) => boolean; fx?: (c: DCtx) => void | string; end?: boolean; }
@@ -130,6 +131,7 @@ const TREES: Record<string, Tree> = {
       ch: [
         { t: (c) => `Pay the ${c.p.bounty[c.n.faction]} chits.`, if: (c) => wanted(c) && S.W.money >= (c.p.bounty[c.n.faction] ?? 0), fx: (c) => { S.W.money -= c.p.bounty[c.n.faction]; c.p.bounty[c.n.faction] = 0; S.W.rel.add('player', c.n.faction, 3); }, next: 'paid' },
         { t: 'I surrender.', if: wanted, fx: (c) => { knockOut(c.p, 'surrendered'); c.p.body.koT = -30; c.n.brain.task = { k: 'arrest', id: c.p.id, t: 0 }; return 'end'; } },
+        { t: (c) => `I've brought in ${S.W.char(c.p.carrying)?.name}. (Collect ${claimValue(c.p, c.n.faction)} chits)`, if: (c) => !wanted(c) && claimValue(c.p, c.n.faction) > 0, fx: (c) => { c.vars.paid = claimBounty(c.p, c.n.faction); }, next: 'claimed' },
         { t: 'You\'ll have to take me. (Fight)', if: wanted, fx: (c) => { fightNow(c); return 'end'; } },
         { t: 'Anything I should know about this place?', if: (c) => !wanted(c), next: 'place' },
         { t: 'Heard any news?', if: (c) => !wanted(c), next: 'news' },
@@ -141,6 +143,7 @@ const TREES: Record<string, Tree> = {
     place: { t: (c) => aboutPlace(c.n), ch: [{ t: 'Any bounties?', next: 'bounties' }, BYE] },
     news: { t: (c) => rumour(c.n), ch: [BYE] },
     bounties: { t: (c) => bountyTalk(c), ch: [BYE] },
+    claimed: { t: (c) => `${c.vars.paid} chits. ${S.rng.pick(['Good work. The road is a little safer.', 'Didn\'t think you had it in you.', 'We\'ll take it from here.', 'Count it if you like. It\'s all there.'])}`, ch: [{ t: 'Any other bounties?', next: 'bounties' }, BYE] },
   },
   demand_tribute: {
     start: {
@@ -250,11 +253,14 @@ function sellCaptive(c: DCtx) {
   S.fx.notice(`Sold ${t.name} to the ${FACTION[c.n.faction].short}.`, 'info');
 }
 function bountyTalk(c: DCtx) {
-  const b = S.W.bountyBoard.find((x) => x.faction === c.n.faction && S.W.char(x.id)?.alive);
-  if (!b) return S.rng.pick(['Nothing posted. Try the other towns.', 'Bounties? Ask the Watch captain. Or don\'t.', 'Not right now.']);
-  const t = S.W.char(b.id)!;
-  const site = S.T.nearestSite(t.homeX || t.x, t.homeZ || t.z);
-  return `There's ${b.reward} chits on ${t.name}${t.title ? ', ' + t.title : ''}. Last seen near ${site?.name ?? 'the wastes'}. Bring them in, alive or otherwise.`;
+  const list = bountiesFor(c.n.faction).sort((a, b) => b.reward - a.reward).slice(0, 3);
+  if (!list.length) return S.rng.pick(['Nothing posted. Try the other towns.', 'Bounties? Ask the Watch captain. Or don\'t.', 'Not right now.']);
+  const parts = list.map((b) => {
+    const site = S.T.sites.find((x) => x.id === b.site);
+    if (site) S.W.seenSites.add(site.id); // now you have heard of it
+    return `${b.name}, ${b.title}: ${b.reward} chits, holed up at ${site?.name ?? 'somewhere in the waste'}`;
+  });
+  return `On the board: ${parts.join('; ')}. Alive pays best. Dead pays less, and you carry the smell.`;
 }
 
 /** Which conversation an NPC offers the player. */

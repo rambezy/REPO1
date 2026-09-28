@@ -15,6 +15,8 @@ const PARENT = [-1, 0, 1, 2, 3, 4, 3, 6, 7, 8, 3, 10, 11, 12, 1, 14, 15, 1, 17, 
 
 // limb loss bits (match sim/body LIMB order: head chest stomach larm rarm lleg rleg)
 export const LOST_LARM = 1 << 3, LOST_RARM = 1 << 4, LOST_LLEG = 1 << 5, LOST_RLEG = 1 << 6;
+/** Bitmask of limbs replaced by prosthetics. */
+export const prostMask = (prost: (string | null)[]) => prost.reduce((m, p, i) => (p ? m | (1 << i) : m), 0);
 
 export interface Rig {
   joints: THREE.Vector3[]; // model-space joint positions
@@ -78,7 +80,8 @@ const dark = (c: number, k: number) => {
 };
 
 /** Builds the skinned body geometry. */
-export function buildBody(look: Look, vis: Vis, lost: number, rig: Rig): THREE.BufferGeometry {
+export function buildBody(look: Look, vis: Vis, lost: number, rig: Rig, prost = 0): THREE.BufferGeometry {
+  const METAL = 0x6e7278;
   const kind = kindOf(look);
   const g = new GeoBuilder(true);
   const J = rig.joints;
@@ -105,7 +108,8 @@ export function buildBody(look: Look, vis: Vis, lost: number, rig: Rig): THREE.B
   // ---------- legs ----------
   for (const side of [1, -1]) {
     const L = side > 0;
-    if (lost & (L ? LOST_LLEG : LOST_RLEG)) {
+    const pLeg = !!(prost & (L ? LOST_LLEG : LOST_RLEG));
+    if ((lost & (L ? LOST_LLEG : LOST_RLEG)) && !pLeg) {
       // stump
       const hip = J[L ? B.ulL : B.ulR];
       g.bone = L ? B.ulL : B.ulR;
@@ -115,9 +119,17 @@ export function buildBody(look: Look, vis: Vis, lost: number, rig: Rig): THREE.B
     const ul = L ? B.ulL : B.ulR, ll = L ? B.llL : B.llR, ft = L ? B.footL : B.footR;
     const hipJ = J[ul], knee = J[ll], ankle = J[ft];
     const lr = 0.075 * w * thin * thick;
-    limb(ul, hipJ, knee, lr, lr * 0.78, legC, robot ? 6 : 7);
-    limb(ll, knee, ankle.clone().setY(ankle.y + 0.02), lr * 0.76, lr * 0.55, vis.feet && !vis.feet.wraps ? (knee.y - ankle.y > 0.3 ? legC : footC) : legC);
-    if (vis.legs?.armour) {
+    if (pLeg) {
+      // a prosthetic: struts, a knee joint and a socket at the hip
+      limb(ul, hipJ, knee, lr * 0.7, lr * 0.5, METAL, 6);
+      limb(ll, knee, ankle.clone().setY(ankle.y + 0.02), lr * 0.45, lr * 0.4, METAL, 5);
+      g.bone = ll; g.push().translate(knee.x, knee.y, knee.z).sphere(lr * 0.75, 6, 4, { color: dark(METAL, 0.7) }).pop();
+      g.bone = ul; g.push().translate(hipJ.x, hipJ.y - 0.03, hipJ.z).sphere(lr * 1.05, 6, 4, { color: dark(METAL, 0.8) }).pop();
+    } else {
+      limb(ul, hipJ, knee, lr, lr * 0.78, legC, robot ? 6 : 7);
+      limb(ll, knee, ankle.clone().setY(ankle.y + 0.02), lr * 0.76, lr * 0.55, vis.feet && !vis.feet.wraps ? (knee.y - ankle.y > 0.3 ? legC : footC) : legC);
+    }
+    if (vis.legs?.armour && !pLeg) {
       g.bone = ul;
       g.push().translate(hipJ.x + side * 0.01, (hipJ.y + knee.y) / 2, hipJ.z + 0.035).scale(1, 1, 0.6).box(lr * 2.3, (hipJ.y - knee.y) * 0.8, lr * 2, { color: vis.legs.color2 ?? dark(legC, 0.85) }).pop();
       g.bone = ll;
@@ -288,22 +300,27 @@ export function buildBody(look: Look, vis: Vis, lost: number, rig: Rig): THREE.B
   // ---------- arms ----------
   for (const side of [1, -1]) {
     const L = side > 0;
-    if (lost & (L ? LOST_LARM : LOST_RARM)) continue;
+    const pArm = !!(prost & (L ? LOST_LARM : LOST_RARM));
+    if ((lost & (L ? LOST_LARM : LOST_RARM)) && !pArm) continue;
     const ua = L ? B.uaL : B.uaR, la = L ? B.laL : B.laR, hd = L ? B.handL : B.handR;
     const sh = J[ua], el = J[la], wr = J[hd];
     const ar = 0.052 * w * thin * thick;
-    const upperC = sleeve >= 1 ? torsoC : robot ? skin : skin;
-    const lowerC = sleeve >= 2 ? torsoC : robot ? skin : skin;
+    const upperC = pArm ? METAL : sleeve >= 1 ? torsoC : robot ? skin : skin;
+    const lowerC = pArm ? METAL : sleeve >= 2 ? torsoC : robot ? skin : skin;
+    if (pArm) {
+      g.bone = ua; g.push().translate(sh.x, sh.y, sh.z).sphere(ar * 1.35, 6, 4, { color: dark(METAL, 0.75) }).pop();
+      g.bone = la; g.push().translate(el.x, el.y, el.z).sphere(ar * 0.95, 6, 4, { color: dark(METAL, 0.7) }).pop();
+    }
     limb(ua, sh, el, ar, ar * 0.85, vis.armour && (vis.armour.style === 'chain' || vis.armour.style === 'samurai') ? vis.armour.color2 ?? upperC : upperC);
     limb(la, el, wr, ar * 0.82, ar * 0.62, lowerC);
     if (robot) { g.bone = la; g.push().translate(el.x, el.y, el.z).sphere(ar, 6, 4, { color: jointCol }).pop(); }
-    if (vis.armour && (vis.armour.style === 'plate' || vis.armour.style === 'ember_plate' || vis.armour.style === 'samurai' || vis.armour.style === 'robo')) {
+    if (!pArm && vis.armour && (vis.armour.style === 'plate' || vis.armour.style === 'ember_plate' || vis.armour.style === 'samurai' || vis.armour.style === 'robo')) {
       g.bone = la;
       g.push().translate((el.x + wr.x) / 2, (el.y + wr.y) / 2 + 0.03, 0.01).box(ar * 2.4, 0.16 * s, ar * 2.4, { color: vis.armour.color2 ?? vis.armour.color }).pop();
     }
     // hand
     g.bone = hd;
-    const hc = kind === 'thrum' ? dark(skin, 0.85) : handC;
+    const hc = pArm ? dark(METAL, 0.85) : kind === 'thrum' ? dark(skin, 0.85) : handC;
     g.push().translate(wr.x, wr.y - 0.06 * s, wr.z + 0.005).box(0.055 * w * thick, 0.11 * s, 0.075 * thick, { color: hc }).pop();
     if (kind === 'thrum') {
       g.push().translate(wr.x, wr.y - 0.13 * s, wr.z + 0.02).rotateX(0.3).cone(0.02, 0.07, 4, { color: dark(skin, 0.6) }).pop();

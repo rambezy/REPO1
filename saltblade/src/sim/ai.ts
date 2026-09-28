@@ -16,6 +16,7 @@ import { runOrder } from './orders';
 import { runRoutine } from './routine';
 import { runJobs } from './jobs';
 import { wantsToTalk } from './encounters';
+import { leaveFurniture } from './use';
 
 export const SIGHT_DAY = 42;
 export const SIGHT_NIGHT = 24;
@@ -66,6 +67,7 @@ export function allies(c: Char, radius: number): Char[] {
 /** Runs a fight with a target: close in, strike, or shoot. */
 export function fight(c: Char, t: Char, dt: number) {
   c.target = t.id;
+  if (!c.drawn && (c.mem.sit || c.mem.using)) { c.mem.sit = false; leaveFurniture(c); }
   c.drawn = true;
   if (c.knockT > 0 || c.stagger > 0) return;
   const d = dist(c, t);

@@ -42,7 +42,7 @@ export interface TownInfo {
   patrol: { x: number; z: number }[];
   beds: number[];
   shops: { kind: string; building: WObj; counter: WObj; spot: [number, number, number] }[];
-  bars: { building: WObj; counter: WObj; spot: [number, number, number]; seats: [number, number, number][] }[];
+  bars: { building: WObj; counter: WObj; spot: [number, number, number]; seats: [number, number, number, number][] }[];
   cages: number[];
   fields: WObj[];
   jobs: { x: number; z: number; dir: number }[];
@@ -303,7 +303,7 @@ function furnish(W: World, info: TownInfo | null, b: WObj, d: BuildingData, owne
   switch (d.use) {
     case 'bar': {
       const counter = add('counter', 'bar_counter', 0, -hd + 1.4, 0, { inv: new Grid(12, 10), locked: lock(rng, 40), shop: 'bar', data: { len: d.w * 0.45 } });
-      const seats: [number, number, number][] = [];
+      const seats: [number, number, number, number][] = [];
       const tables = Math.max(2, Math.floor((d.w * d.d) / 45));
       for (let i = 0; i < tables; i++) {
         const tx = -hw + 2 + ((i % 3) / 2) * (hw * 2 - 4), tz = -hd + 5 + Math.floor(i / 3) * 3.5;
@@ -311,7 +311,7 @@ function furnish(W: World, info: TownInfo | null, b: WObj, d: BuildingData, owne
         add('table', 'table', tx, tz, 0);
         for (const [sx, sz] of [[-1, 0], [1, 0]]) {
           const st = add('stool', 'stool', tx + sx * 1.05, tz + sz, sx > 0 ? -Math.PI / 2 : Math.PI / 2);
-          seats.push([st.x, st.z, st.rot]);
+          seats.push([st.x, st.z, st.rot, st.id]);
         }
       }
       add('crate', 'barrel', hw - 0.3, -hd + 0.3, 0, { inv: new Grid(6, 6), locked: lock(rng, 30) });

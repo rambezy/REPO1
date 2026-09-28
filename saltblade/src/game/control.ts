@@ -97,7 +97,7 @@ export function objAt(sx: number, sy: number): WObj | null {
 }
 
 // ---------------------------------------------------------------- orders
-function issue(c: Char, o: Order | null, queue = false) {
+export function issue(c: Char, o: Order | null, queue = false) {
   if (!c.up && o?.k !== 'drop') return;
   if (c.bed || c.mem.using) leaveFurniture(c);
   c.mem.sit = false;

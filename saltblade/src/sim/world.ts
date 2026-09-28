@@ -6,6 +6,7 @@ import { WObj } from './objects';
 import { Relations } from './factions';
 import { SpatialHash } from '../core/spatial';
 import type { Shop } from './shops';
+import type { Bounty } from './bounties';
 
 export interface LogEntry { t: number; text: string; kind: 'info' | 'combat' | 'crime' | 'trade' | 'good' | 'bad' | 'story'; }
 
@@ -26,10 +27,11 @@ export class World {
   research = { done: new Set<string>(), current: '', progress: 0 };
   playerSquads: number[] = [];
   killsBy: Record<string, number> = {};
-  bountyBoard: { id: number; faction: string; reward: number; posted: number }[] = [];
+  bountyBoard: Bounty[] = [];
   seenSites = new Set<number>();
   shops = new Map<number, Shop>();
   populated = new Set<number>(); // site ids whose people exist
+  explored: Uint8Array | null = null; // map fog, 128 x 128
   towns = new Map<number, any>(); // site id -> TownInfo (not saved; rebuilt)
 
   id() { return this.nextId++; }

@@ -9,6 +9,7 @@ import { RNG, hash3 } from '../core/rng';
 import { populateTown, populateSite } from '../sim/populate';
 import { structuresIn } from '../sim/structures';
 import { anchors } from '../sim/sim';
+import { tickExplore } from '../ui/map';
 
 export function buildStructures() {
   const W = G.W, T = G.T;
@@ -35,6 +36,7 @@ export function tickPopulation(dt: number) {
   if (popT > 0) return;
   popT = 1.5;
   const W = G.W;
+  if (G.mode === 'play') tickExplore();
   const pts = anchors.length ? anchors : [{ x: G.cam.target.x, z: G.cam.target.z }];
   for (const site of G.T.sites) {
     if (W.populated.has(site.id)) continue;
@@ -46,8 +48,14 @@ export function tickPopulation(dt: number) {
       if (info) populateTown(W, info);
     } else populateSite(W, site);
   }
+  // factions you have come across
+  const mine = W.playerChars();
+  for (const o of W.active) {
+    if (o.faction === 'player' || o.animal || W.rel.met.has(o.faction)) continue;
+    for (const c of mine) if (Math.abs(c.x - o.x) < 60 && Math.abs(c.z - o.z) < 60) { W.rel.met.add(o.faction); break; }
+  }
   // discover places your people see
-  for (const c of W.playerChars()) {
+  for (const c of mine) {
     const s = G.T.siteAt(c.x, c.z, 60);
     if (s && !W.discovered.has(s.id)) {
       W.discovered.add(s.id);

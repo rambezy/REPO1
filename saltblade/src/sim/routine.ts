@@ -81,6 +81,8 @@ export function runRoutine(c: Char, dt: number, think: boolean) {
         }
       }
       if (c.hasGoal) return;
+      // bar patrons keep to their stools, and now and then get up for a stretch
+      if (c.mem.seat && sitOnStool(c)) return;
       B.idleT = (B.idleT ?? 0) - 0.45;
       if (B.idleT > 0) return;
       B.idleT = S.rng.range(6, 24);
@@ -94,6 +96,32 @@ export function runRoutine(c: Char, dt: number, think: boolean) {
       if (spot) { goTo(c, spot[0], spot[1]); c.move = 'walk'; }
     }
   }
+}
+
+/** Sits a patron on their stool; returns false when they would rather stretch their legs. */
+function sitOnStool(c: Char): boolean {
+  const B = c.brain;
+  const st = S.W.objs.get(c.mem.seat);
+  if (!st || (st.user && st.user !== c.id)) return false;
+  B.stoolT = (B.stoolT ?? S.rng.range(40, 200)) - 0.45;
+  if (B.stoolT <= 0) {
+    B.stoolT = S.rng.range(60, 240);
+    if (S.rng.chance(0.3)) {
+      // up for a while
+      st.user = 0; c.mem.using = 0; c.mem.sit = false;
+      B.idleT = S.rng.range(10, 25);
+      const a = S.rng.range(0, Math.PI * 2), d = S.rng.range(2, 6);
+      const spot = S.nav.nearestOpen(st.x + Math.sin(a) * d, st.z + Math.cos(a) * d, 4);
+      if (spot) { goTo(c, spot[0], spot[1]); c.move = 'walk'; }
+      return true;
+    }
+  }
+  if ((B.idleT ?? 0) > 0 && !c.mem.using) { B.idleT -= 0.45; return true; }
+  if (!near(c, st.x, st.z, 0.5)) { c.mem.sit = false; goTo(c, st.x, st.z); c.move = 'walk'; return true; }
+  stop(c);
+  c.x = st.x; c.z = st.z; c.dir = st.rot;
+  st.user = c.id; c.mem.using = st.id; c.mem.sit = true;
+  return true;
 }
 
 function animalRoutine(c: Char) {

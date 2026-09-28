@@ -17,6 +17,9 @@ import { openDialogue } from './dialogue';
 import { openTrade } from './trade';
 import { setupBuild } from './build';
 import { openMenu as openGameMenu } from './menu';
+import { toggleMap } from './map';
+import { toggleFactions } from './factions';
+import { fitProsthetic } from '../sim/health';
 import { saveGame, loadSlot } from '../game/session';
 import { G } from '../state';
 
@@ -32,6 +35,14 @@ export function setupUI() {
   on('ui:log', () => { if (isOpen('log')) closeWindow('log'); else openLog(); });
   on('gear', () => refreshCharWindow());
   on('ui:menu', () => openGameMenu());
+  on('ui:map', () => toggleMap());
+  on('ui:factions', () => toggleFactions());
+  on('ui:prosthetic', (cid: number, uid: number) => {
+    const c = S.W.char(cid);
+    if (!c) return;
+    const err = fitProsthetic(c, uid);
+    if (err) S.fx.notice(err, 'bad'); else refreshCharWindow();
+  });
   on('world:reset', () => { liveKey = ''; });
   on('sel', () => { if (isOpen('char')) { const c = selected()[0]; if (c) openCharWindow(c); } });
   setInterval(() => { if (isOpen('char')) refreshLive(); }, 1000);

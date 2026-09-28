@@ -20,6 +20,7 @@ import { DAY, HOUR } from '../sim/clock';
 import { Site } from '../world/terrain';
 import { ITEM } from '../content/items';
 import { World } from '../sim/world';
+import { postBounties } from '../sim/bounties';
 
 export function placeOres() {
   for (const o of G.T.ores) {
@@ -156,6 +157,7 @@ export function newGame(setup: NewGameSetup | string) {
   if (!su.people.length) su.people = defaultPeople(sc, rng);
   placeOres();
   buildStructures();
+  postBounties();
   S.clock.t = DAY + 7.5 * HOUR;
   W.factionName = su.faction.trim() || sc.squad;
   W.money = sc.money;

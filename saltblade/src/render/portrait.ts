@@ -1,7 +1,7 @@
 // Head-and-shoulders portraits rendered from the same procedural models.
 import * as THREE from 'three';
 import { Char } from '../sim/char';
-import { makeRig, makeBones, buildBody, B } from './charModel';
+import { makeRig, makeBones, buildBody, prostMask, B } from './charModel';
 import { buildAnimal } from './animalModel';
 import { ANIMAL } from '../content/animals';
 
@@ -30,7 +30,7 @@ function setup() {
 }
 
 export function portrait(c: Char): string {
-  const key = c.id + ':' + JSON.stringify([c.look, c.vis(), c.body.lost, c.animal]);
+  const key = c.id + ':' + JSON.stringify([c.look, c.vis(), c.body.lost, c.body.prost, c.animal]);
   const got = cache.get(key);
   if (got) return got;
   try {
@@ -53,7 +53,7 @@ export function portrait(c: Char): string {
     } else {
       const rig = makeRig(c.look);
       const bones = makeBones(rig);
-      mesh = new THREE.SkinnedMesh(buildBody(c.look, c.vis(), c.body.lost, rig), mat);
+      mesh = new THREE.SkinnedMesh(buildBody(c.look, c.vis(), c.body.lost, rig, prostMask(c.body.prost)), mat);
       mesh.add(bones[0]);
       mesh.updateMatrixWorld(true);
       mesh.bind(new THREE.Skeleton(bones));

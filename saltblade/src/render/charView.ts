@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { Char } from '../sim/char';
 import { World } from '../sim/world';
-import { makeRig, makeBones, buildBody, buildWeapon, B, BONE_COUNT } from './charModel';
+import { makeRig, makeBones, buildBody, prostMask, buildWeapon, B, BONE_COUNT } from './charModel';
 import { Animator, AnimIn, Stance } from './anim';
 import { buildAnimal, AnimalRig, AnimalAnimator } from './animalModel';
 import { ANIMAL } from '../content/animals';
@@ -79,7 +79,7 @@ export class CharView {
     }
     const rig = makeRig(c.look);
     const rigKey = JSON.stringify(c.look);
-    const geo = buildBody(c.look, c.vis(), c.body.lost, rig);
+    const geo = buildBody(c.look, c.vis(), c.body.lost, rig, prostMask(c.body.prost));
     if (!this.mesh || rigKey !== this.rigKey) {
       if (this.mesh) { this.root.remove(this.mesh); this.mesh.geometry.dispose(); }
       this.rigKey = rigKey;

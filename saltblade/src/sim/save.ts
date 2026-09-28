@@ -100,6 +100,7 @@ export function serialize(extra: Record<string, any> = {}): any {
     killsBy: W.killsBy,
     weather: S.weather?.serialize(),
     seenSites: [...W.seenSites],
+    explored: W.explored ? bytesToB64(W.explored) : null,
     chars: [...W.chars.values()].map(charToJSON),
     squads: [...W.squads.values()].map((s) => s.serialize()),
     objs: [...W.objs.values()].map(objToJSON),
@@ -127,6 +128,7 @@ export function apply(data: any, W: World) {
   W.killsBy = data.killsBy ?? {};
   S.weather?.load(data.weather);
   W.seenSites = new Set(data.seenSites ?? []);
+  W.explored = data.explored ? b64ToBytes(data.explored) : null;
   W.active = [];
   W.chars.clear(); W.squads.clear(); W.objs.clear(); W.shops.clear(); W.towns.clear();
   for (const o of data.objs) { const ob = objFrom(o); W.objs.set(ob.id, ob); }
@@ -220,6 +222,18 @@ export async function deleteSave(slot: string) {
   memory.delete(slot);
   try { await idbDel('saves', slot); await idbDel('meta', slot); } catch { /* none */ }
   try { localStorage.removeItem('sb-save-' + slot); localStorage.removeItem('sb-meta-' + slot); } catch { /* none */ }
+}
+
+function bytesToB64(buf: Uint8Array) {
+  let s = '';
+  for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+function b64ToBytes(s: string) {
+  const bin = atob(s);
+  const buf = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+  return buf;
 }
 
 async function blobToB64(b: Blob) {

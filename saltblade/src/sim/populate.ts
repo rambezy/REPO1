@@ -14,6 +14,7 @@ import type { TownInfo } from '../world/towns';
 import type { Site } from '../world/terrain';
 import { SHOP_NAMES } from '../content/buildings';
 import { recruitStory } from '../content/stories';
+import { bountyAt, markWanted } from './bounties';
 
 function squad(W: World, faction: string, kind: SquadKind, name: string, site: number): Squad {
   const s = new Squad();
@@ -109,9 +110,11 @@ export function populateTown(W: World, info: TownInfo) {
       const race = recruit ? rng.pick(['valefolk', 'duneborn', 'duneborn', 'valefolk', 'karuk', 'thrum_worker', 'hollow']) : undefined;
       const c = makePerson(W, { faction: pf, role: recruit ? 'recruit' : 'resident', race: pf === 'ember' || pf === 'concord' ? undefined : race }, rng);
       W.moveToSquad(c, town);
-      const [sx, sz, sr] = seats[i];
+      const [sx, sz, sr, sid] = seats[i];
       c.x = sx; c.z = sz; c.y = S.T.heightAt(sx, sz); c.homeX = sx; c.homeZ = sz; c.dir = sr; c.homeDir = sr;
       c.mem.sit = true;
+      const stool = sid ? W.objs.get(sid) : undefined;
+      if (stool) { c.mem.seat = stool.id; c.mem.using = stool.id; stool.user = c.id; }
       c.site = site.id;
       if (recruit) {
         c.recruitable = true;
@@ -165,7 +168,8 @@ export function populateTown(W: World, info: TownInfo) {
       place(bs, b.x - Math.sin(b.rot) * (b.data.d / 2 - 2.5), b.z - Math.cos(b.rot) * (b.data.d / 2 - 2.5), b.rot);
       bs.title = fac === 'karuk' ? (def.capital ? 'the Horn King' : 'War Chief') : fac === 'reavers' ? 'Reaver Lord' : 'Chief';
       bs.site = site.id;
-      if (fac === 'reavers') bs.bounty.drifters = 0;
+      const wanted = bountyAt(site.id);
+      if (wanted) markWanted(bs, wanted);
     }
   }
   // prisoners in cages
@@ -228,12 +232,23 @@ export function populateSite(W: World, site: Site) {
     }
     return sq;
   };
+  // a camp's leader: always there if someone has put a price on them
+  const boss = (sq: Squad, fac: string, loadout: string, title: string, anyway: boolean) => {
+    const wanted = bountyAt(site.id);
+    if (!wanted && !anyway) return;
+    const b = makePerson(W, { faction: fac, role: 'boss', loadout, level: rng.range(34, 50), race: wanted?.race }, rng);
+    b.title = title;
+    W.moveToSquad(b, sq);
+    place(b, site.x, site.z);
+    b.site = site.id;
+    if (wanted) markWanted(b, wanted);
+  };
   const danger = reg.danger;
   switch (k) {
-    case 'camp_reavers': { const sq = people('reavers', 'bandit', rng.int(4, 7) + danger, undefined, 'Dust Reavers'); if (rng.chance(0.5)) { const b = makePerson(W, { faction: 'reavers', role: 'boss', loadout: 'reavers_boss' }, rng); b.title = 'Reaver Boss'; W.moveToSquad(b, sq); place(b, site.x, site.z); b.site = site.id; } break; }
-    case 'camp_starvelings': people('starvelings', 'bandit', rng.int(5, 10), undefined, 'Starvelings'); break;
-    case 'camp_scorched': people('scorched', 'bandit', rng.int(4, 8), undefined, 'Scorched Hand'); break;
-    case 'camp_mawkin': people('mawkin', 'bandit', rng.int(5, 9), undefined, 'Mawkin Hunters'); break;
+    case 'camp_reavers': { const sq = people('reavers', 'bandit', rng.int(4, 7) + danger, undefined, 'Dust Reavers'); boss(sq, 'reavers', 'reavers_boss', 'Reaver Boss', rng.chance(0.5)); break; }
+    case 'camp_starvelings': { const sq = people('starvelings', 'bandit', rng.int(5, 10), undefined, 'Starvelings'); boss(sq, 'starvelings', 'starvelings', 'Hunger Chief', false); break; }
+    case 'camp_scorched': { const sq = people('scorched', 'bandit', rng.int(4, 8), undefined, 'Scorched Hand'); boss(sq, 'scorched', 'scorched', 'Leaf Baron', false); break; }
+    case 'camp_mawkin': { const sq = people('mawkin', 'bandit', rng.int(5, 9), undefined, 'Mawkin Hunters'); boss(sq, 'mawkin', 'mawkin', 'Pit Chief', false); break; }
     case 'mist_camp': people('mistcrawlers', 'bandit', rng.int(5, 10), [22, 40], 'Mistcrawlers'); break;
     case 'blackcomb_nest': people('blackcomb', 'bandit', rng.int(4, 8), [20, 34], 'Blackcomb Drones'); break;
     case 'warden_post': people('wardens', 'construct', rng.int(2, 4), [36, 52], 'Warden Constructs'); break;

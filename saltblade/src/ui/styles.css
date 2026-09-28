@@ -312,3 +312,44 @@ body.mode-title #hud, body.mode-title #overlay { display: none !important; }
 :root { --ui-scale: 1; }
 #hud { zoom: var(--ui-scale); }
 .ccwrap.single { grid-template-columns: 300px 1fr; }
+
+/* ---------------- map ---------------- */
+.mapwin .winbody { padding: 8px 12px 10px; }
+.mapbox { position: relative; }
+.mapcv { display: block; border: 1px solid #3a3024; border-radius: 3px; cursor: crosshair; box-shadow: inset 0 0 40px rgba(0,0,0,.4); }
+.maptip { position: absolute; left: 8px; top: 8px; background: rgba(20,17,13,.8); padding: 3px 9px; border-radius: 3px; font: 13px var(--cond); pointer-events: none; }
+.maptip:empty { display: none; }
+.maplegend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 8px; font: 13px var(--cond); align-items: center; }
+.maplegend .lg { display: inline-flex; gap: 5px; align-items: center; }
+.maplegend i { display: inline-block; width: 10px; height: 10px; border: 1px solid #2a2016; }
+.maplegend i.me { background: #5ec23a; border-radius: 50%; }
+.maplegend .hint { margin-left: auto; font-size: 12px; }
+
+/* ---------------- factions ---------------- */
+.fhead { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.fname { font: 600 20px var(--title); background: transparent; border-color: transparent; padding: 2px 4px; }
+.fname:hover { border-color: var(--edge); }
+.fstats { font: 13px var(--cond); padding-left: 4px; }
+.ftabs { display: flex; gap: 4px; border-bottom: 1px solid var(--edge); margin-bottom: 8px; }
+.ftab { background: transparent; border: 1px solid transparent; border-bottom: none; padding: 5px 14px; font: 600 15px var(--cond); border-radius: 4px 4px 0 0; }
+.ftab.on { background: rgba(60,50,36,.8); border-color: var(--edge); }
+.flist { display: flex; flex-direction: column; gap: 3px; max-height: 60vh; overflow: auto; }
+.frow { background: rgba(38,33,26,.6); border: 1px solid transparent; border-radius: 3px; padding: 6px 8px; cursor: pointer; }
+.frow:hover, .frow.open { border-color: var(--edge); }
+.fline { display: grid; grid-template-columns: 14px 1fr 96px 120px; gap: 8px; align-items: center; }
+.fchip { width: 12px; height: 12px; border-radius: 2px; border: 1px solid #1a1612; }
+.fname2 { font: 600 15px var(--cond); }
+.frel { font: 600 14px var(--cond); text-align: right; }
+.frel small { color: var(--ink-faint); font-weight: 400; }
+.frel.hostile { color: var(--bad); } .frel.unfriendly { color: #d08a5a; } .frel.friendly, .frel.allied { color: var(--good); }
+.fbar { position: relative; }
+.fbar .bar { height: 7px; }
+.fmid { position: absolute; left: 50%; top: -2px; width: 1px; height: 11px; background: var(--ink-faint); }
+.fdetail { margin-top: 6px; font-size: 13.5px; color: var(--ink-dim); display: flex; flex-direction: column; gap: 3px; }
+.fdetail p { margin: 0 0 4px; }
+.fsub { margin: 10px 0 6px; font: 600 14px var(--cond); letter-spacing: .14em; text-transform: uppercase; color: var(--accent); }
+.fsub.bad { color: var(--bad); }
+.brow { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; background: rgba(38,33,26,.6); border-radius: 3px; padding: 6px 10px; margin-bottom: 3px; font-size: 14px; }
+.brow > .dim:last-child { grid-column: 1 / -1; font-size: 12.5px; }
+.breward { font: 600 16px var(--cond); color: var(--accent); }
+.fbar .bar:not(.good):not(.bad) i { background: #b09a6a; }

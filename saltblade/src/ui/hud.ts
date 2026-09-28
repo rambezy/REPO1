@@ -132,7 +132,7 @@ function refreshCards(force: boolean) {
     k.bl.style.width = Math.max(0, (c.body.blood / c.body.bloodMax) * 100) + '%';
     const s = statusOf(c);
     if (k.st.innerHTML !== s) k.st.innerHTML = s;
-    const pk = JSON.stringify([c.look, c.vis(), c.body.lost]);
+    const pk = JSON.stringify([c.look, c.vis(), c.body.lost, c.body.prost]);
     if (pk !== k.key) { k.key = pk; k.img.src = portrait(c); }
   }
 }

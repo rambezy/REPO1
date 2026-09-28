@@ -6,6 +6,7 @@ import { ITEM } from '../content/items';
 import { RATE } from './clock';
 import { S } from './ctx';
 import { train } from './train';
+import type { Grid, Item } from './inventory';
 
 export function koThreshold(c: Char, limb: number) {
   const t = c.skill('toughness');
@@ -183,5 +184,39 @@ export function findMedkit(c: Char, robot: boolean) {
     const it = g.first((d) => !!d.med && !!d.med.robot === robot && !d.med.splint);
     if (it) return { grid: g, it, def: ITEM[it.id] };
   }
+  return null;
+}
+
+/**
+ * Fits a prosthetic limb from someone's inventory to a missing arm or leg.
+ * Needs a robotics bench or shop close by, or a squadmate who knows robotics.
+ * Returns an explanation if it cannot be done.
+ */
+export function fitProsthetic(c: Char, uid: number): string | null {
+  const grids = [c.inv, c.eq.back?.inv].filter((g): g is Grid => !!g);
+  let item: Item | null = null, grid: Grid | null = null;
+  for (const g of grids) { const it = g.items.find((i) => i.uid === uid); if (it) { item = it; grid = g; break; } }
+  if (!item || !grid) return 'That limb is not in their pack.';
+  const d = ITEM[item.id];
+  if (!d.limb) return 'That is not a limb.';
+  const slots = d.limb.part === 'arm' ? [LI.rarm, LI.larm] : [LI.rleg, LI.lleg];
+  const l = slots.find((s) => !c.body.has(s) && !c.body.prost[s]);
+  if (l === undefined) return `${c.name} has no missing ${d.limb.part} to fit it to.`;
+  let help = false;
+  S.W.objHash.near(c.x, c.z, 14, (o) => { if (o.data?.bkey === 'robo_bench' && o.owner === 'player') help = true; });
+  for (const sh of S.W.shops.values()) {
+    if (sh.kind !== 'robotics') continue;
+    const o = S.W.objs.get(sh.id);
+    if (o && Math.hypot(o.x - c.x, o.z - c.z) < 30) help = true;
+  }
+  for (const m of S.W.playerChars()) if (m !== c && m.up && m.skill('robotics') >= 15 && Math.hypot(m.x - c.x, m.z - c.z) < 6) help = true;
+  if (!help) return 'Fitting a limb needs a robotics bench, a robotics shop nearby, or a squadmate with some skill in robotics standing close.';
+  grid.remove(item);
+  c.body.prost[l] = item.id;
+  c.body.bleed[l] = 0;
+  c.dirty = true;
+  S.W.say(`${c.name} was fitted with a ${d.name.toLowerCase()}.`, 'good', S.clock.t);
+  S.fx.notice(`${c.name} now has a ${d.name.toLowerCase()}.`, 'good');
+  S.fx.sound('craft', c.x, c.z);
   return null;
 }

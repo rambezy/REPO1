@@ -4,6 +4,7 @@ import { Char } from './char';
 import { S } from './ctx';
 import { FACTION } from '../content/factions';
 import { canSee } from './ai';
+import { freeFromCage } from './orders';
 
 export type CrimeKind = 'theft' | 'assault' | 'murder' | 'trespass' | 'kidnap' | 'runaway' | 'freeing' | 'drugs' | 'heresy' | 'pickpocket';
 
@@ -61,6 +62,16 @@ export function tickRunaways(dt: number) {
   if (slaveT > 0) return;
   slaveT = 1;
   for (const c of S.W.playerChars()) {
+    // sentences served
+    if (c.cage && c.mem.jailUntil && S.clock.t >= c.mem.jailUntil) {
+      delete c.mem.jailUntil;
+      freeFromCage(c.id);
+      c.shackled = false;
+      c.dirty = true;
+      S.W.say(`${c.name} served their sentence and was let out.`, 'info', S.clock.t);
+      S.fx.notice(`${c.name} has been released from prison.`, 'good');
+      continue;
+    }
     const fac = c.mem.enslavedBy as string | undefined;
     if (!fac || !c.alive || !c.mem.slaveSite) continue;
     const site = S.T.sites.find((s) => s.id === c.mem.slaveSite);
