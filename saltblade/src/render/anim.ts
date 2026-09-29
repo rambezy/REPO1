@@ -168,8 +168,8 @@ export class Animator {
         this.guardArms(a, 0.6);
         this.set(B.uaL, this.tx[B.uaL] + sL * 0.15, this.ty[B.uaL], this.tz[B.uaL]);
       } else {
-        this.set(B.uaL, sL * aa, 0, 0.06);
-        this.set(B.uaR, sR * aa, 0, -0.06);
+        this.set(B.uaL, sL * aa, 0.08, 0.1);
+        this.set(B.uaR, sR * aa, -0.08, -0.1);
         this.set(B.laL, -0.25 - (run ? 1.1 : 0.15));
         this.set(B.laR, -0.25 - (run ? 1.1 : 0.15));
         if (a.sneak) { this.set(B.uaL, -0.5, 0, 0.3); this.set(B.uaR, -0.5, 0, -0.3); this.set(B.laL, -1.1); this.set(B.laR, -1.1); }
@@ -193,8 +193,9 @@ export class Animator {
         this.set(B.spine, 0.35);
         this.set(B.uaL, -0.4, 0, 0.2); this.set(B.uaR, -0.4, 0, -0.2); this.set(B.laL, -0.9); this.set(B.laR, -0.9);
       } else {
-        this.set(B.uaL, 0.02, 0, 0.06 + br); this.set(B.uaR, 0.02, 0, -0.06 - br);
-        this.set(B.laL, -0.12); this.set(B.laR, -0.12);
+        // arms hang loose, a little away from the body, elbows soft
+        this.set(B.uaL, 0.04, 0.12, 0.13 + br); this.set(B.uaR, 0.04, -0.12, -0.13 - br);
+        this.set(B.laL, -0.24); this.set(B.laR, -0.24);
         if (a.limp) { this.set(a.limp === 1 ? B.ulL : B.ulR, -0.15); this.set(a.limp === 1 ? B.llL : B.llR, 0.35); this.tRootZ = a.limp === 1 ? -0.04 : 0.04; }
       }
     }

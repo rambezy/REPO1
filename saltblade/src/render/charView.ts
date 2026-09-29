@@ -59,7 +59,7 @@ export class CharView {
 
   private visKey() {
     const c = this.c;
-    return JSON.stringify([c.vis(), c.body.lost, c.body.prost, this.detail]);
+    return JSON.stringify([c.look, c.vis(), c.body.lost, c.body.prost, this.detail]);
   }
 
   build() {

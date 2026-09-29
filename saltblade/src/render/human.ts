@@ -71,6 +71,8 @@ const LEG = [
 ];
 // along the hand from the wrist (×s): half-width across the palm, half-thickness
 const HAND = [[0, 0.026, 0.02], [0.03, 0.037, 0.018], [0.075, 0.043, 0.016], [0.105, 0.042, 0.015], [0.14, 0.037, 0.013], [0.168, 0.028, 0.011], [0.18, 0.016, 0.008]];
+// the palm alone, to the knuckles, when the fingers are made separately
+const PALM = [[0, 0.026, 0.02], [0.03, 0.037, 0.018], [0.07, 0.043, 0.016], [0.095, 0.041, 0.014], [0.108, 0.034, 0.012]];
 // along the foot from the heel (×s): half-width, top, bottom
 const FOOT = [[-0.06, 0.028, 0.06, 0.002], [-0.035, 0.036, 0.085, 0.002], [0.01, 0.041, 0.092, 0.002], [0.07, 0.045, 0.062, 0.002], [0.13, 0.046, 0.043, 0.002], [0.18, 0.04, 0.03, 0.002], [0.205, 0.028, 0.022, 0.004]];
 
@@ -270,7 +272,7 @@ export function buildHuman(look: Look, vis: Vis, lost: number, rig: Rig, prost =
     }
     // the hand
     const handPaint: Paint = pArm ? P(METAL, 'metal') : gloves ? P(gloveC!, 'leather') : robot ? P(SKIN, 'metal') : bug ? P(shade(SKIN, 0.75), 'chitin') : skinP();
-    buildHand(b, H, d3, side, s * (fem ? 0.93 : 1) * (kind === 'karuk' ? 1.1 : 1), handPaint, hd, N.hand, bug);
+    buildHand(b, H, d3, side, s * (fem ? 0.93 : 1) * (kind === 'karuk' ? 1.1 : 1), handPaint, hd, N.hand, bug, !!detail && !bug && !robot);
     if (vis.shackles) ring(b, H.clone().addScaledVector(d3, 0.012), d3, 0.036, 0.03, 0.028, P(rgb(0x3a3a3c), 'metal'), [[hd, 1]], N.small + 2);
     // shoulder armour
     if (A?.shoulders) pauldron(b, A.style, S, top, side, rgb(A.color2 ?? A.color), rgb(A.color), thick, ua, N.small + 4);
@@ -524,15 +526,32 @@ function ring(b: SkinBuilder, c: THREE.Vector3, axis: THREE.Vector3, rOut: numbe
   loft(b, secs, n, {});
 }
 
-function buildHand(b: SkinBuilder, wrist: THREE.Vector3, dir: THREE.Vector3, side: number, s: number, p: Paint, bone: number, n: number, claws: boolean) {
+function buildHand(b: SkinBuilder, wrist: THREE.Vector3, dir: THREE.Vector3, side: number, s: number, p: Paint, bone: number, n: number, claws: boolean, fingers: boolean) {
   const out = V(side, 0, 0);
   const { u, v } = frame(dir, out);
   const W: Weights = [[bone, 1]];
-  const secs: Sec[] = HAND.map(([d, hwid, th]) => {
-    const curl = 0.012 * smoothstep(0.09, 0.18, d);
+  // a mitten far off; close up, a palm with four fingers curled a little toward it
+  const rows = fingers ? PALM : HAND;
+  const secs: Sec[] = rows.map(([d, hwid, th]) => {
+    const curl = fingers ? 0 : 0.012 * smoothstep(0.09, 0.18, d);
     return { c: wrist.clone().addScaledVector(dir, d * s).addScaledVector(v, -curl), u, v, rx: hwid * s, rf: th * s, rb: th * s * 1.05, e: 2.7, w: W, paint: claws && d > 0.15 ? P(shade(p.c, 0.6), p.s) : p };
   });
-  loft(b, secs, n, { capEnd: wrist.clone().addScaledVector(dir, 0.186 * s).addScaledVector(v, -0.012) });
+  const end = rows[rows.length - 1][0];
+  loft(b, secs, n, { capEnd: wrist.clone().addScaledVector(dir, (end + 0.006) * s).addScaledVector(v, fingers ? 0 : -0.012) });
+  if (fingers) {
+    const lens = [0.074, 0.084, 0.079, 0.063], across = [0.026, 0.0088, -0.0088, -0.025];
+    for (let k = 0; k < 4; k++) {
+      const knuckle = wrist.clone().addScaledVector(dir, (0.098 - Math.abs(across[k]) * 0.35) * s).addScaledVector(u, -side * across[k] * s);
+      const L = lens[k] * s;
+      const pts = [0, 0.35, 0.7, 1].map((t) => knuckle.clone().addScaledVector(dir, L * t * (1 - 0.12 * t)).addScaledVector(v, -0.018 * s * t * t).addScaledVector(u, -side * across[k] * s * 0.18 * t));
+      loft(b, pts.map((c, i) => {
+        const d = pts[Math.min(3, i + 1)].clone().sub(pts[Math.max(0, i - 1)]).normalize();
+        const f = frame(d, out);
+        const r = (0.0092 - 0.0022 * (i / 3)) * s * (k === 3 ? 0.88 : 1);
+        return { c, u: f.u, v: f.v, rx: r, rf: r * 0.85, rb: r * 0.85, w: W, paint: p };
+      }), 6, { capStart: true, capEnd: pts[3].clone().addScaledVector(dir, 0.006 * s).addScaledVector(v, -0.004 * s) });
+    }
+  }
   // the thumb, on the front of the hand
   const base = wrist.clone().addScaledVector(dir, 0.035 * s).add(V(0, 0, 0.026 * s)).addScaledVector(v, -0.006);
   const tip = base.clone().addScaledVector(dir, 0.06 * s).add(V(0, 0, 0.014 * s)).addScaledVector(v, -0.012);
