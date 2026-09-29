@@ -362,7 +362,7 @@ body.title-open #touch { display: none !important; }
 /* minigames */
 .mg { width: min(900px, 100%); max-height: 100%; overflow: auto; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; }
 .mg h2 { font-size: 32px; }
-.mg canvas { width: 100%; image-rendering: pixelated; border-radius: 4px; touch-action: none; }
+.mg canvas { width: 100%; border-radius: 4px; touch-action: none; }
 .mg .help { font-style: italic; color: var(--ink-soft); font-size: 15px; }
 .dice-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
 .die { width: 58px; height: 58px; border-radius: 9px; background: #f4efe4; color: var(--ink); border: 2px solid #3a2c1e; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); padding: 6px; box-shadow: 0 3px 0 #3a2c1e; transition: transform 0.12s; }

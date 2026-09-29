@@ -1,6 +1,5 @@
 // Shared sprite type + cache used by every procedural object painter.
 
-import { PixelBuffer, makeCanvas } from './pixel';
 
 export interface Sprite {
   /** The painted image; may be at a higher resolution than w x h (see ART). */
@@ -67,10 +66,6 @@ export function cachedSprite(key: string, make: () => Sprite): Sprite {
 }
 
 
-export function spriteFromBuffer(b: PixelBuffer, ox: number, oy: number): Sprite {
-  return { canvas: b.toCanvas(), ox, oy, w: b.w, h: b.h };
-}
-
 export function spriteFromCanvas(c: HTMLCanvasElement, ox: number, oy: number): Sprite {
   return { canvas: c, ox, oy, w: c.width, h: c.height };
 }
@@ -111,4 +106,3 @@ export function drawSprite(ctx: CanvasRenderingContext2D, s: Sprite, x: number, 
   if (alpha < 1) ctx.globalAlpha = 1;
 }
 
-export { makeCanvas };

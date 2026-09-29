@@ -5,7 +5,6 @@ import { G } from '../G';
 import { getMap, hasMap, here } from '../world/world';
 import { PLACES, placeById, Place } from '../content/places';
 import { S, isNight, flag } from '../state';
-import { makeCanvas } from '../gfx/pixel';
 import { newCanvas } from '../gfx/paint';
 import { T, tdef } from '../world/terrain';
 import { TILE, rand } from '../engine/util';
@@ -154,7 +153,7 @@ export function mapPanel(travelFrom?: string, onClose?: () => void): HTMLElement
   const wrap = el('div', { cls: 'mapwrap' });
   if (!hasMap('overworld')) { wrap.append(el('p', { html: 'No map.' })); return wrap; }
   const base = mapCanvas();
-  const view = makeCanvas(10, 10);
+  const view = newCanvas(10, 10);
   wrap.append(view);
   const legend = el('div', { cls: 'maplegend', html: travelFrom ? 'Click a place you have visited to travel there.' : 'Drag to move · wheel to zoom' });
   wrap.append(legend);

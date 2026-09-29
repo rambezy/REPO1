@@ -10,7 +10,7 @@ import { BUFF_INFO, buffActive } from '../systems/stats';
 import { item } from '../content/items';
 import { iconURL } from '../gfx/icons';
 import { count } from '../systems/inventory';
-import { makeCanvas } from '../gfx/pixel';
+import { newCanvas } from '../gfx/paint';
 import { tdef, T } from '../world/terrain';
 import { here } from '../world/world';
 import { TILE } from '../engine/util';
@@ -48,7 +48,7 @@ export function buildHUD() {
   bars.append(els.hpbar, els.stbar, els.needs);
   els.obj = el('div', { cls: 'hud-obj' });
   const mm = el('div', { cls: 'hud-minimap' });
-  mini = makeCanvas(192, 192);
+  mini = newCanvas(192, 192);
   mm.appendChild(mini);
   els.mini = mm;
   els.quick = el('div', { cls: 'hud-quick' });
@@ -144,7 +144,7 @@ function drawMinimap() {
     // the overworld uses the painted parchment map, at 6 pixels to the tile
     miniBase = { mapId: m.id, version: m.version, canvas: paintedMap(), scale: 6 };
   } else if (!miniBase || miniBase.mapId !== m.id || miniBase.version !== m.version) {
-    const c = makeCanvas(m.w, m.h);
+    const c = newCanvas(m.w, m.h);
     const ctx = c.getContext('2d')!;
     const img = ctx.createImageData(m.w, m.h);
     for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) {

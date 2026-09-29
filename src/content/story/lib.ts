@@ -11,7 +11,7 @@ import { chunks } from '../../world/chunks';
 import { snapCamera, renderHooks } from '../../engine/renderer';
 import { propInfo } from '../../gfx/props';
 import { iconCanvas } from '../../gfx/icons';
-import { makeCanvas } from '../../gfx/pixel';
+import { newCanvas } from '../../gfx/paint';
 import { item } from '../items';
 import { TILE, rand } from '../../engine/util';
 import { registerTalk, talkHooks } from '../../systems/talk';
@@ -218,7 +218,7 @@ function groundIcon(itemId: string): HTMLCanvasElement {
   if (c) return c;
   const src = iconCanvas(item(itemId).icon);
   const k = 4;
-  c = makeCanvas(14 * k, 13 * k);
+  c = newCanvas(14 * k, 13 * k);
   const ctx = c.getContext('2d')!;
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';

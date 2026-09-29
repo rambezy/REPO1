@@ -21,7 +21,7 @@ import { fadeTo, travel } from '../../systems/transition';
 import { lockpick } from '../../ui/minigames/lockpick';
 import { kill } from '../../systems/combat';
 import { crumbJoins } from '../../systems/companion';
-import { makeCanvas } from '../../gfx/pixel';
+import { paintSprite, lin, rgba, lit, dim, ellipse, rect, grain } from '../../gfx/paint';
 import { autosaveSoon, trigger, unfire, topic, greet, waitUntil, put, putAt, nearTile, onMap, regionIs, protectPlayer, addRel, rel, remember, chose, tip, P, canRunScene, decor, markerObj, hostiles, readAndWait, refreshDecor, skipTo, setHollowbrook } from './lib';
 import { spawnCast, castHooks, npc, fighter, person, OW, always, ACT, at } from './cast';
 
@@ -170,16 +170,56 @@ function sched4(from: number, to: number, w: { map: string; x: number; y: number
 }
 
 // the castle gate: a heavy door in the south wall until it is opened
+let gate: ReturnType<typeof paintSprite> | null = null;
 function gateSprite() {
-  const c = makeCanvas(64, 40);
-  const x = c.getContext('2d')!;
-  x.fillStyle = '#2a1c12'; x.fillRect(0, 0, 64, 40);
-  for (let i = 0; i < 8; i++) { x.fillStyle = i % 2 ? '#4a3220' : '#553a26'; x.fillRect(i * 8, 2, 8, 38); }
-  x.fillStyle = '#6b6b73';
-  for (const y of [8, 20, 32]) x.fillRect(0, y, 64, 3);
-  for (let i = 4; i < 64; i += 8) for (const y of [9, 21, 33]) { x.fillStyle = '#9a9aa2'; x.fillRect(i, y, 1, 1); }
-  x.fillStyle = '#1a120c'; x.fillRect(31, 2, 2, 38);
-  return { canvas: c, ox: 32, oy: 40, w: 64, h: 40 };
+  if (gate) return gate;
+  gate = paintSprite(64, 40, 32, 40, (g) => {
+    // oak planks, the left leaf lit a little more than the right
+    rect(g, 0, 0, 64, 40, '#1c120b');
+    const oak = ['#5a3d26', '#634329', '#553a24', '#6a482c'];
+    for (let i = 0; i < 8; i++) {
+      const x = i * 8 + 0.3, col = oak[i % 4];
+      const light = i < 4 ? 0.1 : 0;
+      rect(g, x, 1, 7.4, 39, lin(g, x, 0, x + 7.4, 0, [[0, lit(col, 0.18 + light)], [0.5, col], [1, dim(col, 0.3)]]));
+      // grain
+      g.lineWidth = 0.18;
+      for (let k = 0; k < 5; k++) {
+        const gx = x + 0.9 + k * 1.4 + Math.sin(i * 7 + k) * 0.3;
+        g.strokeStyle = rgba(dim(col, 0.45), 0.55);
+        g.beginPath();
+        g.moveTo(gx, 1.5);
+        g.bezierCurveTo(gx + 0.5, 12, gx - 0.5, 26, gx + 0.3, 39.5);
+        g.stroke();
+      }
+      // a knot or two
+      ellipse(g, x + 2 + (i * 3) % 4, 14 + (i * 11) % 18, 0.7, 1.1, dim(col, 0.5));
+    }
+    // the meeting of the two leaves
+    rect(g, 31.3, 1, 1.4, 39, '#120b06');
+    // iron bands with rivets, rust bleeding down from each
+    for (const y of [7, 19, 31]) {
+      rect(g, 0, y, 64, 3.2, lin(g, 0, y, 0, y + 3.2, [[0, '#9a9aa2'], [0.35, '#6e6e76'], [1, '#34343a']]));
+      g.fillStyle = 'rgba(120,60,24,0.35)';
+      for (let x = 3; x < 64; x += 8) g.fillRect(x - 0.4, y + 3.2, 0.8, 1.6 + ((x * 7) % 3));
+      for (let x = 4; x < 64; x += 8) {
+        ellipse(g, x, y + 1.6, 0.75, 0.75, '#2a2a30');
+        ellipse(g, x - 0.2, y + 1.3, 0.45, 0.45, '#b8b8c0');
+      }
+    }
+    // ring handles on the two leaves
+    for (const x of [27, 37]) {
+      g.strokeStyle = '#2a2a2e'; g.lineWidth = 0.9;
+      g.beginPath(); g.arc(x, 25.5, 2, 0, Math.PI * 2); g.stroke();
+      g.strokeStyle = '#8a8a92'; g.lineWidth = 0.35;
+      g.beginPath(); g.arc(x - 0.2, 25.3, 2, Math.PI * 1.05, Math.PI * 1.7); g.stroke();
+      ellipse(g, x, 23.3, 0.8, 0.7, '#4a4a52');
+    }
+    // the shadow of the arch above, and scuffing along the foot
+    rect(g, 0, 0, 64, 5, lin(g, 0, 0, 0, 5, [[0, 'rgba(8,5,3,0.75)'], [1, 'rgba(8,5,3,0)']]));
+    rect(g, 0, 36, 64, 4, lin(g, 0, 36, 0, 40, [[0, 'rgba(40,30,20,0)'], [1, 'rgba(30,22,14,0.5)']]));
+  }, { rim: 0.4, rimColor: '#0e0906' });
+  grain(gate.canvas, 7, 409);
+  return gate;
 }
 
 function registerDecor() {
