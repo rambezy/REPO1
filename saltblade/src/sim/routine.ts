@@ -6,6 +6,7 @@ import { S } from './ctx';
 import { goTo, stop, near } from './move';
 import { ANIMAL } from '../content/animals';
 import { isRouted } from './squads';
+import { reachOf } from './structures';
 
 /** Formation offset behind a leader for squad member i. */
 function slot(i: number): [number, number] {
@@ -75,7 +76,7 @@ export function runRoutine(c: Char, dt: number, think: boolean) {
       if (night && c.role !== 'bandit' && B.bed) {
         const bed = S.W.objs.get(B.bed);
         if (bed && !bed.occupant) {
-          if (!near(c, bed.x, bed.z, 1.2)) { goTo(c, bed.x, bed.z); c.move = 'walk'; return; }
+          if (!near(c, bed.x, bed.z, reachOf(bed))) { goTo(c, bed.x, bed.z); c.move = 'walk'; return; }
           bed.occupant = c.id; c.bed = bed.id; c.sleeping = true; c.x = bed.x; c.z = bed.z; c.dir = bed.rot;
           return;
         }

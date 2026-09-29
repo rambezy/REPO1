@@ -6,7 +6,7 @@ import type { StructPrim, Ring } from '../world/nav';
 import type { BuildingData, Door } from '../world/towns';
 
 /** Footprints of furniture that blocks movement: half width, half depth. */
-const FURN: Record<string, [number, number]> = {
+export const FURN: Record<string, [number, number]> = {
   bed: [0.5, 1.05], bed_fine: [0.75, 1.1], bunk: [0.5, 1.05], bedroll: [0.45, 1.0], counter: [0, 0.4], bar_counter: [0, 0.45], desk: [0, 0.45],
   table: [0.6, 0.45], longtable: [0.5, 0], shelf: [0.9, 0.25], chest: [0.45, 0.3], chest_fine: [0.55, 0.35], crate: [0.55, 0.55], crate_old: [0.5, 0.5],
   barrel: [0.4, 0.4], cage: [0.95, 0.95], altar: [1.2, 0.6], pew: [0, 0.3], throne: [0.6, 0.5], weapon_rack: [0.9, 0.2], workbench: [1, 0.5], anvil: [0.4, 0.3],
@@ -136,6 +136,15 @@ export function floorAt(x: number, z: number): number {
 }
 
 /** Invalidate navigation around an object after it changes. */
+/**
+ * How near someone must get to use a thing (lie in a bed, man a turret, put someone in a cage):
+ * just past its edge, since it blocks the ground it stands on.
+ */
+export function reachOf(o: WObj, least = 1.2) {
+  const f = FURN[o.def];
+  return f ? Math.max(least, Math.hypot(f[0], f[1]) + 0.75) : least;
+}
+
 export function navDirty(o: WObj) {
   const r = o.kind === 'building' ? Math.hypot(o.data.w, o.data.d) / 2 + 2 : o.kind === 'wall' ? o.data.len / 2 + 2 : 4;
   S.nav.invalidate(o.x - r, o.z - r, o.x + r, o.z + r);

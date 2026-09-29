@@ -14,6 +14,7 @@
     "test:base": "tsx tools/basetest.ts",
     "test:combat": "tsx tools/combattest.ts",
     "test:encounters": "tsx tools/encountertest.ts",
+    "test:property": "tsx tools/propertytest.ts",
     "map": "tsx tools/mapshot.ts",
     "artifact": "node tools/make-artifact.mjs"
   },

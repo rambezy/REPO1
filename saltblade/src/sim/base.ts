@@ -11,7 +11,7 @@ import { ITEM, GRADES } from '../content/items';
 import { JOB_HANDLERS, walkTo } from './jobs';
 import { train } from './train';
 import { placeBuilding } from '../world/towns';
-import { navDirty, buildingAt } from './structures';
+import { navDirty, buildingAt, reachOf } from './structures';
 import { RNG } from '../core/rng';
 import { SK, Skill } from './skills';
 import { emit } from '../core/events';
@@ -439,7 +439,7 @@ JOB_HANDLERS.farm = (c, job, o, dt, think) => {
 };
 
 JOB_HANDLERS.turret = (c, job, o, dt, think) => {
-  if (!walkTo(c, o.x, o.z, 1.2)) return 'work';
+  if (!walkTo(c, o.x, o.z, reachOf(o))) return 'work';
   c.x = o.x; c.z = o.z;
   const e = findEnemy(c, 70);
   o.data.reload = Math.max(0, (o.data.reload ?? 0) - dt);

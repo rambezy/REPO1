@@ -13,6 +13,7 @@ import { crime } from './crime';
 import { knockOut } from './health';
 import { angleTo, wrapAngle } from '../core/math';
 import { useObject, placeInto } from './use';
+import { reachOf } from './structures';
 
 const REACH = 1.6;
 
@@ -121,7 +122,7 @@ export function runOrder(c: Char, dt: number) {
     case 'use': {
       const ob = S.W.objs.get(o.obj);
       if (!ob) { c.order = null; return; }
-      if (walkTo(c, ob.x, ob.z, ob.kind === 'bed' || ob.kind === 'turret' ? 1.2 : 2.2)) {
+      if (walkTo(c, ob.x, ob.z, reachOf(ob, ob.kind === 'bed' || ob.kind === 'turret' ? 1.2 : 2.2))) {
         c.order = null;
         useObject(c, ob);
       }
@@ -131,7 +132,7 @@ export function runOrder(c: Char, dt: number) {
       const ob = S.W.objs.get(o.obj);
       const t = S.W.char(c.carrying);
       if (!ob || !t) { c.order = null; return; }
-      if (walkTo(c, ob.x, ob.z, 1.6)) { c.order = null; placeInto(c, t, ob); }
+      if (walkTo(c, ob.x, ob.z, reachOf(ob, 1.6))) { c.order = null; placeInto(c, t, ob); }
       return;
     }
     case 'steal': {
