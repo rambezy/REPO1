@@ -7,6 +7,10 @@ export default defineConfig({
   base: './',
   plugins: [viteSingleFile()],
   server: { port: 5180 },
+  // three and its post-processing add-ons in one pre-bundle, so the dev server loads a single copy
+  optimizeDeps: {
+    include: ['three', ...['EffectComposer', 'RenderPass', 'UnrealBloomPass', 'ShaderPass', 'OutputPass'].map((p) => `three/addons/postprocessing/${p}.js`)],
+  },
   build: {
     target: 'es2020',
     assetsInlineLimit: 100000000,

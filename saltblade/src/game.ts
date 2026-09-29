@@ -219,6 +219,10 @@ function step(dt: number) {
   G.props.update(G.R.camera.position);
   lap('props');
   windUniform.value = G.realTime;
+  // the picture's edges pulse red when the one you have selected is badly hurt
+  const watched = G.W.char([...sel][0]);
+  const hurtT = watched && watched.alive && watched.faction === 'player' && !watched.robot ? Math.max(0, Math.min(1, (0.45 - watched.body.total()) / 0.3)) : 0;
+  G.R.hurt += (hurtT - G.R.hurt) * Math.min(1, dt * 2);
   const t2 = performance.now();
   perf.views = ema(perf.views, t2 - t1);
   G.R.render();

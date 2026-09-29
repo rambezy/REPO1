@@ -13,7 +13,8 @@ const dk = (c: number, k: number) => {
 
 export const buildingMat = new THREE.MeshLambertMaterial({ vertexColors: true });
 const roofMat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
-const glowMat = new THREE.MeshBasicMaterial({ vertexColors: true });
+// lamps, fires and screens: bright enough to glow through the bloom pass (see renderer.ts)
+const glowMat = new THREE.MeshBasicMaterial({ vertexColors: true, color: new THREE.Color(2.2, 2.2, 2.2) });
 
 export interface BuildingMeshes { shell: THREE.Mesh; roof: THREE.Mesh | null; glow: THREE.Mesh | null; }
 
