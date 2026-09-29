@@ -13,6 +13,7 @@ export interface ScenarioPerson {
   /** a weapon they are sure to start with, in hand (the loadout's own pick is left to chance) */
   weapon?: string;
   lost?: number[]; // limbs already gone (see sim/body LI)
+  prost?: [number, string][]; // limbs already replaced: [limb, prosthetic item]
   hurt?: number; // fraction of limb health already lost
   hunger?: number;
   shackled?: boolean;
@@ -104,6 +105,18 @@ export const SCENARIOS: Scenario[] = [
     ],
     start: { settlement: 'rustward', off: [-300, 260] },
     firstSteps: 'Rustward, the machines\' enclave, is just to the north-east. You never eat, but you wear out: <b>repair kits</b> mend you, and Rustward sells them. Old Maker scrap and relics from the ruins sell well to the Delvers. The Covenant hunts machines.',
+  },
+  {
+    key: 'scrappers', name: 'Scrap and Sinew', diff: 'Hard',
+    blurb: 'Two scavengers held together with scrap iron, on the edge of the Rust.',
+    desc: 'The Delvers left you both behind at a dig gone wrong: one of you lost an arm to a saw drone, the other a leg to a warbot, and a Rustward tinker bolted scrap iron onto the stumps. Now you pick over the machine foundries for servos and cells to sell, one eye on the machines that still patrol them.',
+    squad: 'Scrappers', money: 400,
+    people: [
+      { level: 12, loadout: 'drifters_wanderer', weapon: 'pry_bar', prost: [[3, 'scrap_arm']], kit: [['repair_kit', 1], ['dried_meat', 3]] },
+      { level: 12, loadout: 'drifters_wanderer', weapon: 'cleaver', prost: [[6, 'scrap_leg']], kit: [['solder_tin', 2], ['dried_meat', 3]] },
+    ],
+    start: { settlement: 'rustward', off: [240, -260] },
+    firstSteps: 'Rustward, to the north-west, buys machine parts and sells repair kits. Your limbs are scrap: they take blows like flesh but never bleed, and when one is wrecked a <b>repair kit</b> or solder mends it (right-click the one to fix, First aid). Machines you knock down can be <b>salvaged</b> for servos, cells and optics (right-click them), or with enough Robotics <b>reprogrammed</b> to fight for you. The Old Machines guard their <b>foundries</b> in the Rust.',
   },
   {
     key: 'deserters', name: 'Deserters', diff: 'Hard',

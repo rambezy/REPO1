@@ -115,10 +115,14 @@ R({ key: 'p_medic', name: 'Medic Pack', in: { fabric: 5, leather: 2 }, out: { me
 R({ key: 'r_repair', name: 'Repair Kit', in: { iron_plates: 2, machine_parts: 1 }, out: { repair_kit: 1 }, time: 90, skill: 'robotics', research: 'robotics1' });
 R({ key: 'r_scraparm', name: 'Scrap Arm', in: { iron_plates: 4, machine_parts: 1 }, out: { scrap_arm: 1 }, time: 160, skill: 'robotics', research: 'robotics1' });
 R({ key: 'r_scrapleg', name: 'Scrap Leg', in: { iron_plates: 4, machine_parts: 1 }, out: { scrap_leg: 1 }, time: 160, skill: 'robotics', research: 'robotics1' });
-R({ key: 'r_arm', name: 'Standard Arm', in: { steel_bars: 3, machine_parts: 3, elec_parts: 1 }, out: { standard_arm: 1 }, time: 260, skill: 'robotics', research: 'robotics2' });
-R({ key: 'r_leg', name: 'Standard Leg', in: { steel_bars: 3, machine_parts: 3, elec_parts: 1 }, out: { standard_leg: 1 }, time: 260, skill: 'robotics', research: 'robotics2' });
-R({ key: 'r_warm', name: 'Warden Arm', in: { steel_bars: 5, machine_parts: 5, elec_parts: 3 }, out: { warden_arm: 1 }, time: 400, skill: 'robotics', research: 'robotics3' });
-R({ key: 'r_wleg', name: 'Warden Leg', in: { steel_bars: 5, machine_parts: 5, elec_parts: 3 }, out: { warden_leg: 1 }, time: 400, skill: 'robotics', research: 'robotics3' });
+R({ key: 'r_arm', name: 'Standard Arm', in: { steel_bars: 3, machine_parts: 2, elec_parts: 1, servo_motor: 1 }, out: { standard_arm: 1 }, time: 260, skill: 'robotics', research: 'robotics2' });
+R({ key: 'r_leg', name: 'Standard Leg', in: { steel_bars: 3, machine_parts: 2, elec_parts: 1, servo_motor: 1 }, out: { standard_leg: 1 }, time: 260, skill: 'robotics', research: 'robotics2' });
+R({ key: 'r_warm', name: 'Warden Arm', in: { steel_bars: 5, machine_parts: 4, elec_parts: 3, servo_motor: 2 }, out: { warden_arm: 1 }, time: 400, skill: 'robotics', research: 'robotics3' });
+R({ key: 'r_wleg', name: 'Warden Leg', in: { steel_bars: 5, machine_parts: 4, elec_parts: 3, servo_motor: 2 }, out: { warden_leg: 1 }, time: 400, skill: 'robotics', research: 'robotics3' });
+// the Old Machines' own limbs, rebuilt for people from what salvage turns up
+R({ key: 'r_sarm', name: 'Sentinel Arm', in: { iron_plates: 6, servo_motor: 2, energy_cell: 4, elec_parts: 2 }, out: { sentinel_arm: 1 }, time: 380, skill: 'robotics', research: 'grafting' });
+R({ key: 'r_darm', name: 'Drone Manipulator', in: { steel_bars: 2, servo_motor: 2, maker_optic: 1, elec_parts: 2 }, out: { drone_arm: 1 }, time: 360, skill: 'robotics', research: 'grafting' });
+R({ key: 'r_strider', name: 'Strider Leg', in: { steel_bars: 5, machine_parts: 2, servo_motor: 3, power_core: 1 }, out: { strider_leg: 1 }, time: 440, skill: 'robotics', research: 'grafting' });
 
 const S = (w: number, h: number, accepts?: string[]) => ({ w, h, accepts });
 
@@ -220,5 +224,6 @@ export const TECHS: Tech[] = [
   { key: 'weapons4', name: 'Weapon Smithing IV', tier: 4, time: 900, cost: { relic_core: 1 }, needs: ['weapons3', 'machining'], desc: 'Moonfangs, sunderers and foundry hammers.' },
   { key: 'armour4', name: 'Armour Smithing IV', tier: 4, time: 900, cost: { relic_core: 1 }, needs: ['armour3', 'electronics'], desc: 'Hollow shells.' },
   { key: 'robotics3', name: 'Robotics III', tier: 4, time: 1000, cost: { relic_core: 2 }, needs: ['robotics2'], desc: 'Warden-grade limbs.' },
+  { key: 'grafting', name: 'Machine Grafting', tier: 4, time: 900, cost: { maker_optic: 1 }, needs: ['robotics2'], desc: 'Study a machine\'s eye to learn how the Makers jointed their limbs: Sentinel arms, drone manipulators and strider legs, built from salvaged servos, optics and cores.' },
 ];
 export const TECH: Record<string, Tech> = Object.fromEntries(TECHS.map((t) => [t.key, t]));

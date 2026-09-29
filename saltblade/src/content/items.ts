@@ -73,7 +73,8 @@ export interface ItemDef {
   drink?: { mood: number };
   med?: { points: number; quality: number; splint?: boolean; robot?: boolean };
   pack?: { w: number; h: number; lighten: number; combat: number };
-  limb?: { part: 'arm' | 'leg'; quality: number; bonus: Partial<Record<Skill, number>>; look?: ProstLook };
+  /** A prosthetic: which part it replaces, how well made, the skills it changes, how it looks, and its plating [cut, blunt]. */
+  limb?: { part: 'arm' | 'leg'; quality: number; bonus: Partial<Record<Skill, number>>; look?: ProstLook; plate?: [number, number] };
   /** part of a machine (a Sentinel's emitter and fists): used, never taken */
   builtin?: boolean;
   book?: string; // lore text key
@@ -422,7 +423,9 @@ const L: [string, string, 'arm' | 'leg', number, number, number, Partial<Record<
   ['strider_leg', 'Strider Leg', 'leg', 1.3, 11000, 10, { athletics: 8, toughness: 6, strength: 4 }, 'One piston leg off a Warbot, cut down to a person\'s height. It does not tire and it does not bend the wrong way.'],
 ];
 const LOOK: Record<string, ProstLook> = { scrap_arm: 'scrap', scrap_leg: 'scrap', standard_arm: 'steel', standard_leg: 'steel', warden_arm: 'warden', warden_leg: 'warden', sentinel_arm: 'sentinel', drone_arm: 'drone', strider_leg: 'walker' };
-for (const [id, name, part, quality, value, weight, bonus, desc] of L) def({ id, name, cat: 'robotics', w: part === 'arm' ? 2 : 2, h: part === 'arm' ? 3 : 4, weight, value, stack: 1, desc, limb: { part, quality, bonus, look: LOOK[id] }, icon: part });
+/** How much of a blow each make of limb turns aside: [cut, blunt]. */
+const PLATE: Record<ProstLook, [number, number]> = { scrap: [0.15, 0.1], steel: [0.3, 0.2], warden: [0.45, 0.32], sentinel: [0.42, 0.26], drone: [0.2, 0.12], walker: [0.4, 0.3] };
+for (const [id, name, part, quality, value, weight, bonus, desc] of L) def({ id, name, cat: 'robotics', w: part === 'arm' ? 2 : 2, h: part === 'arm' ? 3 : 4, weight, value, stack: 1, desc, limb: { part, quality, bonus, look: LOOK[id], plate: PLATE[LOOK[id]] }, icon: part });
 
 // books of the waste (see content/lore)
 for (const b of BOOKS) def({ id: 'book_' + b.key, name: b.title, cat: 'book', w: 2, h: 2, weight: 0.6, value: b.value, stack: 1, desc: `${b.kind[0].toUpperCase() + b.kind.slice(1)}${b.author && b.author !== 'Unknown' ? ' by ' + b.author : ''}. Right-click to read.`, icon: 'book', book: b.key });

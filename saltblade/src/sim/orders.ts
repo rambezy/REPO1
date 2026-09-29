@@ -5,7 +5,7 @@ import { S } from './ctx';
 import { goTo, stop, near } from './move';
 import { emit } from '../core/events';
 import { pickUp } from './ai';
-import { dropCarried, findMedkit, limbToTreat, treatLimb } from './health';
+import { dropCarried, treatLimb, aidPlan, needsCare, repairProst, worstLimb, brokenLeg } from './health';
 import { train, versus } from './train';
 import { canSee } from './ai';
 import { ITEM } from '../content/items';
@@ -104,17 +104,23 @@ export function runOrder(c: Char, dt: number) {
       const t = S.W.char(o.id);
       if (!t || t.status === 'dead') { c.order = null; c.act = null; return; }
       if (!walkTo(c, t.x, t.z, 1.4)) return;
-      const kit = findMedkit(c, t.robot, t);
-      if (!kit) { S.fx.notice(`${c.name} has no ${t.robot ? 'repair kit' : 'medical supplies'}.`, 'info'); c.order = null; return; }
-      const l = limbToTreat(t.body, !!kit.def.med?.splint);
-      if (l < 0) { c.order = null; c.act = null; S.fx.notice(`${t.name} is patched up.`, 'good'); return; }
-      c.act = 'medic' as any; c.act = 'loot'; c.actDur = 1.6;
+      // wounds first, then any dented prosthetic (with a repair kit)
+      const plan = aidPlan(c, t);
+      if (!plan) {
+        c.order = null; c.act = null;
+        if (!needsCare(t)) S.fx.notice(`${t.name} is patched up.`, 'good');
+        else S.fx.notice(`${c.name} has no ${t.robot || (worstLimb(t.body) < 0 && brokenLeg(t.body) < 0) ? 'repair kit' : 'medical supplies'}.`, 'info');
+        return;
+      }
+      const { kit, l } = plan;
+      c.act = 'loot'; c.actDur = 1.6;
       c.brain.aidT = (c.brain.aidT ?? 0) + dt;
-      const speed = 1.4 - Math.min(0.9, c.skill('medic') * 0.01);
+      const speed = 1.4 - Math.min(0.9, c.skill(plan.prost ? 'robotics' : 'medic') * 0.01);
       if (c.brain.aidT > speed) {
         c.brain.aidT = 0;
         const med = kit.def.med!;
-        const used = treatLimb(c, t, l, med.points * 0.25, med.quality, !!med.splint);
+        if (plan.prost && S.rng.chance(0.5)) S.fx.burst('sparks', t.x, t.y + (l >= 5 ? 0.45 : 1.15), t.z, 5);
+        const used = plan.prost ? repairProst(c, t, l, med.points * 0.25, med.quality) : treatLimb(c, t, l, med.points * 0.25, med.quality, !!med.splint);
         const kitIt = kit.it as any;
         kitIt.used = (kitIt.used ?? 0) + used;
         if (kitIt.used >= med.points) { kit.it.n--; kitIt.used = 0; if (kit.it.n <= 0) kit.grid.remove(kit.it); }

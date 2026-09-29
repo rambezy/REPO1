@@ -1,7 +1,8 @@
 // Making people and beasts: appearance, skills scaled to a level, and gear.
 import { Char, Role } from './char';
 import { World } from './world';
-import { RNG } from '../core/rng';
+import { RNG, hash3 } from '../core/rng';
+import { LI } from './body';
 import { RACE } from '../content/races';
 import { FACTION } from '../content/factions';
 import { LOADOUTS, loadoutFor } from '../content/loadouts';
@@ -99,6 +100,8 @@ export interface PersonOpts {
   level?: number;
   loadout?: string;
   name?: string;
+  /** no old injuries (no prosthetic they came by before we met them) */
+  whole?: boolean;
 }
 
 export function makePerson(W: World, o: PersonOpts, rng: RNG): Char {
@@ -114,12 +117,37 @@ export function makePerson(W: World, o: PersonOpts, rng: RNG): Char {
   const lvl = o.level ?? (LOADOUTS[key]?.level ? rng.range(LOADOUTS[key].level![0], LOADOUTS[key].level![1]) : 10);
   setSkills(c, lvl, o.role, rng);
   c.body.init(race, c.sk[SK.toughness]);
+  if (!o.whole) spareLimb(c, lvl);
   giveLoadout(c, key, rng);
   if (o.role === 'slave') c.shackled = true;
   c.hunger = rng.range(160, 280);
   if (RACE[race].hunger === 0) c.hunger = 300;
   W.addChar(c);
   return c;
+}
+
+/** How often each people's fighters have lost a limb and wear a prosthetic, and the best make they could come by (0 scrap, 1 standard, 2 Warden). */
+const SPARE: Record<string, [number, number]> = {
+  delvers: [0.12, 2], ironcoin: [0.09, 2], unchained: [0.1, 0], scorched: [0.08, 1], reavers: [0.07, 0], starvelings: [0.06, 0],
+  mawkin: [0.05, 0], chainhouse: [0.04, 1], karuk: [0.04, 1], drifters: [0.04, 1], concord: [0.03, 1], ember: [0.02, 0],
+};
+const SPARE_IDS = [['scrap_arm', 'standard_arm', 'warden_arm'], ['scrap_leg', 'standard_leg', 'warden_leg']];
+
+/**
+ * Some people have already lost an arm or a leg and walk about on a
+ * prosthetic, better made the richer and harder they are. Decided from their
+ * looks rather than the world's dice, so it changes nothing else that is made.
+ */
+function spareLimb(c: Char, lvl: number) {
+  const odds = SPARE[c.faction];
+  if (!odds || c.body.robotic || RACE[c.look.race]?.race === 'thrum') return;
+  const h = hash3(c.look.face * 7919 + c.look.skin, c.look.hair + c.look.hairStyle * 131, Math.round(lvl * 16) ^ Math.round(c.look.bulk * 99991));
+  if (h / 4294967296 >= odds[0]) return;
+  const l = [LI.larm, LI.rarm, LI.lleg, LI.rleg][(h >>> 4) & 3];
+  const tier = Math.max(0, Math.min(odds[1], lvl > 45 ? 2 : lvl > 22 ? 1 : 0) - ((h >>> 9) & 3 ? 0 : 1));
+  c.body.lost |= 1 << l;
+  c.body.prost[l] = SPARE_IDS[l >= LI.lleg ? 1 : 0][tier];
+  c.body.hp[l] = c.body.max[l] * (0.55 + 0.45 * (((h >>> 12) & 255) / 255)); // most are knocked about a little
 }
 
 export function makeAnimal(W: World, species: string, rng: RNG, level = 1): Char {

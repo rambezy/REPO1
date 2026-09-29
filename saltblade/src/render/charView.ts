@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { Char } from '../sim/char';
 import { World } from '../sim/world';
-import { makeRig, makeBones, prostMask, B, BONE_COUNT } from './charModel';
+import { makeRig, makeBones, prostLooks, B, BONE_COUNT } from './charModel';
 import { buildWeapon } from './weapon';
 import { buildHuman } from './human';
 import { charMaterial } from './charMat';
@@ -86,7 +86,7 @@ export class CharView {
     }
     const rig = makeRig(c.look);
     const rigKey = JSON.stringify(c.look);
-    const geo = buildHuman(c.look, c.vis(), c.body.lost, rig, prostMask(c.body.prost), this.detail);
+    const geo = buildHuman(c.look, c.vis(), c.body.lost, rig, prostLooks(c.body.prost), this.detail);
     this.faceMat?.dispose();
     const face = geo.userData.face as Face | null;
     this.faceMat = face ? charMaterial(face) : null;

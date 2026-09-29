@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import type { Look } from '../sim/look';
 import { RACE } from '../content/races';
+import { ITEM } from '../content/items';
 
 export const B = {
   root: 0, hips: 1, spine: 2, chest: 3, neck: 4, head: 5,
@@ -14,8 +15,8 @@ const PARENT = [-1, 0, 1, 2, 3, 4, 3, 6, 7, 8, 3, 10, 11, 12, 1, 14, 15, 1, 17, 
 
 // limb loss bits (match sim/body LIMB order: head chest stomach larm rarm lleg rleg)
 export const LOST_LARM = 1 << 3, LOST_RARM = 1 << 4, LOST_LLEG = 1 << 5, LOST_RLEG = 1 << 6;
-/** Bitmask of limbs replaced by prosthetics. */
-export const prostMask = (prost: (string | null)[]) => prost.reduce((m, p, i) => (p ? m | (1 << i) : m), 0);
+/** How each body part's prosthetic looks (scrap, steel, warden...), or null where there is none. */
+export const prostLooks = (prost: (string | null)[]): (string | null)[] => prost.map((p) => (p ? ITEM[p]?.limb?.look ?? 'steel' : null));
 
 export interface Rig {
   joints: THREE.Vector3[]; // model-space joint positions

@@ -152,7 +152,7 @@ function homesteadSpot(x: number, z: number, rng: RNG): [number, number] {
 
 /** One of the player's starting people, made into a world (a scratch one for the creator's preview). */
 export function makePlayerPerson(p: ScenarioPerson, who: { name: string; look: Look }, rng: RNG, W: World = G.W): Char {
-  const c = makePerson(W, { faction: 'drifters', role: p.shackled ? 'slave' : p.role ?? 'wanderer', race: who.look.race, level: p.level, loadout: p.loadout }, rng);
+  const c = makePerson(W, { faction: 'drifters', role: p.shackled ? 'slave' : p.role ?? 'wanderer', race: who.look.race, level: p.level, loadout: p.loadout, whole: true }, rng);
   c.look = { ...who.look };
   c.name = who.name.trim() || c.name;
   c.money = 0;
@@ -164,6 +164,7 @@ export function makePlayerPerson(p: ScenarioPerson, who: { name: string; look: L
     if (had) { if (!c.eq.weapon2) c.eq.weapon2 = had; else if (!c.inv.put(had)) c.eq.back?.inv?.put(had); }
   }
   for (const l of p.lost ?? []) { c.body.lost |= 1 << l; c.body.hp[l] = 0; }
+  for (const [l, id] of p.prost ?? []) if (ITEM[id]?.limb) { c.body.lost |= 1 << l; c.body.prost[l] = id; c.body.hp[l] = c.body.max[l]; }
   if (p.hurt) for (let l = 0; l < 7; l++) if (c.body.has(l)) c.body.hp[l] = Math.round(c.body.hp[l] * (1 - p.hurt * (l <= LI.chest ? 0.7 : 1)));
   if (p.hurt) c.body.bleed[LI.chest] = 0.05;
   if (p.hunger !== undefined && RACE[c.look.race].hunger > 0) c.hunger = p.hunger;

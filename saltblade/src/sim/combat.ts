@@ -79,6 +79,9 @@ export function startAttack(c: Char, t: Char, kick = false) {
   c.atk = { t: 0, dur, variant: S.rng.int(0, 3), hit: false, target: t.id, kick };
   c.drawn = true;
   c.dir = angleTo(c.x, c.z, t.x, t.z);
+  // a metal limb whirs as it drives the blow
+  const b = c.body;
+  if (kick ? b.prostOK(LI.rleg) || b.prostOK(LI.lleg) : b.prostOK(LI.rarm) || b.prostOK(LI.larm)) S.fx.sound('servo', c.x, c.z, 0.45);
 }
 
 /** Advances an attack in progress; resolves the blow at the strike moment. */
@@ -110,7 +113,7 @@ function pickLimb(d: Char, variant: number, attacker: Char): number {
   if (variant === 3) { w[5] *= 1.6; w[6] *= 1.6; }
   if (attacker.animal && ANIMAL[attacker.animal].size < 1.1) { w[5] *= 2; w[6] *= 2; w[0] *= 0.5; }
   if (d.status !== 'up' || d.knockT > 0) { w[1] *= 1.5; w[0] *= 1.2; }
-  for (let l = 0; l < 7; l++) if (!d.body.has(l)) w[l] = 0;
+  for (let l = 0; l < 7; l++) if (!d.body.has(l) && !d.body.prost[l]) w[l] = 0; // a prosthetic takes blows like the limb it replaced
   let tot = 0;
   for (const x of w) tot += x;
   let r = S.rng.next() * tot;
@@ -239,13 +242,25 @@ export function applyDamage(d: Char, limb: number, cut: number, blunt: number, b
   const tough = 1 - Math.min(0.5, d.skill('toughness') * 0.003);
   ct *= tough; bl *= tough;
   const dmg = ct + bl;
+  const prost = b.isProst(limb);
+  const was = b.hp[limb];
   b.hp[limb] -= dmg;
   // wounds on one part run together: past a point more cuts there tear the same flesh, not new veins
-  if (!b.robotic) b.bleed[limb] = Math.min(BLEED_CAP, b.bleed[limb] + ct * 0.013 * bleedMul * (RACE[d.look.race]?.bleed ?? 1) * (d.animal ? ANIMAL[d.animal].bleedMul ?? 1 : 1));
+  if (!b.robotic && !prost) b.bleed[limb] = Math.min(BLEED_CAP, b.bleed[limb] + ct * 0.013 * bleedMul * (RACE[d.look.race]?.bleed ?? 1) * (d.animal ? ANIMAL[d.animal].bleedMul ?? 1 : 1));
   // toughness grows from punishment
-  if (!d.animal && dmg > 2) train(d, 'toughness', dmg / 14, by ? versus(d.skill('toughness'), by.skill('strength') + 10) : 1);
-  // severing: a limb beaten past its maximum can come off
-  if (limb >= 3 && b.hp[limb] <= -b.max[limb]) {
+  if (!d.animal && dmg > 2) train(d, 'toughness', dmg / 14 * (prost ? 0.5 : 1), by ? versus(d.skill('toughness'), by.skill('strength') + 10) : 1);
+  if (prost) {
+    // metal does not come off: it buckles, seizes and stops until someone mends it
+    b.hp[limb] = Math.max(b.hp[limb], -b.max[limb]);
+    if (was > 0 && b.hp[limb] <= 0) {
+      S.fx.notice(`${d.name}'s ${ITEM[b.prost[limb]!]?.name.toLowerCase() ?? 'prosthetic'} is wrecked!`, d.faction === 'player' ? 'bad' : 'combat');
+      S.fx.sound('powerdown', d.x, d.z, 0.7);
+      S.fx.burst('sparks', d.x, d.y + (limb >= 5 ? 0.45 : 1.15), d.z, 18);
+      S.fx.burst('smoke', d.x, d.y + (limb >= 5 ? 0.45 : 1.15), d.z, 4);
+      d.dirty = true;
+    }
+  } else if (limb >= 3 && b.hp[limb] <= -b.max[limb]) {
+    // severing: a limb beaten past its maximum can come off
     b.hp[limb] = -b.max[limb];
     const heavy = by && (by.weaponStats().weight > 12 || (by.animal && ANIMAL[by.animal].power > 80));
     if (S.rng.chance(heavy ? 0.35 : ct > 20 ? 0.18 : 0.04)) severLimb(d, limb);

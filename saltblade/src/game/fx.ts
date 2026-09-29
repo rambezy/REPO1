@@ -17,16 +17,18 @@ export const LASER_RGB: Record<string, [number, number, number]> = { red: [9, 0.
 
 export function setupFx() {
   S.fx = {
-    hit(c: Char, by: Char, dmg: number, blocked: boolean) {
+    hit(c: Char, by: Char, dmg: number, blocked: boolean, limb?: number) {
       if (!c.view) return;
-      const y = midY(c), L = Math.hypot(c.x - by.x, c.z - by.z) || 1, dir: [number, number] = [(c.x - by.x) / L, (c.z - by.z) / L];
+      // a blow on a prosthetic strikes metal, low on a leg
+      const prost = limb !== undefined && c.body.isProst(limb);
+      const y = prost && limb! >= 5 && c.status === 'up' ? c.y + 0.5 : midY(c), L = Math.hypot(c.x - by.x, c.z - by.z) || 1, dir: [number, number] = [(c.x - by.x) / L, (c.z - by.z) / L];
       if (blocked) G.particles?.burst('sparks', (c.x + by.x) / 2, y, (c.z + by.z) / 2, 7, dir); // steel on steel
-      else if (metal(c) && dmg > 1) {
+      else if ((metal(c) || prost) && dmg > 1) {
         G.particles?.burst('sparks', c.x, y, c.z, 8 + Math.min(16, dmg / 3), dir);
         G.particles?.burst('oil', c.x, y, c.z, 3, dir);
         emit('sound', 'robothit', c.x, c.z, Math.min(1, 0.4 + dmg / 40));
       } else if (dmg > 3) G.particles?.burst('blood', c.x, y, c.z, 3 + Math.min(10, dmg / 6), dir);
-      if (!blocked && dmg > 3 && !c.robot && !c.body.robotic) G.decals?.splat(c.x + (Math.random() - 0.5) * 0.8, c.y, c.z + (Math.random() - 0.5) * 0.8, 0.22 + Math.min(0.45, dmg / 50), S.clock.t);
+      if (!blocked && dmg > 3 && !c.robot && !c.body.robotic && !prost) G.decals?.splat(c.x + (Math.random() - 0.5) * 0.8, c.y, c.z + (Math.random() - 0.5) * 0.8, 0.22 + Math.min(0.45, dmg / 50), S.clock.t);
       if (blocked) G.overlay.floater(c, 'blocked', '#c8c0a8');
       else if (dmg > 0.5 && (c.faction === 'player' || by.faction === 'player')) G.overlay.floater(c, String(Math.round(dmg)), c.faction === 'player' ? '#f08868' : '#f8e0a0');
       emit('fx:hit', c, by, dmg, blocked);

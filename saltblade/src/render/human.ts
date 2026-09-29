@@ -78,8 +78,11 @@ const FOOT = [[-0.06, 0.028, 0.06, 0.002], [-0.035, 0.036, 0.085, 0.002], [0.01,
 
 const COVERING_HATS = ['kabuto', 'bucket', 'helm_ember', 'hood', 'hood_white', 'mask', 'gasmask', 'turban', 'visor'];
 
-/** Builds a person's skinned body. detail 1 for close views and portraits, 0 for distant ones. */
-export function buildHuman(look: Look, vis: Vis, lost: number, rig: Rig, prost = 0, detail = 1): THREE.BufferGeometry {
+/**
+ * Builds a person's skinned body. detail 1 for close views and portraits, 0 for
+ * distant ones. `prost` gives each body part's prosthetic make, if it has one.
+ */
+export function buildHuman(look: Look, vis: Vis, lost: number, rig: Rig, prost: (string | null)[] = [], detail = 1): THREE.BufferGeometry {
   const kind = (RACE[look.race]?.race ?? 'human') as Kind;
   const b = new SkinBuilder();
   const J = rig.joints;
@@ -97,7 +100,7 @@ export function buildHuman(look: Look, vis: Vis, lost: number, rig: Rig, prost =
   // --- colours and surfaces ---
   const SKIN = rgb(look.skin);
   const skinSurf: Surf = robot ? 'metal' : bug ? 'chitin' : 'skin';
-  const METAL = rgb(0x70757c), DARKMETAL = rgb(0x3a3d42), LEATHER = rgb(0x3a2e22), BONE = rgb(0xd8ccb0);
+  const DARKMETAL = rgb(0x3a3d42), LEATHER = rgb(0x3a2e22), BONE = rgb(0xd8ccb0);
   const hairC = rgb(look.hair);
   const T = vis.torso, A = vis.armour, L = vis.legs, F = vis.feet;
   const clothT = T ? rgb(T.color) : null, clothT2 = T ? (T.color2 !== undefined ? rgb(T.color2) : shade(rgb(T.color), 0.7)) : null;
@@ -163,7 +166,7 @@ export function buildHuman(look: Look, vis: Vis, lost: number, rig: Rig, prost =
     const k = smoothstep(1.36, 1.45, y) * smoothstep(0.55, 0.95, Math.abs(Math.cos(a))) * 0.35;
     if (!k) return base;
     const arm = Math.cos(a) > 0 ? B.uaR : B.uaL;
-    if ((arm === B.uaL && lost & LOST_LARM && !(prost & LOST_LARM)) || (arm === B.uaR && lost & LOST_RARM && !(prost & LOST_RARM))) return base;
+    if ((arm === B.uaL && lost & LOST_LARM && !prost[3]) || (arm === B.uaR && lost & LOST_RARM && !prost[4])) return base;
     return [...base.map(([bn, v]) => [bn, v * (1 - k)] as [number, number]), [arm, k]];
   };
   const torsoSec = (y: number, extra = 0, paintFn = torsoPaint, pushFn = torsoPush): Sec => {
@@ -213,7 +216,7 @@ export function buildHuman(look: Look, vis: Vis, lost: number, rig: Rig, prost =
   for (const side of [1, -1]) {
     const isL = side > 0;
     const ua = isL ? B.uaL : B.uaR, la = isL ? B.laL : B.laR, hd = isL ? B.handL : B.handR;
-    const lostArm = !!(lost & (isL ? LOST_LARM : LOST_RARM)), pArm = !!(prost & (isL ? LOST_LARM : LOST_RARM));
+    const lostArm = !!(lost & (isL ? LOST_LARM : LOST_RARM)), make = lostArm ? prost[isL ? 3 : 4] : null;
     const S = J[ua], E = J[la], H = J[hd];
     const top = S.clone().add(V(-side * 0.03, 0.03 * s, 0));
     const pos = (t: number) => (t < 0 ? S.clone().lerp(top, -t / 0.2) : t < 1 ? S.clone().lerp(E, t) : E.clone().lerp(H, t - 1));
@@ -227,23 +230,28 @@ export function buildHuman(look: Look, vis: Vis, lost: number, rig: Rig, prost =
       if (t < 1.9) return [[la, 1]];
       const k = smoothstep(1.9, 2, t); return [[la, 1 - 0.5 * k], [hd, 0.5 * k]];
     };
-    if (lostArm && !pArm) {
+    if (make) {
+      prostArm(make, side, ua, la, hd, top, pos, dir, wOf);
+      if (vis.shackles) ring(b, H.clone().addScaledVector(d3, 0.012), d3, 0.036, 0.03, 0.028, P(rgb(0x3a3a3c), 'metal'), [[hd, 1]], N.small + 2);
+      if (A?.shoulders) pauldron(b, A.style, S, top, side, rgb(A.color2 ?? A.color), rgb(A.color), thick, ua, N.small + 4);
+      continue;
+    }
+    if (lostArm) {
       // a stump at the shoulder
       const ts = [-0.2, -0.12, -0.03, 0.08, 0.16];
       loft(b, ts.map((t) => { const { u, v } = frame(dir(t), FRONT); const [rx, rf, rb] = rowAt(ARM, t); const k = t > 0.1 ? 0.85 : 1; return { c: pos(t), u, v, rx: rx * armF * k, rf: rf * armF * k, rb: rb * armF * k, w: wOf(t), paint: T && T.sleeves ? P(clothT!, 'cloth') : skinP(0.95) }; }), N.limb, { capEnd: pos(0.2) });
       continue;
     }
-    const sleeveEnd = pArm ? -1 : T ? (T.sleeves >= 2 ? 1.9 : T.sleeves === 1 ? 0.56 : -1) : -1;
-    const chainEnd = !pArm && A && A.style === 'chain' ? 0.95 : -1;
-    const brace = !pArm && A && ['plate', 'ember_plate', 'samurai', 'robo'].includes(A.style);
-    const gloves = !!gloveC && !pArm;
+    const sleeveEnd = T ? (T.sleeves >= 2 ? 1.9 : T.sleeves === 1 ? 0.56 : -1) : -1;
+    const chainEnd = A && A.style === 'chain' ? 0.95 : -1;
+    const brace = A && ['plate', 'ember_plate', 'samurai', 'robo'].includes(A.style);
+    const gloves = !!gloveC;
     const cuts: number[] = [];
     if (sleeveEnd > 0) cuts.push(sleeveEnd, sleeveEnd + 0.014);
     if (chainEnd > 0) cuts.push(chainEnd, chainEnd + 0.014);
     if (brace) cuts.push(1.18, 1.194, 1.84, 1.854);
     if (gloves) cuts.push(1.8, 1.814);
     const paintOf = (t: number, a: number): Paint => {
-      if (pArm) return P(Math.abs(t - 1) < 0.07 || t < 0 ? DARKMETAL : METAL, 'metal');
       if (brace && t >= 1.194 && t <= 1.84) return P(rgb(A!.color2 ?? A!.color), 'metal');
       if (gloves && t >= 1.814) return P(gloveC!, 'leather');
       if (chainEnd > 0 && t <= chainEnd) return P(rgb(A!.color2 ?? A!.color), 'metal');
@@ -257,7 +265,7 @@ export function buildHuman(look: Look, vis: Vis, lost: number, rig: Rig, prost =
     };
     const pushOf = (t: number, a: number) => {
       let p = 0;
-      if (!pArm && !robot) {
+      if (!robot) {
         p += 0.006 * muscle * gauss(t - 0.42, 0.15) * gauss(ad(a, HP), 0.6); // biceps
         p += 0.005 * muscle * gauss(t - 0.3, 0.16) * gauss(ad(a, 3 * HP), 0.7); // triceps
         p += 0.004 * muscle * gauss(t + 0.02, 0.08); // deltoid
@@ -269,20 +277,19 @@ export function buildHuman(look: Look, vis: Vis, lost: number, rig: Rig, prost =
       else if (sleeveEnd > 0 && t <= sleeveEnd) p += coat ? 0.01 : 0.005;
       return p;
     };
-    const k = pArm ? 0.62 : 1;
     const ts = samples(ARM, N.sub, -0.2, 2, cuts);
     loft(b, ts.map((t) => {
       const { u, v } = frame(dir(t), FRONT);
       const [rx, rf, rb] = rowAt(ARM, t);
-      return { c: pos(t), u, v, rx: rx * armF * k, rf: rf * armF * k, rb: rb * armF * k, e: pArm || robot ? 2.5 : 2, w: wOf(t), paint: (a: number) => paintOf(t, a), push: (a: number) => pushOf(t, a) };
+      return { c: pos(t), u, v, rx: rx * armF, rf: rf * armF, rb: rb * armF, e: robot ? 2.5 : 2, w: wOf(t), paint: (a: number) => paintOf(t, a), push: (a: number) => pushOf(t, a) };
     }), N.limb, { capStart: top.clone().add(V(0, 0.01, 0)) });
-    if (pArm || robot) {
+    if (robot) {
       // joints: ball at the elbow and the shoulder
-      jointBall(b, E, 0.034 * armF * (pArm ? 0.9 : 1), DARKMETAL, [[ua, 0.5], [la, 0.5]], N.small);
+      jointBall(b, E, 0.034 * armF, DARKMETAL, [[ua, 0.5], [la, 0.5]], N.small);
       jointBall(b, S.clone().add(V(side * 0.01, 0.01, 0)), 0.05 * armF, DARKMETAL, [[ua, 0.7], [B.chest, 0.3]], N.small);
     }
     // the hand
-    const handPaint: Paint = pArm ? P(METAL, 'metal') : gloves ? P(gloveC!, 'leather') : robot ? P(SKIN, 'metal') : bug ? P(shade(SKIN, 0.75), 'chitin') : skinP();
+    const handPaint: Paint = gloves ? P(gloveC!, 'leather') : robot ? P(SKIN, 'metal') : bug ? P(shade(SKIN, 0.75), 'chitin') : skinP();
     buildHand(b, H, d3, side, s * (fem ? 0.93 : 1) * (kind === 'karuk' ? 1.1 : 1), handPaint, hd, N.hand, bug, !!detail && !bug && !robot);
     if (vis.shackles) ring(b, H.clone().addScaledVector(d3, 0.012), d3, 0.036, 0.03, 0.028, P(rgb(0x3a3a3c), 'metal'), [[hd, 1]], N.small + 2);
     // shoulder armour
@@ -295,7 +302,7 @@ export function buildHuman(look: Look, vis: Vis, lost: number, rig: Rig, prost =
   for (const side of [1, -1]) {
     const isL = side > 0;
     const ul = isL ? B.ulL : B.ulR, ll = isL ? B.llL : B.llR, ft = isL ? B.footL : B.footR;
-    const lostLeg = !!(lost & (isL ? LOST_LLEG : LOST_RLEG)), pLeg = !!(prost & (isL ? LOST_LLEG : LOST_RLEG));
+    const lostLeg = !!(lost & (isL ? LOST_LLEG : LOST_RLEG)), make = lostLeg ? prost[isL ? 5 : 6] : null;
     const Hj = J[ul], K = J[ll], An = J[ft];
     const top = Hj.clone().add(V(-side * 0.028 * w, 0.075 * s, 0.005));
     const pos = (t: number) => (t < 0 ? Hj.clone().lerp(top, -t / 0.16) : t < 1 ? Hj.clone().lerp(K, t) : K.clone().lerp(An, t - 1));
@@ -309,18 +316,18 @@ export function buildHuman(look: Look, vis: Vis, lost: number, rig: Rig, prost =
       if (t < 1.86) return [[ll, 1]];
       const k = smoothstep(1.86, 2, t); return [[ll, 1 - 0.4 * k], [ft, 0.4 * k]];
     };
-    if (lostLeg && !pLeg) {
+    if (make) { prostLeg(make, side, ul, ll, ft, top, pos, dir, wOf); continue; }
+    if (lostLeg) {
       const ts = [-0.16, -0.06, 0.05, 0.14];
       loft(b, ts.map((t) => { const { u, v } = frame(dir(t), FRONT); const [rx, rf, rb] = rowAt(LEG, t); return { c: pos(t), u, v, rx: rx * legF, rf: rf * legF, rb: rb * legF, w: wOf(t), paint: legsC ? P(legsC, 'cloth') : skinP(0.95) }; }), N.limb, { capEnd: pos(0.19) });
       continue;
     }
     const shin = K.distanceTo(An);
     const bootTop = bootH ? 2 - Math.min(0.9, bootH / shin) : 3;
-    const plates = !pLeg && L?.armour;
+    const plates = L?.armour;
     const cuts: number[] = [];
     if (bootH) cuts.push(bootTop - 0.014, bootTop);
     const paintOf = (t: number, a: number): Paint => {
-      if (pLeg) return P(Math.abs(t - 1) < 0.07 || t < 0 ? DARKMETAL : METAL, 'metal');
       if (t >= bootTop) return P(bootC!, F!.armour ? 'metal' : 'leather');
       if (plates && ((t > 0.08 && t < 0.72) || (t > 1.08 && t < Math.min(1.8, bootTop - 0.02))) && ad(a, HP) < 1.25) return P(rgb(L!.color2 ?? L!.color), 'metal');
       if (F?.wraps && t > 1.76) return P(shade(rgb(F.color), (Math.floor(t * 60) % 2) ? 0.85 : 1), 'cloth');
@@ -331,7 +338,7 @@ export function buildHuman(look: Look, vis: Vis, lost: number, rig: Rig, prost =
     };
     const pushOf = (t: number, a: number) => {
       let p = 0;
-      if (!pLeg && !robot) {
+      if (!robot) {
         p += 0.007 * gauss(t - 1.0, 0.06) * gauss(ad(a, HP), 0.5); // kneecap
         p += 0.004 * muscle * gauss(t - 0.3, 0.2) * gauss(ad(a, HP), 0.8); // quadriceps
       }
@@ -340,17 +347,16 @@ export function buildHuman(look: Look, vis: Vis, lost: number, rig: Rig, prost =
       else if (legsC) p += 0.006;
       return p;
     };
-    const k = pLeg ? 0.6 : 1;
     const ts = samples(LEG, N.sub, -0.16, 2, cuts);
     loft(b, ts.map((t) => {
       const { u, v } = frame(dir(t), FRONT);
       const [rx, rf, rb, sh] = rowAt(LEG, t);
-      const f = legF * k * (fem && t < 0.5 ? 1.04 : 1);
-      return { c: pos(t).addScaledVector(v, -sh * legF), u, v, rx: rx * f, rf: rf * f, rb: rb * f, e: pLeg || robot ? 2.5 : 2, w: wOf(t), paint: (a: number) => paintOf(t, a), push: (a: number) => pushOf(t, a) };
+      const f = legF * (fem && t < 0.5 ? 1.04 : 1);
+      return { c: pos(t).addScaledVector(v, -sh * legF), u, v, rx: rx * f, rf: rf * f, rb: rb * f, e: robot ? 2.5 : 2, w: wOf(t), paint: (a: number) => paintOf(t, a), push: (a: number) => pushOf(t, a) };
     }), N.limb, { capStart: top.clone().add(V(0, 0.01, 0)) });
-    if (pLeg || robot) jointBall(b, K, 0.045 * legF, DARKMETAL, [[ul, 0.5], [ll, 0.5]], N.small);
+    if (robot) jointBall(b, K, 0.045 * legF, DARKMETAL, [[ul, 0.5], [ll, 0.5]], N.small);
     // the foot
-    const footPaint: Paint = pLeg ? P(METAL, 'metal') : bootC ? P(bootC, F!.armour ? 'metal' : 'leather') : robot ? P(SKIN, 'metal') : bug ? P(shade(SKIN, 0.7), 'chitin') : F?.wraps ? P(rgb(F.color), 'cloth') : skinP();
+    const footPaint: Paint = bootC ? P(bootC, F!.armour ? 'metal' : 'leather') : robot ? P(SKIN, 'metal') : bug ? P(shade(SKIN, 0.7), 'chitin') : F?.wraps ? P(rgb(F.color), 'cloth') : skinP();
     buildFoot(b, An, s, footPaint, !!bootC, ft, ll, N.limb, bug ? 0.8 : 1);
   }
 
@@ -521,9 +527,228 @@ export function buildHuman(look: Look, vis: Vis, lost: number, rig: Rig, prost =
         break;
     }
   }
+
+  // ----------------------------------------------------------------- prosthetic limbs
+  /**
+   * A prosthetic arm, by make: a socket cupped over the stump, an upper arm and
+   * forearm hinged on a pinned elbow, and a hand, a claw or a fist.
+   */
+  function prostArm(make: string, side: number, ua: number, la: number, hd: number, top: THREE.Vector3, pos: (t: number) => THREE.Vector3, dir: (t: number) => THREE.Vector3, wOf: (t: number) => Weights) {
+    const st = PROST[make] ?? PROST.steel;
+    const E = J[la], H = J[hd];
+    const outA = side > 0 ? 0 : Math.PI; // the outer side, round the arm
+    const n = N.limb, ns = N.small;
+    const sec = (t: number, k: number, paint: Paint | ((a: number) => Paint), e = 2.5, push?: (a: number) => number): Sec => {
+      const { u, v } = frame(dir(t), FRONT);
+      const [rx, rf, rb] = rowAt(ARM, t);
+      return { c: pos(t), u, v, rx: rx * armF * k, rf: rf * armF * k, rb: rb * armF * k, e, w: wOf(t), paint, push };
+    };
+    const at = (t: number, du: number, dv: number) => { const { u, v } = frame(dir(t), FRONT); return pos(t).addScaledVector(u, du).addScaledVector(v, dv); };
+    const rOf = (t: number) => rowAt(ARM, t)[0] * armF;
+    const scrap = make === 'scrap';
+    const UP_T = [0.14, 0.3, 0.5, 0.7, 0.9], FORE_T = [1.08, 1.25, 1.45, 1.65, 1.82, 1.9];
+    // the socket
+    const sockK = make === 'sentinel' ? 1.12 : make === 'warden' ? 1.1 : 1.04;
+    loft(b, [-0.2, -0.12, -0.03, 0.08, 0.15, 0.19].map((t) => sec(t, t > 0.14 ? sockK * 0.9 : sockK, (a) => metalP(t > 0.14 ? st.dark : scrap ? rust(st.main, st.dark, t, a) : st.main))), n, { capStart: top.clone().add(V(0, 0.01, 0)), capEnd: true });
+    if (detail) for (let k = 0; k < 5; k++) jointBall(b, at(0.1, Math.cos(outA + (k - 2) * 0.55) * rOf(0.1) * sockK, Math.sin(outA + (k - 2) * 0.55) * rOf(0.1) * sockK), 0.0055, st.pin ?? st.accent, wOf(0.1), 5); // rivets
+    switch (make) {
+      case 'scrap': {
+        // two rusted struts down to the elbow, a loose wire, a pipe of a forearm held with clamps
+        for (const dv of [0.021, -0.019]) tube(b, [at(0.12, 0, dv), at(0.95, 0, dv * 0.7)], 0.0105 * armF, metalP(st.main), (i) => wOf(i ? 0.95 : 0.12), 6);
+        if (detail) { const ts = [0.05, 0.3, 0.55, 0.8, 1.05, 1.2]; tube(b, ts.map((t, i) => at(t, side * (0.032 + 0.008 * Math.sin(i * 2.1)), 0.01 * Math.cos(i * 1.7))), 0.0045, P(st.accent, 'leather'), (i) => wOf(ts[i]), 5); }
+        loft(b, FORE_T.map((t) => sec(t, 0.7, (a) => metalP(rust(st.main, st.dark, t, a)), 2)), n, { capStart: true, capEnd: true });
+        for (const t of [1.24, 1.52, 1.8]) ring(b, pos(t), dir(t), rOf(t) * 0.8, rOf(t) * 0.6, 0.016, metalP(st.dark), wOf(t), ns);
+        break;
+      }
+      case 'drone': {
+        // slim chrome segments with bare cables down the back
+        loft(b, [0.14, 0.4, 0.7, 0.9].map((t) => sec(t, 0.44, metalP(st.main), 2)), n, { capStart: true, capEnd: true });
+        loft(b, [1.08, 1.4, 1.7, 1.9].map((t) => sec(t, 0.42, metalP(st.main), 2)), n, { capStart: true, capEnd: true });
+        if (detail) for (const du of [0.011, -0.011]) { const ts = [0.1, 0.5, 0.95, 1.3, 1.85]; tube(b, ts.map((t) => at(t, du, -0.026)), 0.0042, metalP(st.dark), (i) => wOf(ts[i]), 5); }
+        break;
+      }
+      case 'warden':
+      case 'sentinel': {
+        // heavy plated segments: the Warden's gunmetal with a lit seam, the Sentinel's in hazard yellow
+        const war = make === 'warden';
+        const plate = (t: number, a: number): Paint => {
+          if (war && st.glow && ad(a, outA) < 0.1 && ((t > 0.3 && t < 0.75) || (t > 1.2 && t < 1.78))) return P(st.glow, 'glow');
+          if (!war && t > 1.52 && t < 1.68) return metalP(Math.floor((a + t * 3) * 3) % 2 ? st.accent : st.main);
+          if (Math.abs(t - 0.5) < 0.015 || Math.abs(t - 1.42) < 0.015) return metalP(st.dark); // seams
+          return metalP(st.main);
+        };
+        const armour = (a: number) => 0.007 * Math.max(0, Math.cos(a - outA)); // plating stands proud on the outer side
+        const kU = war ? 0.78 : 0.86, kF = war ? 0.86 : 1.02;
+        loft(b, UP_T.map((t) => sec(t, kU, (a) => plate(t, a), 3, armour)), n, { capStart: true, capEnd: true });
+        loft(b, FORE_T.map((t) => sec(t, kF * (t > 1.75 ? 0.9 : 1), (a) => plate(t, a), 3, armour)), n, { capStart: true, capEnd: true });
+        if (!war && st.glow) ring(b, pos(1.93), dir(1.93), rOf(1.93) * 0.95, rOf(1.93) * 0.6, 0.02, P(st.glow, 'glow'), wOf(1.93), ns); // the emitter
+        break;
+      }
+      default: {
+        // steel: smooth casings worked by hydraulic rams
+        loft(b, UP_T.map((t) => sec(t, 0.64, metalP(Math.abs(t - 0.5) < 0.012 ? st.dark : st.main), 2.3)), n, { capStart: true, capEnd: true });
+        loft(b, FORE_T.map((t) => sec(t, 0.62, metalP(Math.abs(t - 1.45) < 0.012 ? st.dark : st.main), 2.3)), n, { capStart: true, capEnd: true });
+        ram(b, at(0.22, 0, 0.042 * armF), at(1.16, 0, 0.03 * armF), 0.009, metalP(st.dark), metalP(st.accent), wOf(0.22), wOf(1.16), 6); // the biceps
+        if (detail) for (const du of [0.026, -0.026]) ram(b, at(1.12, du * armF, 0), at(1.84, du * armF * 0.8, 0), 0.006, metalP(st.dark), metalP(st.accent), wOf(1.12), wOf(1.84), 5);
+      }
+    }
+    // the elbow: a joint and the pin it turns on
+    const jw: Weights = [[ua, 0.5], [la, 0.5]];
+    const jr = (make === 'drone' ? 0.024 : make === 'warden' || make === 'sentinel' ? 0.036 : 0.03) * armF;
+    const { u: uE } = frame(dir(1), FRONT);
+    jointBall(b, E, jr, st.dark, jw, ns);
+    tube(b, [E.clone().addScaledVector(uE, -jr * 1.25), E.clone().addScaledVector(uE, jr * 1.25)], jr * 0.45, metalP(st.pin ?? st.accent), () => jw, ns);
+    if (make === 'warden' && st.glow) ring(b, E, dir(1), jr * 1.06, jr * 0.8, 0.012, P(st.glow, 'glow'), jw, ns);
+    // the hand
+    const d3 = H.clone().sub(E).normalize();
+    if (scrap || make === 'drone') claw(b, H, d3, side, s, make === 'drone' ? 0.12 : 0.085, metalP(make === 'drone' ? st.main : st.dark), metalP(make === 'drone' ? st.dark : st.main), make === 'drone' && st.glow ? P(st.glow, 'glow') : null, hd, detail ? 6 : 4);
+    else buildHand(b, H, d3, side, s * (make === 'sentinel' ? 1.18 : make === 'warden' ? 1.08 : 1), metalP(make === 'warden' ? st.accent : st.main), hd, N.hand, false, !!detail);
+  }
+
+  /**
+   * A prosthetic leg, by make: a socket over the stump, a pinned knee, and below
+   * it a shin and foot, a peg on a spring, or a strider's ram and clawed pad.
+   */
+  function prostLeg(make: string, side: number, ul: number, ll: number, ft: number, top: THREE.Vector3, pos: (t: number) => THREE.Vector3, dir: (t: number) => THREE.Vector3, wOf: (t: number) => Weights) {
+    const st = PROST[make] ?? PROST.steel;
+    const K = J[ll], An = J[ft];
+    const outA = side > 0 ? 0 : Math.PI;
+    const n = N.limb, ns = N.small;
+    const sec = (t: number, k: number, paint: Paint | ((a: number) => Paint), e = 2.5, push?: (a: number) => number): Sec => {
+      const { u, v } = frame(dir(t), FRONT);
+      const [rx, rf, rb, sh] = rowAt(LEG, t);
+      return { c: pos(t).addScaledVector(v, -sh * legF), u, v, rx: rx * legF * k, rf: rf * legF * k, rb: rb * legF * k, e, w: wOf(t), paint, push };
+    };
+    const at = (t: number, du: number, dv: number) => { const { u, v } = frame(dir(t), FRONT); return pos(t).addScaledVector(u, du).addScaledVector(v, dv); };
+    const rOf = (t: number) => rowAt(LEG, t)[0] * legF;
+    const scrap = make === 'scrap';
+    const THIGH_T = [0.26, 0.45, 0.65, 0.85], SHIN_T = [1.08, 1.3, 1.5, 1.7, 1.86];
+    const footW: Weights = [[ft, 0.6], [ll, 0.4]];
+    const ground = An.clone().add(V(0, -0.075 * s, 0)); // where the sole meets the ground
+    // the socket
+    const sockK = scrap ? 0.98 : 1.05;
+    loft(b, [-0.16, -0.06, 0.05, 0.16, 0.26, 0.3].map((t) => sec(t, t > 0.25 ? sockK * 0.9 : sockK, (a) => metalP(t > 0.25 ? st.dark : scrap ? rust(st.main, st.dark, t, a) : st.main))), n, { capStart: top.clone().add(V(0, 0.01, 0)), capEnd: true });
+    if (detail) for (let k = 0; k < 5; k++) jointBall(b, at(0.2, Math.cos(outA + (k - 2) * 0.6) * rOf(0.2) * sockK, Math.sin(outA + (k - 2) * 0.6) * rOf(0.2) * sockK), 0.006, st.pin ?? st.accent, wOf(0.2), 5); // rivets
+    switch (make) {
+      case 'scrap': {
+        // a strut to a bolted knee, then a peg on a spring and a rubber foot
+        tube(b, [at(0.28, 0, 0), at(0.97, 0, 0)], 0.018 * legF, metalP(st.main), (i) => wOf(i ? 0.97 : 0.28), 6);
+        tube(b, [at(1.04, 0, 0), ground.clone().add(V(0, 0.045 * s, 0))], 0.015 * legF, metalP(st.main), (i) => (i ? footW : wOf(1.04)), 6);
+        if (detail) coil(b, at(1.45, 0, 0), at(1.82, 0, 0), 0.025 * legF, 0.005, 5, metalP(st.dark), (k) => wOf(1.45 + k * 0.37), 5);
+        lathe(b, ground, [[0, 0], [0.034 * s, 0.002], [0.036 * s, 0.026 * s], [0.02 * s, 0.05 * s], [0, 0.052 * s]], ns, () => P(rgb(0x1c1a18), 'leather'), footW);
+        break;
+      }
+      case 'walker': {
+        // a Warbot's leg cut down: a plated thigh, a shin that is all ram and spring, a clawed pad
+        loft(b, THIGH_T.map((t) => sec(t, 0.74, metalP(Math.abs(t - 0.55) < 0.025 ? st.accent : st.main), 3.2)), n, { capStart: true, capEnd: true });
+        tube(b, [at(1.06, 0, 0), at(1.5, 0, 0)], 0.04 * legF, (i) => metalP(i ? st.main : st.dark), (i) => wOf(i ? 1.5 : 1.06), n);
+        ring(b, pos(1.16), dir(1.16), 0.046 * legF, 0.03 * legF, 0.03, metalP(st.accent), wOf(1.16), ns); // a hazard band
+        tube(b, [at(1.42, 0, 0), ground.clone().add(V(0, 0.05 * s, 0))], 0.022 * legF, metalP(rgb(0xc8ccd0)), (i) => (i ? footW : wOf(1.42)), n);
+        if (detail) coil(b, at(1.55, 0, 0), at(1.9, 0, 0), 0.034 * legF, 0.006, 5, metalP(st.accent), (k) => wOf(1.55 + k * 0.35), 5);
+        // the pad: a heel disc and two splayed toes
+        lathe(b, ground, [[0, 0], [0.05 * s, 0.003], [0.052 * s, 0.03 * s], [0.03 * s, 0.05 * s], [0, 0.055 * s]], ns, () => metalP(st.dark), footW);
+        for (const a of [0.38, -0.38]) tube(b, [ground.clone().add(V(0, 0.02 * s, 0.02 * s)), ground.clone().add(V(Math.sin(a) * 0.12 * s, 0.012 * s, Math.cos(a) * 0.12 * s))], 0.014 * s, metalP(st.main), () => [[ft, 1]], 6);
+        break;
+      }
+      case 'warden': {
+        // gunmetal plating: a shin guard with a lit seam, a plate outside the thigh, a heavy foot
+        const plate = (t: number, a: number): Paint => {
+          if (st.glow && ad(a, HP) < 0.07 && t > 1.2 && t < 1.8) return P(st.glow, 'glow');
+          if (Math.abs(t - 0.6) < 0.015 || Math.abs(t - 1.5) < 0.015) return metalP(st.dark);
+          return metalP(st.main);
+        };
+        const guard = (t: number) => (a: number) => (t > 1 ? 0.012 * Math.max(0, Math.cos(a - HP)) : 0.006 * Math.max(0, Math.cos(a - outA)));
+        loft(b, THIGH_T.map((t) => sec(t, 0.78, (a) => plate(t, a), 3, guard(t))), n, { capStart: true, capEnd: true });
+        loft(b, SHIN_T.map((t) => sec(t, 0.8, (a) => plate(t, a), 3, guard(t))), n, { capStart: true, capEnd: true });
+        buildFoot(b, An, s, metalP(st.accent), true, ft, ll, N.limb, 1.05);
+        break;
+      }
+      default: {
+        // steel: smooth casings, a kneecap, and a ram behind the calf
+        loft(b, THIGH_T.map((t) => sec(t, 0.64, metalP(Math.abs(t - 0.55) < 0.012 ? st.dark : st.main), 2.3)), n, { capStart: true, capEnd: true });
+        loft(b, SHIN_T.map((t) => sec(t, 0.62, metalP(Math.abs(t - 1.5) < 0.012 ? st.dark : st.main), 2.3)), n, { capStart: true, capEnd: true });
+        ram(b, at(1.1, 0, -0.04 * legF), at(1.86, 0, -0.03 * legF), 0.01, metalP(st.dark), metalP(st.accent), wOf(1.1), wOf(1.86), 6);
+        const cap = K.clone().add(V(0, 0, 0.045 * legF));
+        blob(b, cap, ns, Math.max(4, ns - 2), (d, o) => { o.set(cap.x + d.x * 0.034 * legF, cap.y + d.y * 0.04 * legF, cap.z + d.z * 0.014); return metalP(st.accent); }, [[ul, 0.3], [ll, 0.7]]);
+        buildFoot(b, An, s, metalP(st.main), false, ft, ll, N.limb, 0.9);
+      }
+    }
+    // the knee: a joint and its pin, and on a machine's leg a light
+    const jw: Weights = [[ul, 0.5], [ll, 0.5]];
+    const kr = (make === 'walker' ? 0.05 : scrap ? 0.03 : 0.042) * legF;
+    const { u: uK } = frame(dir(1), FRONT);
+    jointBall(b, K, kr, st.dark, jw, ns);
+    tube(b, [K.clone().addScaledVector(uK, -kr * 1.25), K.clone().addScaledVector(uK, kr * 1.25)], kr * 0.45, metalP(st.pin ?? st.accent), () => jw, ns);
+    if (st.glow && (make === 'walker' || make === 'warden')) {
+      const eye = K.clone().add(V(0, 0, kr * 0.9));
+      blob(b, eye, 8, 6, (d, o) => { o.copy(eye).addScaledVector(d, kr * 0.38); return P(st.glow!, 'glow'); }, jw);
+    }
+  }
 }
 
 // ======================================================================= parts
+
+/** Prosthetic makes: body metal, dark joints and fittings, an accent, pins and rivets (if not the accent), and a light if it has one. */
+const PROST: Record<string, { main: RGB; dark: RGB; accent: RGB; pin?: RGB; glow?: RGB }> = {
+  scrap: { main: rgb(0x8a5634), dark: rgb(0x34302c), accent: rgb(0x9a2418), pin: rgb(0x5a534c) },
+  steel: { main: rgb(0xaab0b8), dark: rgb(0x44484e), accent: rgb(0xd8dce0) },
+  warden: { main: rgb(0x454c54), dark: rgb(0x1e2226), accent: rgb(0x5e6873), glow: [0.35, 1.7, 2.6] },
+  sentinel: { main: rgb(0xd8b020), dark: rgb(0x2a2a28), accent: rgb(0x1e1e1c), glow: [2.8, 0.55, 0.25] },
+  drone: { main: rgb(0xc8ced4), dark: rgb(0x2c3036), accent: rgb(0x70767e), glow: [0.5, 2.6, 0.9] },
+  walker: { main: rgb(0x5c6064), dark: rgb(0x26282a), accent: rgb(0xc89a28), glow: [1.15, 0.04, 0.02] },
+};
+const metalP = (c: RGB): Paint => P(c, 'metal');
+
+/** Patchy rust over scrap iron, by position along and round a part. */
+function rust(c: RGB, dark: RGB, t: number, a: number): RGB {
+  const k = Math.sin(t * 41 + a * 3.1) * Math.sin(t * 17 - a * 5.3) + 0.4 * Math.sin(a * 11 + t * 7);
+  return k > 0.45 ? shade(c, 1.3) : k < -0.5 ? mix(c, dark, 0.65) : c;
+}
+
+/** A tube through a run of points: rods, cables, prongs. */
+function tube(b: SkinBuilder, pts: THREE.Vector3[], r: number | ((i: number) => number), p: Paint | ((i: number) => Paint), w: (i: number) => Weights, n: number) {
+  loft(b, pts.map((c, i) => {
+    const d = pts[Math.min(pts.length - 1, i + 1)].clone().sub(pts[Math.max(0, i - 1)]).normalize();
+    const f = frame(d, FRONT);
+    const ri = typeof r === 'number' ? r : r(i);
+    return { c, u: f.u, v: f.v, rx: ri, rf: ri, rb: ri, w: w(i), paint: typeof p === 'function' ? p(i) : p };
+  }), n, { capStart: true, capEnd: true });
+}
+
+/** A hydraulic ram from a to c: a sleeve that moves with a, and a bright shaft reaching to c. */
+function ram(b: SkinBuilder, a: THREE.Vector3, c: THREE.Vector3, r: number, sleeve: Paint, shaft: Paint, wa: Weights, wc: Weights, n: number) {
+  tube(b, [a, a.clone().lerp(c, 0.55)], r, sleeve, () => wa, n);
+  tube(b, [a.clone().lerp(c, 0.45), c], r * 0.55, shaft, (i) => (i ? wc : wa), n);
+}
+
+/** A coil spring round the line from a to c. */
+function coil(b: SkinBuilder, a: THREE.Vector3, c: THREE.Vector3, R: number, r: number, turns: number, p: Paint, w: (k: number) => Weights, n: number) {
+  const d = c.clone().sub(a), L = d.length();
+  d.normalize();
+  const { u, v } = frame(d, FRONT);
+  const steps = Math.round(turns * 8), pts: THREE.Vector3[] = [];
+  for (let i = 0; i <= steps; i++) {
+    const k = i / steps, an = k * turns * TAU;
+    pts.push(a.clone().addScaledVector(d, L * k).addScaledVector(u, Math.cos(an) * R).addScaledVector(v, Math.sin(an) * R));
+  }
+  tube(b, pts, r, p, (i) => w(i / steps), n);
+}
+
+/** A machine's gripping claw: a hub at the wrist, two prongs and a thumb, curling in at the tips. */
+function claw(b: SkinBuilder, wrist: THREE.Vector3, dir: THREE.Vector3, side: number, s: number, len: number, p: Paint, tip: Paint, eye: Paint | null, bone: number, n: number) {
+  const W: Weights = [[bone, 1]];
+  const { u, v } = frame(dir, V(side, 0, 0));
+  const hub = wrist.clone().addScaledVector(dir, 0.022 * s);
+  blob(b, hub, n + 2, n, (d, o) => { o.copy(hub).addScaledVector(d, 0.027 * s); return p; }, W);
+  if (eye) { const e = hub.clone().addScaledVector(v, 0.024 * s); blob(b, e, 6, 4, (d, o) => { o.copy(e).addScaledVector(d, 0.007 * s); return eye; }, W); }
+  for (const [ang, lk] of [[0.9, 1], [-0.9, 1], [Math.PI, 0.75]] as [number, number][]) {
+    const radial = u.clone().multiplyScalar(Math.cos(ang)).addScaledVector(v, Math.sin(ang));
+    const base = hub.clone().addScaledVector(dir, 0.015 * s).addScaledVector(radial, 0.018 * s);
+    const L = len * lk * s;
+    const pts = [0, 0.35, 0.7, 1].map((k) => base.clone().addScaledVector(dir, L * k).addScaledVector(radial, 0.02 * s * Math.sin(k * Math.PI * 0.85) - 0.012 * s * k * k));
+    tube(b, pts, (i) => (0.0078 - i * 0.0016) * s, (i) => (i === 3 ? tip : p), () => W, n);
+  }
+}
 
 /** A small ball at a joint (machines and prosthetics). */
 function jointBall(b: SkinBuilder, c: THREE.Vector3, r: number, col: RGB, w: Weights, n: number) {

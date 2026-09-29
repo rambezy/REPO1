@@ -19,7 +19,7 @@ import { setupBuild } from './build';
 import { openMenu as openGameMenu } from './menu';
 import { toggleMap } from './map';
 import { toggleFactions } from './factions';
-import { fitProsthetic } from '../sim/health';
+import { fitProsthetic, removeProsthetic } from '../sim/health';
 import { setupHints } from './hints';
 import { openBook } from './read';
 import { DEEDS } from '../sim/deeds';
@@ -49,6 +49,12 @@ export function setupUI() {
     const c = S.W.char(cid);
     if (!c) return;
     const err = fitProsthetic(c, uid);
+    if (err) S.fx.notice(err, 'bad'); else refreshCharWindow();
+  });
+  on('ui:unprosthetic', (cid: number, l: number) => {
+    const c = S.W.char(cid);
+    if (!c) return;
+    const err = removeProsthetic(c, l);
     if (err) S.fx.notice(err, 'bad'); else refreshCharWindow();
   });
   on('world:reset', () => { liveKey = ''; });

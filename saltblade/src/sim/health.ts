@@ -6,9 +6,11 @@ import { ITEM } from '../content/items';
 import { RATE } from './clock';
 import { S } from './ctx';
 import { train } from './train';
-import type { Grid, Item } from './inventory';
+import { makeItem, type Grid, type Item } from './inventory';
 import { bedRest } from './use';
 import { machineSay } from './machines';
+import { clamp } from '../core/math';
+import { emit } from '../core/events';
 
 export function koThreshold(c: Char, limb: number) {
   const t = c.skill('toughness');
@@ -219,6 +221,20 @@ export function limbToTreat(b: Body, splint: boolean): number {
   return leg >= 0 ? leg : worstLimb(b);
 }
 
+/** A built robotics bench of yours, a robotics shop, or a squadmate who knows robotics, close enough to work on a limb. */
+function limbHelp(c: Char): boolean {
+  let help = false;
+  S.W.objHash.near(c.x, c.z, 14, (o) => { if (o.kind !== 'site' && o.data?.bkey === 'robo_bench' && o.owner === 'player') help = true; });
+  for (const sh of S.W.shops.values()) {
+    if (sh.kind !== 'robotics') continue;
+    const o = S.W.objs.get(sh.id);
+    if (o && Math.hypot(o.x - c.x, o.z - c.z) < 30) help = true;
+  }
+  for (const m of S.W.playerChars()) if (m !== c && m.up && m.skill('robotics') >= 15 && Math.hypot(m.x - c.x, m.z - c.z) < 6) help = true;
+  return help;
+}
+const NO_HELP = 'needs a robotics bench, a robotics shop nearby, or a squadmate with some skill in robotics standing close.';
+
 /**
  * Fits a prosthetic limb from someone's inventory to a missing arm or leg.
  * Needs a robotics bench or shop close by, or a squadmate who knows robotics.
@@ -234,22 +250,83 @@ export function fitProsthetic(c: Char, uid: number): string | null {
   const slots = d.limb.part === 'arm' ? [LI.rarm, LI.larm] : [LI.rleg, LI.lleg];
   const l = slots.find((s) => !c.body.has(s) && !c.body.prost[s]);
   if (l === undefined) return `${c.name} has no missing ${d.limb.part} to fit it to.`;
-  let help = false;
-  S.W.objHash.near(c.x, c.z, 14, (o) => { if (o.data?.bkey === 'robo_bench' && o.owner === 'player') help = true; });
-  for (const sh of S.W.shops.values()) {
-    if (sh.kind !== 'robotics') continue;
-    const o = S.W.objs.get(sh.id);
-    if (o && Math.hypot(o.x - c.x, o.z - c.z) < 30) help = true;
-  }
-  for (const m of S.W.playerChars()) if (m !== c && m.up && m.skill('robotics') >= 15 && Math.hypot(m.x - c.x, m.z - c.z) < 6) help = true;
-  if (!help) return 'Fitting a limb needs a robotics bench, a robotics shop nearby, or a squadmate with some skill in robotics standing close.';
+  if (!limbHelp(c)) return `Fitting a limb ${NO_HELP}`;
   grid.remove(item);
-  c.body.prost[l] = item.id;
+  const b = c.body;
+  b.prost[l] = item.id;
+  b.hp[l] = b.max[l] * clamp(item.cond ?? 1, 0.05, 1); // a limb taken off keeps its dents
+  b.bleed[l] = 0;
+  b.treated[l] = 0;
   S.W.flags.prosthetics = (S.W.flags.prosthetics ?? 0) + 1;
-  c.body.bleed[l] = 0;
   c.dirty = true;
   S.W.say(`${c.name} was fitted with a ${d.name.toLowerCase()}.`, 'good', S.clock.t);
   S.fx.notice(`${c.name} now has a ${d.name.toLowerCase()}.`, 'good');
   S.fx.sound('craft', c.x, c.z);
+  S.fx.sound('beep', c.x, c.z, 0.6);
   return null;
 }
+
+/** Takes a prosthetic off someone, as an item that keeps its wear. */
+export function takeProsthetic(c: Char, l: number): Item | null {
+  const b = c.body;
+  if (!b.isProst(l)) return null;
+  const it = makeItem(b.prost[l]!, 1);
+  const cond = clamp(b.hp[l] / b.max[l], 0, 1);
+  if (cond < 0.999) it.cond = cond;
+  b.prost[l] = null;
+  b.hp[l] = 0;
+  c.dirty = true;
+  S.fx.sound('craft', c.x, c.z);
+  return it;
+}
+
+/** Unbolts one of your own people's prosthetics into their pack (or at their feet). Same help as fitting. */
+export function removeProsthetic(c: Char, l: number): string | null {
+  if (!c.body.isProst(l)) return `${c.name} has no prosthetic there.`;
+  if (!limbHelp(c)) return `Taking a limb off ${NO_HELP}`;
+  const it = takeProsthetic(c, l)!;
+  const placed = c.inv.put(it) || !!c.eq.back?.inv?.put(it);
+  if (!placed) emit('world:drop', c.x, c.z, [it]);
+  S.fx.notice(`${c.name}'s ${ITEM[it.id].name.toLowerCase()} is off${placed ? '' : ', and on the ground'}.`, 'info');
+  return null;
+}
+
+/** The prosthetic most in need of repair, or -1. */
+export function worstProst(b: Body): number {
+  let best = -1, low = 0.95;
+  for (let l = 3; l < 7; l++) if (b.isProst(l) && b.hp[l] / b.max[l] < low) { low = b.hp[l] / b.max[l]; best = l; }
+  return best;
+}
+
+/** Mends a prosthetic with a repair kit's points: robotics does the work here, not medicine. */
+export function repairProst(mech: Char, patient: Char, l: number, pts: number, quality: number): number {
+  const b = patient.body;
+  const eff = quality * (0.5 + mech.skill('robotics') * 0.012) * (mech === patient ? 0.75 : 1);
+  const missing = b.max[l] - b.hp[l];
+  if (missing <= 0 || pts <= 0) return 0;
+  const was = b.hp[l];
+  const fix = Math.min(missing, pts * eff * 0.45);
+  b.hp[l] += fix;
+  if (was <= 0 && b.hp[l] > 0) { S.fx.notice(`${patient.name}'s ${ITEM[b.prost[l]!]?.name.toLowerCase() ?? 'limb'} works again.`, 'good'); S.fx.sound('beep', patient.x, patient.z, 0.6); patient.dirty = true; }
+  train(mech, 'robotics', fix / 30, 1);
+  return fix / (eff * 0.45);
+}
+
+/**
+ * What a medic can do next for a patient: which kit, which part, and whether
+ * it is a prosthetic to mend. Flesh (or a machine's frame) comes first.
+ */
+export function aidPlan(c: Char, t: Char): { kit: NonNullable<ReturnType<typeof findMedkit>>; l: number; prost: boolean } | null {
+  const kit = findMedkit(c, t.robot, t);
+  if (kit) {
+    const l = limbToTreat(t.body, !!kit.def.med?.splint);
+    if (l >= 0) return { kit, l, prost: false };
+  }
+  // (a Hollow can wear a prosthetic too: the same kit mends it)
+  const l = worstProst(t.body);
+  const rk = l >= 0 ? findMedkit(c, true) : null;
+  return rk ? { kit: rk, l, prost: true } : null;
+}
+
+/** Anything a medic (or a mechanic) could see to: wounds, a broken leg, a dented limb. */
+export const needsCare = (t: Char) => worstLimb(t.body) >= 0 || brokenLeg(t.body) >= 0 || worstProst(t.body) >= 0;

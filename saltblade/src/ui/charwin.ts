@@ -171,14 +171,29 @@ function skillsTab(c: Char, el: HTMLElement) {
   el.appendChild(h('div', { class: 'skills' }, ...groups.values()));
 }
 
+/** A prosthetic's row: its make, its condition, and a button to take it off. */
+function prostRow(c: Char, l: number) {
+  const b = c.body, d = ITEM[b.prost[l]!];
+  const f = Math.max(0, b.hp[l] / b.max[l]);
+  const note = b.hp[l] <= 0 ? `<span class="bad">wrecked — ${l >= 5 ? 'cannot walk' : 'useless'}; mend it with a repair kit</span>` : f < 0.95 ? '<span class="dim">dented; a repair kit mends it</span>' : '';
+  return h('div', { class: 'hrow pro' },
+    h('span', { class: 'hname' }, LIMB_NAMES[l]),
+    bar(f, 'pr'),
+    h('span', { class: 'hval' }, `${Math.round(Math.max(0, b.hp[l]))} / ${b.max[l]}`),
+    h('span', { class: 'hnote', html: `<span class="good">${d?.name ?? 'Prosthetic'}</span> ${note}` }),
+    c.faction === 'player' ? h('button', { class: 'tog small', title: 'Unbolt it and put it in the pack (needs a robotics bench or shop, or a squadmate who knows robotics)', onclick: () => emit('ui:unprosthetic', c.id, l) }, 'Remove') : null,
+  );
+}
+
 function healthTab(c: Char, el: HTMLElement) {
   const b = c.body;
   const fig = h('div', { class: 'bodyfig' });
   const pos: [number, number, number, number][] = [[42, 2, 36, 36], [36, 42, 48, 40], [38, 84, 44, 30], [84, 44, 22, 66], [14, 44, 22, 66], [60, 116, 22, 72], [38, 116, 22, 72]];
   for (let l = 0; l < 7; l++) {
     const [x, y, w, hh] = pos[l];
-    const frac = b.has(l) ? b.hp[l] / b.max[l] : 0;
-    const col = !b.has(l) ? (b.prost[l] ? '#6a7a8a' : '#2a2420') : frac > 0.66 ? '#7fae5a' : frac > 0.33 ? '#d8b24a' : frac > 0 ? '#d07a3a' : '#a03a2a';
+    const frac = b.has(l) || b.prost[l] ? b.hp[l] / b.max[l] : 0;
+    // a prosthetic shows steel, darkening as it is knocked about
+    const col = !b.has(l) ? (b.prost[l] ? (frac > 0.5 ? '#7a8a9a' : frac > 0 ? '#5a6470' : '#4a3a3a') : '#2a2420') : frac > 0.66 ? '#7fae5a' : frac > 0.33 ? '#d8b24a' : frac > 0 ? '#d07a3a' : '#a03a2a';
     const part = h('div', { class: 'bpart', title: LIMB_NAMES[l] });
     Object.assign(part.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: hh + 'px', background: col });
     if (b.bleed[l] > 0.02) part.classList.add('bleeding');
@@ -186,8 +201,9 @@ function healthTab(c: Char, el: HTMLElement) {
   }
   const rows = h('div', { class: 'hrows' });
   for (let l = 0; l < 7; l++) {
+    if (b.isProst(l)) { rows.appendChild(prostRow(c, l)); continue; }
     const lost = !b.has(l);
-    const txt = lost ? (b.prost[l] ? `Prosthetic: ${ITEM[b.prost[l]!]?.name ?? '?'}` : 'Lost') : `${Math.round(b.hp[l])} / ${b.max[l]}`;
+    const txt = lost ? 'Lost' : `${Math.round(b.hp[l])} / ${b.max[l]}`;
     const notes: string[] = [];
     if (b.bleed[l] > 0.02) notes.push(`<span class="bad">bleeding ${(b.bleed[l] * 60).toFixed(1)}/min</span>`);
     if (b.treated[l] > 0) notes.push('<span class="good">treated</span>');

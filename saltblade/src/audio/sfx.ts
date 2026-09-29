@@ -221,6 +221,13 @@ const W: Record<string, [number, number, Fx]> = {
     for (let i = 0; i < 6; i++) click(o, t + rnd(0.01, 0.22), rnd(3500, 7000), rnd(0.1, 0.3));
     return 0.55;
   }],
+  servo: [0.4, 0.06, (o, t) => {
+    // a prosthetic limb driving through a swing, and the click as it seats
+    const d = rnd(0.11, 0.18);
+    whir(o, t, d, rnd(190, 270), 0.32);
+    metal(o, t + d, rnd(900, 1300), [1, 2.7], 0.06, 0.12);
+    return d + 0.1;
+  }],
   beep: [0.4, 0.15, (o, t) => {
     // a machine's chirps
     let at = t;

@@ -1,6 +1,8 @@
 // Seven body parts, each with its own health. Vital parts at zero knock you
 // out; at minus their maximum they kill you. Limbs break, bleed and can be
-// cut off. Blood drains from open wounds until treated or clotted.
+// cut off. Blood drains from open wounds until treated or clotted. A limb
+// replaced by a prosthetic keeps its condition in the same slot: it takes
+// hits, never bleeds or heals, and at zero it is wrecked until repaired.
 import { RACE } from '../content/races';
 
 export const LIMBS = ['head', 'chest', 'stomach', 'larm', 'rarm', 'lleg', 'rleg'] as const;
@@ -58,15 +60,19 @@ export class Body {
     for (let i = 0; i < 7; i++) b += this.bleed[i];
     return b;
   }
-  armOK(l: 3 | 4) { return this.has(l) ? this.hp[l] > 0 || !!this.prost[l] : !!this.prost[l]; }
+  /** Is this part a prosthetic (rather than flesh, or nothing)? */
+  isProst(l: number) { return !this.has(l) && !!this.prost[l]; }
+  /** A prosthetic that still works (not wrecked). */
+  prostOK(l: number) { return this.isProst(l) && this.hp[l] > 0; }
+  armOK(l: 3 | 4) { return this.has(l) ? this.hp[l] > 0 : this.prostOK(l); }
   legOK(l: 5 | 6) {
-    if (!this.has(l)) return !!this.prost[l];
+    if (!this.has(l)) return this.prostOK(l);
     return this.hp[l] > 0 || !!(this.splint & (1 << l));
   }
   canWalk() { return this.legOK(5) && this.legOK(6); }
   limp(): number {
-    const l = this.has(5) ? this.hp[5] / this.max[5] : this.prost[5] ? 0.6 : 0;
-    const r = this.has(6) ? this.hp[6] / this.max[6] : this.prost[6] ? 0.6 : 0;
+    const l = this.has(5) || this.prost[5] ? this.hp[5] / this.max[5] : 0;
+    const r = this.has(6) || this.prost[6] ? this.hp[6] / this.max[6] : 0;
     if (Math.min(l, r) > 0.35) return 0;
     return l < r ? 1 : 2;
   }
@@ -81,12 +87,14 @@ export class Body {
     return false;
   }
   serialize() {
-    return { hp: [...this.hp], max: [...this.max], bleed: [...this.bleed], treated: [...this.treated], lost: this.lost, splint: this.splint, prost: this.prost, blood: this.blood, bloodMax: this.bloodMax, koT: this.koT, robotic: this.robotic };
+    return { hp: [...this.hp], max: [...this.max], bleed: [...this.bleed], treated: [...this.treated], lost: this.lost, splint: this.splint, prost: this.prost, blood: this.blood, bloodMax: this.bloodMax, koT: this.koT, robotic: this.robotic, pv: 1 };
   }
   static from(o: any) {
     const b = new Body();
     b.hp.set(o.hp); b.max.set(o.max); b.bleed.set(o.bleed); b.treated.set(o.treated);
     b.lost = o.lost; b.splint = o.splint; b.prost = o.prost; b.blood = o.blood; b.bloodMax = o.bloodMax; b.koT = o.koT; b.robotic = o.robotic;
+    // saves from before prosthetics could be damaged: every fitted limb is sound
+    if (!o.pv) for (let l = 3; l < 7; l++) if (b.isProst(l)) { b.hp[l] = b.max[l]; b.bleed[l] = 0; }
     return b;
   }
 }

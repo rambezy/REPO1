@@ -4,7 +4,8 @@ import { GridView, SlotView, acceptsSlot, hideTip, Source } from './grid';
 import { S } from '../sim/ctx';
 import { Char, EQUIP_SLOTS } from '../sim/char';
 import { WObj } from '../sim/objects';
-import { Grid, Item } from '../sim/inventory';
+import { Grid, Item, makeItem } from '../sim/inventory';
+import { takeProsthetic } from '../sim/health';
 import { ITEM, itemValue, EquipSlot } from '../content/items';
 import { crime, witness } from '../sim/crime';
 import { train, versus } from '../sim/train';
@@ -70,6 +71,22 @@ export function openLoot(looterId: number, target: { char?: number; obj?: number
           eq.appendChild(sv.el);
         }
         right.appendChild(eq);
+      }
+      // a downed body's prosthetics can be unbolted and carried off
+      if (t.status !== 'up' && t.faction !== 'player') for (let l = 3; l < 7; l++) {
+        if (!t.body.isProst(l)) continue;
+        const d = ITEM[t.body.prost[l]!];
+        const wrecked = t.body.hp[l] <= 0 ? ' (wrecked)' : '';
+        const b = h('button', { class: 'tog small', title: d.desc }, `Unbolt their ${d.name.toLowerCase()}${wrecked}`);
+        b.onclick = () => {
+          if (stealing && !attemptTheft(c, makeItem(d.id), owner, t)) { render(); return; }
+          const it = takeProsthetic(t, l);
+          if (!it) return;
+          if (stealing) it.stolen = owner;
+          if (!c.inv.put(it) && !c.eq.back?.inv?.put(it)) dropOnGround(c.x, c.z, [it]);
+          render();
+        };
+        right.appendChild(b);
       }
       if (t.money > 0 && (t.status !== 'up' || stealing)) {
         const b = h('button', { class: 'tog small' }, `Take ${t.money} chits`);

@@ -124,11 +124,11 @@ export function marketFor(sh: Shop, d: ItemDef): 'cheap' | 'dear' | '' {
 }
 
 /** Price the shop charges for an item (per unit). */
-export function buyPrice(sh: Shop, it: Item | { id: string; q: number }) {
+export function buyPrice(sh: Shop, it: Item | { id: string; q: number; cond?: number }) {
   const d: ItemDef = ITEM[it.id];
   const mk = marketFor(sh, d);
   const local = mk === 'cheap' ? CHEAP_BUY : mk === 'dear' ? DEAR_BUY : 1;
-  return Math.max(1, Math.round(itemValue(d, it.q) * (1.15 + sh.markup) * relMod(sh.faction) * local));
+  return Math.max(1, Math.round(itemValue(d, it.q) * (1.15 + sh.markup) * relMod(sh.faction) * local * worn(it.cond)));
 }
 
 /** What the shop pays for an item (per unit). */
@@ -141,8 +141,11 @@ export function sellPrice(sh: Shop, it: Item) {
   if (mk === 'cheap') k *= CHEAP_SELL; else if (mk === 'dear') k *= DEAR_SELL;
   if (it.stolen === sh.faction) k *= 0.3;
   if (d.illegal?.includes(sh.faction)) return 0;
-  return Math.max(1, Math.round(itemValue(d, it.q) * k));
+  return Math.max(1, Math.round(itemValue(d, it.q) * k * worn(it.cond)));
 }
+
+/** A dented limb is worth less: a wrecked one is scrap and parts. */
+const worn = (cond?: number) => (cond === undefined ? 1 : 0.25 + 0.75 * cond);
 
 export function tickShops() {
   const day = S.clock.day;

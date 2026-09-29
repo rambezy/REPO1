@@ -1,7 +1,7 @@
 // Head-and-shoulders portraits rendered from the same procedural models.
 import * as THREE from 'three';
 import { Char } from '../sim/char';
-import { makeRig, makeBones, prostMask, B } from './charModel';
+import { makeRig, makeBones, prostLooks, B } from './charModel';
 import { buildHuman } from './human';
 import { charMaterial } from './charMat';
 import { buildAnimal } from './animalModel';
@@ -56,7 +56,7 @@ export function portrait(c: Char): string {
     } else {
       const rig = makeRig(c.look);
       const bones = makeBones(rig);
-      const geo = buildHuman(c.look, c.vis(), c.body.lost, rig, prostMask(c.body.prost), 1);
+      const geo = buildHuman(c.look, c.vis(), c.body.lost, rig, prostLooks(c.body.prost), 1);
       faceMat?.dispose();
       faceMat = geo.userData.face ? charMaterial(geo.userData.face) : null;
       mesh = new THREE.SkinnedMesh(geo, faceMat ?? bodyMat);

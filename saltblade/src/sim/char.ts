@@ -157,8 +157,8 @@ export class Char {
       if (a?.bonus?.[s]) v += a.bonus[s]!;
     }
     for (let l = 3; l < 7; l++) {
-      const p = this.body.prost[l];
-      if (p) v += ITEM[p]?.limb?.bonus[s] ?? 0;
+      // a wrecked limb gives nothing but its weight
+      if (this.body.prostOK(l)) v += ITEM[this.body.prost[l]!]?.limb?.bonus[s] ?? 0;
     }
     if (this.hunger < 60 && !this.robot && !this.animal) v *= 0.8;
     return Math.max(0, v);
@@ -199,6 +199,12 @@ export class Char {
       // a machine's own plating
       cut = 1 - (1 - cut) * (1 - this.raceDef.armour[0]);
       blunt = 1 - (1 - blunt) * (1 - this.raceDef.armour[1]);
+    }
+    // a prosthetic limb is metal already
+    const plate = this.body.isProst(limb) ? ITEM[this.body.prost[limb]!]?.limb?.plate : undefined;
+    if (plate) {
+      cut = 1 - (1 - cut) * (1 - plate[0]);
+      blunt = 1 - (1 - blunt) * (1 - plate[1]);
     }
     return [Math.min(0.9, cut), Math.min(0.9, blunt)];
   }
@@ -260,7 +266,8 @@ export class Char {
     const b = this.body;
     let f = 1;
     for (const l of [5, 6] as const) {
-      if (!b.has(l)) { f *= b.prost[l] ? 0.85 : 0.4; continue; }
+      // a good prosthetic leg is nearly as quick as the one it replaced; a wrecked one drags
+      if (!b.has(l)) { f *= b.prostOK(l) ? 0.75 + 0.1 * (ITEM[b.prost[l]!]?.limb?.quality ?? 1) : b.prost[l] ? 0.35 : 0.4; continue; }
       const r = b.hp[l] / b.max[l];
       if (r < 0.5) f *= 0.7 + 0.6 * Math.max(0, r);
       if (r <= 0) f *= b.splint & (1 << l) ? 0.65 : 0.3;

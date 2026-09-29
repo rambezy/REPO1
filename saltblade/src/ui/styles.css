@@ -60,6 +60,7 @@ body.paused .hud-speed::after { content: 'PAUSED'; font: 700 11px var(--cond); c
 .bar.bl i { background: #c0302a; }
 .bar.xp { height: 3px; background: #2a261e; } .bar.xp i { background: var(--accent); }
 .bar.food i { background: #c89a4a; }
+.bar.pr { background: #1e2226; } .bar.pr i { background: #8aa0b4; }
 .pst { position: absolute; top: 4px; left: 4px; right: 4px; display: flex; flex-wrap: wrap; gap: 2px; font: 700 10px var(--cond); }
 .pst b { background: rgba(0,0,0,.7); padding: 0 3px; border-radius: 2px; }
 .ic { width: 13px; height: 13px; border-radius: 50%; display: inline-block; background: #222; border: 1px solid rgba(0,0,0,.6); }
@@ -136,6 +137,7 @@ body.paused .hud-speed::after { content: 'PAUSED'; font: 700 11px var(--cond); c
 .bpart.bleeding { box-shadow: 0 0 0 2px #e03020; animation: pulse 1s infinite; }
 @keyframes pulse { 50% { box-shadow: 0 0 0 3px #ff4020; } }
 .hrow { display: grid; grid-template-columns: 80px 110px 70px 1fr; gap: 6px; align-items: center; font-size: 13px; padding: 2px 0; }
+.hrow.pro { grid-template-columns: 80px 110px 70px 1fr auto; }
 .hrow .bar { height: 7px; }
 .hextra { margin-top: 10px; display: grid; gap: 4px; font-size: 13px; }
 .hextra > div { display: grid; grid-template-columns: 80px 110px auto; gap: 6px; align-items: center; }

@@ -10,6 +10,7 @@ export interface Item {
   y: number;
   stolen?: string; // faction it was stolen from
   inv?: Grid; // backpacks carry their own grid
+  cond?: number; // wear on a used prosthetic, 0..1 (absent: sound)
 }
 
 let nextUid = 1;
