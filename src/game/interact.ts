@@ -284,7 +284,8 @@ export function useSkill(k: SkillKey, target: Actor | MapObject | null) {
   const o = target as MapObject;
   approach(o, true, () => {
     const script = o.onUse ? OBJ_SCRIPTS[o.onUse] : undefined;
-    if (script && script(ctx(), o, p, k) !== false && k !== 'lockpick' && k !== 'traps') return;
+    const handled = script ? script(ctx(), o, p, k) !== false : false;
+    if (handled && k !== 'lockpick' && !(k === 'traps' && o.trap)) return;
     if (k === 'lockpick') return pickLock(o);
     if (k === 'traps') return disarm(o);
     if (script) return;
