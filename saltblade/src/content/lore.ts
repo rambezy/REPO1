@@ -359,6 +359,51 @@ export const BOOKS: LoreBook[] = [
       "The rule, set down again because the young forget. When the fog comes in, bar the door. If someone knocks, ask them their mother's name. If they do not answer, do not open. They never answer.",
     ],
   },
+  // ---------------------------------------------------------------- machines, iron limbs and the leaf
+  {
+    key: 'machine_notes', title: 'Notes on the Old Machines', author: "Surveyor Adaeze of the Delvers' League", kind: 'field guide',
+    value: 480, science: 2, factions: ['delvers', 'hollows'],
+    text: [
+      "Written for the League's new hands, who keep dying in the Rust for want of reading it.",
+      "Sentinels. Yellow, broad as a door, and polite until you fail to show a permit nobody has issued in a thousand years. They carry an emitter in the right fist and fire it without ammunition, so do not wait for them to run dry. They talk. They quote a civic code. Do not argue with it.",
+      "Saw drones. Pruning machines from the Maker orchards, still pruning. They will apologise as they take your arm off. Small, quick and fragile: a club does more than a blade.",
+      "Warbots. If you hear a hum like a hive and see a red eye, get behind stone. They stand off and burn you from further than a crossbow reaches. Close in or leave.",
+      "They guard the foundries, where they were made, and there is always something worth carrying out. A machine that falls stays fallen: they do not heal, they do not wake. Open one up and you will find servo motors, energy cells, now and then an optic that a scholar will pay a year's wages for. Rustward's tinkers can rewrite a downed one's orders, given parts and patience. I have seen a saw drone tending Archive's garden. It still apologises.",
+      "Leave Warden Prime alone.",
+    ],
+  },
+  {
+    key: 'iron_limbs', title: "A Tinker's Primer on Iron Limbs", author: 'Solder, a Hollow of Rustward', kind: 'technical',
+    value: 620, science: 2, factions: ['hollows', 'delvers', 'ironcoin'],
+    text: [
+      "You have lost an arm. Most do, eventually. Here is what we can do about it.",
+      "Scrap limbs: two struts, a pipe, a clamp and a claw. Cheap. Clumsy. They grip. A peg leg on a spring will carry you home. Standard limbs are Hollow work, built round a servo motor off a machine that no longer needs it: you will find them nearly as quick as flesh. Warden limbs are military. You will be stronger than you were, and you will frighten your friends.",
+      "What no limb does is bleed. Metal takes a blow as your arm would have, but its plating turns part of it, and no blade will ever take it off you. Beat it hard enough and it seizes; bring it to anyone with a repair kit and a little learning, and it moves again. It will not mend itself. Nor will you, where it is concerned.",
+      "Fitting needs a bench, or one of us, or a friend with steady hands. It comes off again the same way, and keeps its dents.",
+      "The best limbs in the waste are not ours at all. The machines of the foundries are jointed better than anything we build. Given an optic to study, a Sentinel's arm or a strider's leg can be cut down to fit a person. The Makers would not have approved. The Makers are dead.",
+    ],
+  },
+  {
+    key: 'leaf_ledger', title: 'The Leaf, the Dust and the Red', author: 'Maro, grower to the Burnt King', kind: 'ledger',
+    value: 260, science: 1, factions: ['scorched'],
+    text: [
+      "Kept at Deepleaf for the King's accounts. The margins are mine.",
+      "Dreamleaf: wet ground, rich ground, the Mire's own. Three bundles cured with resin make two smokes, and a smoke sells for twice the leaf. The pain goes a long way off. So does your aim. The mild one, the Covenant's priests call it the worst.",
+      "Glowcap: damp shade, poor soil, and they grow at night, so we pick them at night. Four caps ground fine make a twist of glowdust. Runners and duellists buy it for the quick feet and the sharp eyes. They come back for it when their hands start to shake. They always come back.",
+      "Bloodthorn: the Karuk's weed, heat and sand and no water. Boil three pods down in a cup of grog and you have redrage. For an hour a man is stronger than he is and cannot feel a knife. After that he feels all of them. The Reavers drink it before a raid. The King does not allow it in Mudwater.",
+      "On the Ember road: the Covenant stops everything that moves and turns out every pack. The flat packs pass, mostly. The ones who try to bribe a Flamebearer pass rarely. Lose a mule-load, not a runner.",
+    ],
+  },
+  {
+    key: 'burning_leaf', title: 'On the Burning of the Leaf', author: 'Inquisitor Hesper of Cinderhold', kind: 'scripture',
+    value: 90, science: 0, factions: ['ember'],
+    text: [
+      "The Ember gave the faithful clear eyes to see the unclean, and strong hands to sweep the hearth. The leaf clouds the eyes. The dust makes the hands shake. The red syrup of the swamp makes men into beasts that do not feel the flame. All three are the Burnt King's, and the Burnt King is the Ember's enemy.",
+      "Therefore every road of the Covenant is watched, and every pack upon it opened. The traveller with nothing to hide has nothing to fear. The traveller who offers silver to a Flamebearer has shown us what he hides.",
+      "What is found is carried to the watch house and burned before the Pyre on the holy days. The carrier pays for the Ember's trouble, or labours for it. The unrepentant burn with the leaf.",
+      "Pity the ones who crave. The craving is the leaf's hook in the soul. Deny it three days and it loosens. Feed it once and it tightens again.",
+    ],
+  },
 ];
 
 export const BOOK: Record<string, LoreBook> = Object.fromEntries(BOOKS.map((b) => [b.key, b]));

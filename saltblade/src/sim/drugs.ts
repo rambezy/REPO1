@@ -82,7 +82,7 @@ export function takeDrug(c: Char, grid: Grid, it: Item, quiet = false): string |
   it.n--;
   if (it.n <= 0) grid.remove(it);
   S.fx.burst(d.puff, c.x, c.y + 1.55, c.z, d.puff === 'embers' ? 14 : 8);
-  S.fx.sound(d.puff === 'smoke' ? 'fire' : d.puff === 'embers' ? 'growl' : 'eat', c.x, c.z, 0.5);
+  S.fx.sound(d.puff === 'smoke' ? 'inhale' : key === 'glowdust' ? 'sniff' : key === 'redrage' ? 'gulp' : 'eat', c.x, c.z, 0.6);
   if (!quiet && c.faction === 'player') S.fx.notice(`${c.name} ${d.verb}.`, 'info');
   if (d.food && c.faction === 'player') S.fx.notice(`${c.name}'s stomach turns over.`, 'bad');
   // doing it in front of the law

@@ -9,9 +9,10 @@ import { FACTIONS, FACTION } from '../content/factions';
 import { ANIMAL } from '../content/animals';
 import { BOOK } from '../content/lore';
 import { UNIQUES } from '../content/uniques';
+import { NOTES, NOTE } from '../content/notes';
 import { on, emit } from '../core/events';
 
-let tab: 'places' | 'regions' | 'factions' | 'people' | 'creatures' | 'books' = 'places';
+let tab: 'places' | 'regions' | 'factions' | 'people' | 'creatures' | 'books' | 'notes' = 'places';
 
 export function setupCodex() {
   on('region:enter', (r: number) => banner(r));
@@ -38,7 +39,7 @@ export function openCodex() {
     const W = S.W;
     w.body.innerHTML = '';
     const tabs = h('div', { class: 'ftabs' });
-    for (const [k, label] of [['places', 'Places'], ['regions', 'Regions'], ['factions', 'Factions'], ['people', 'People'], ['creatures', 'Creatures'], ['books', 'Books']] as const) {
+    for (const [k, label] of [['places', 'Places'], ['regions', 'Regions'], ['factions', 'Factions'], ['people', 'People'], ['creatures', 'Creatures'], ['books', 'Books'], ['notes', 'Field notes']] as const) {
       const b = h('button', { class: 'ftab' + (tab === k ? ' on' : '') }, label);
       b.onclick = () => { tab = k; render(); };
       tabs.appendChild(b);
@@ -81,6 +82,10 @@ export function openCodex() {
       const seen: string[] = W.flags.beastsSeen ?? [];
       for (const k of seen) { const a = ANIMAL[k]; if (a) entry(a.name, a.diet, a.desc); }
       if (!seen.length) body.appendChild(h('p', { class: 'dim' }, 'Nothing has crossed your path yet.'));
+    } else if (tab === 'notes') {
+      const got: string[] = W.flags.notes ?? [];
+      for (const k of got) { const n = NOTE[k]; if (n) entry(n.title, '', n.text); }
+      if (got.length < NOTES.length) body.appendChild(h('p', { class: 'dim' }, got.length ? 'More of the waste\'s harder trades are waiting to be learned.' : 'Notes on the waste\'s harder trades (machines, iron limbs, drugs and the law) are written here as your people run into them.'));
     } else {
       const read = new Set<string>();
       for (const c of W.playerChars()) for (const k of c.mem.read ?? []) read.add(k);

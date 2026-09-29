@@ -62,6 +62,14 @@ export function setupHints() {
   on('ui:build', () => hint('build', 'Building', 'Place a construction site, then right-click it with someone selected to <b>Build</b>. Materials come from nearby storage or your packs. You cannot build inside towns, except furniture in a house of your own.'));
 }
 
+/** Writes a field note into the Codex (once) and points at it. */
+function note(key: string, title: string, text: string) {
+  const got: string[] = (S.W.flags.notes ??= []);
+  if (got.includes(key)) return;
+  got.push(key);
+  hint('note_' + key, title, `${text} <span class="dim">(Codex, <b>K</b>: Field notes.)</span>`);
+}
+
 /** Checks for situations worth a hint, every couple of seconds. */
 export function tickHints(dt: number) {
   if (G.mode !== 'play') return;
@@ -77,7 +85,15 @@ export function tickHints(dt: number) {
     if (c.load() > 1) hint('load', 'Overloaded', `${c.name} is carrying too much and slows down. Heavy loads train strength, though.`);
     if (Object.values(c.bounty).some((v) => v > 0)) hint('wanted', 'Wanted', 'Someone saw a crime. Guards of that faction will try to arrest your people. Pay the bounty to a guard, lie low, or fight.');
     if (c.shackled) hint('shackles', 'Shackles', 'Shackled people move slowly. Select them and right-click themselves (or a friend) to <b>pick the shackles</b>. Better when nobody is looking.');
+    // the harder trades
+    const b = c.body;
+    if ([3, 4, 5, 6].some((l) => !b.has(l)) || c.inv.first((d) => !!d.limb) || c.eq.back?.inv?.first((d) => !!d.limb)) note('limbs', 'Iron limbs', 'A lost limb can be replaced with a <b>prosthetic</b>: fit it from the pack (<b>I</b>, right-click it) near a Robotics Bench or a robotics shop. Metal never bleeds; when it is wrecked, a <b>repair kit</b> mends it.');
+    if ([3, 4, 5, 6].some((l) => b.isProst(l) && b.hp[l] <= 0)) hint('wrecked', 'Wrecked limb', `${c.name}'s prosthetic is wrecked. Right-click them and choose <b>First aid</b> with a repair kit or solder in someone's pack.`);
+    if (c.mem.high || c.mem.habit || c.inv.first((d) => !!d.drug) || c.eq.back?.inv?.first((d) => !!d.drug)) note('drugs', 'Leaf, dust and rage', 'Drugs are taken from the pack (<b>I</b>, right-click). Each lifts some skills for a few hours, and may crash after. Every dose feeds a <b>habit</b>, and an unfed habit turns to withdrawal. The <b>Covenant</b> arrests those who carry it.');
+    if (c.mem.craving) hint('craving', 'Withdrawal', `${c.name} is craving. Withdrawal takes dexterity, eyes and strength until it is fed, or until the habit fades over some days. A badly hooked one will take what is in the pack.`);
   }
+  if (W.flags.searched) note('law', 'The Covenant\'s law', 'The Covenant searched your packs. Their patrols stop travellers <b>once a day</b>. A <b>smuggler pack</b> hides most of what is in it; a bribe sometimes works. What they take goes to their watch house chest.');
+  if (S.T.sites.some((s) => s.kind === 'foundry' && W.discovered.has(s.id)) || W.flags.salvaged) note('machines', 'The Old Machines', 'The Old Machines guard the Makers\' <b>foundries</b>. They fire beams and do not heal. A downed machine can be <b>salvaged</b> for parts or, with Robotics, <b>reprogrammed</b> to fight for you (right-click it).');
   const site = G.T.siteAt(G.cam.target.x, G.cam.target.z, 20);
   if (site?.kind === 'town' && W.discovered.has(site.id)) hint('town', 'Towns', 'Right-click shopkeepers and barkeeps to <b>trade</b>. Stealing or fighting in town is a crime if seen. Rest in a bed to heal faster. Some towns have houses <b>for sale</b>: right-click the sign by the door.');
   if (S.clock.isNight) hint('night', 'Night', 'Sight is shorter at night: a good time to <b>sneak</b> (T). Thieves and cannibals think so too.');

@@ -221,6 +221,27 @@ const W: Record<string, [number, number, Fx]> = {
     for (let i = 0; i < 6; i++) click(o, t + rnd(0.01, 0.22), rnd(3500, 7000), rnd(0.1, 0.3));
     return 0.55;
   }],
+  // ---- the waste's drugs
+  inhale: [0.4, 0.08, (o, t) => {
+    // a long drag, held, and let out slow
+    hiss(o, t, 'bandpass', 900, 1500, 0.25, 0.5, 1.6, 1.2);
+    hiss(o, t + 1.1, 'bandpass', 1300, 600, 0.05, 0.9, 1.2, 0.9);
+    return 2.1;
+  }],
+  sniff: [0.4, 0.06, (o, t) => {
+    // two sharp sniffs and a breath
+    hiss(o, t, 'highpass', 3000, 3600, 0.01, 0.12, 2.2, 0.8);
+    hiss(o, t + 0.2, 'highpass', 3200, 3800, 0.01, 0.16, 2.6, 0.8);
+    hiss(o, t + 0.5, 'bandpass', 1200, 900, 0.05, 0.35, 0.9, 1);
+    return 0.9;
+  }],
+  gulp: [0.45, 0.06, (o, t) => {
+    // a stopper, then the syrup going down in two swallows
+    tone(o, t, 'sine', 900, 400, 0.002, 0.05, 0.3);
+    for (const k of [0.25, 0.55]) tone(o, t + k, 'sine', rnd(140, 180), rnd(90, 110), 0.01, 0.12, 0.55);
+    hiss(o, t + 0.8, 'bandpass', 600, 400, 0.02, 0.3, 0.8, 1.5);
+    return 1.1;
+  }],
   servo: [0.4, 0.06, (o, t) => {
     // a prosthetic limb driving through a swing, and the click as it seats
     const d = rnd(0.11, 0.18);

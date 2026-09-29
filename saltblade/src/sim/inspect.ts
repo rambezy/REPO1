@@ -72,6 +72,7 @@ export function search(inspector: Char, thorough = false): Search {
     if (chest?.inv && !chest.inv.put(x.it)) chest.inv.add(x.it.id, x.it.n, x.it.q);
   }
   if (found.size) S.fx.sound(chest ? 'door' : 'fire', inspector.x, inspector.z, 0.7);
+  S.W.flags.searched = (S.W.flags.searched ?? 0) + 1;
   return { found: [...found], value, missed, chest: !!chest };
 }
 

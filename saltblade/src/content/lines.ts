@@ -152,6 +152,19 @@ function direction(x: number, z: number, tx: number, tz: number) {
 }
 
 export const RUMOURS = [
+  'The machines in the Rust are building again. A Delver swore she saw a foundry\'s chimney smoking, a thousand years after the last Maker died.',
+  'A Sentinel stopped me on the Rust road and asked for my permit. I ran. It followed me for an hour, reading me my rights.',
+  'Knock a saw drone down and a clever hand can rewrite it. I\'ve seen one pruning a Rustward garden, polite as you like.',
+  'Warbots don\'t miss. If you hear a hum like a hive and see a red eye, get behind stone.',
+  'They say Warden Prime still keeps the door of a Maker vault. Nothing has gone in for a thousand years. Nothing has come out.',
+  'Salvage a Sentinel and you might pull a whole arm out of it. A Rustward tinker can make it fit a person.',
+  'Lost a leg? A scrap leg costs less than a good sword, and it never bleeds. It rusts, mind.',
+  'A mercenary in Hardcoin has a Warden arm. Picked up an anvil with it to win a bet, and then threw it.',
+  'Glowdust is the drink of duellists now. Quick hands for an hour, then you shake like a wet dog until you find more.',
+  'The Karuk chew bloodthorn before a raid. Boil it down in grog and you get redrage. Nothing hurts. For an hour.',
+  'The Covenant stops every caravan on the Ember road and turns out the packs. Leaf burns. So do those carrying it.',
+  'A smuggler\'s pack sits flat against the back, and the Covenant\'s searchers mostly miss what\'s in it. Mostly.',
+  'Glowcaps grow in the dark and glow like the moon did. Plant them in damp ground and harvest by night.',
   'The Covenant and the Karuk are fighting again on the Field of Horns. When aren\'t they?',
   'A caravan went missing on the Salt Barrens. Chainhouse, I\'d wager.',
   'Somebody saw a light blinking on the Old Signal Tower. Nobody\'s been up there in a hundred years.',
