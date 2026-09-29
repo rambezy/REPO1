@@ -227,10 +227,11 @@ export function buildEncounterMap(ter: Terrain, enc: EncounterSpec | null): MapD
 
 export function startEncounterMap(ter: Terrain, enc: EncounterSpec | null) {
   const def = buildEncounterMap(ter, enc);
-  MAPS.encounter = def;
-  delete G.state.maps.encounter;
   if (enc?.once) G.state.flags['enc:' + enc.id] = true;
   import('./travel').then((t) => {
+    if (G.map) t.leaveMap();
+    MAPS.encounter = def;
+    delete G.state.maps.encounter;
     t.enterMap('encounter');
     if (enc && !enc.peaceful) {
       import('./combat').then((c) => setTimeout(() => c.startCombat(), 700));

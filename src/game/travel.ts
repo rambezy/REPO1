@@ -10,6 +10,7 @@ import { endCombat } from './combat';
 import { stopWalking } from './movement';
 import { fx } from '../render/fx';
 import { hexDist } from '../core/hex';
+import { closeWorldMap } from '../ui/worldmap';
 
 export function stashParty() {
   const m = G.map;
@@ -39,6 +40,7 @@ export function enterMap(id: string, entrance = 'default', opts: { restore?: boo
     return;
   }
   if (G.map && !opts.restore) leaveMap();
+  closeWorldMap();
   const firstVisit = !G.state.maps[id];
   const m = loadMap(id);
   G.map = m;

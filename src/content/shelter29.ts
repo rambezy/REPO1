@@ -145,7 +145,7 @@ defineMap({
     { proto: 'rat', at: 'R', count: 1 },
     { proto: 'rat', at: [27, 11] },
     { proto: 'rat', at: [11, 16] },
-    { proto: 'ratBig', at: [20, 17] },
+    { proto: 'rat', at: [20, 17] },
     { proto: 'rat', at: [26, 12] },
   ],
   onEnter: (c, first) => {

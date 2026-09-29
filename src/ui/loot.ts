@@ -103,6 +103,10 @@ async function move(st: Stack, dir: 'take' | 'put') {
       return;
     }
   }
+  if (dir === 'take' && !canCarry(st, n)) {
+    msg('You cannot carry that much.');
+    return;
+  }
   if (dir === 'take') transfer(otherInv(), p.inv, st, n, true);
   else transfer(p.inv, otherInv(), st, n, false);
   sfx('pickup');
@@ -131,9 +135,23 @@ function transfer(from: Stack[], to: Stack[], st: Stack, n: number, taking: bool
   else to.push(moved);
 }
 
+function canCarry(st: Stack, n: number): boolean {
+  const p = player();
+  const w = (ITEMS[st.id]?.weight ?? 0) * n;
+  return w <= 0 || inventoryWeight(p) + w <= carryWeight(p);
+}
+
 function takeAll() {
   const p = player();
-  for (const st of [...otherInv()]) transfer(otherInv(), p.inv, st, st.n, true);
+  let full = false;
+  for (const st of [...otherInv()]) {
+    if (!canCarry(st, st.n)) {
+      full = true;
+      continue;
+    }
+    transfer(otherInv(), p.inv, st, st.n, true);
+  }
+  if (full) msg('You cannot carry everything.');
   sfx('pickup');
   closeModal('loot');
 }

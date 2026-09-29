@@ -9,7 +9,8 @@ const port = 5200 + Math.floor(Math.random() * 300);
 const server = await createServer({ server: { port, strictPort: true }, logLevel: 'error' });
 await server.listen();
 const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+const mobile = process.argv[3] === 'mobile';
+const page = await browser.newPage(mobile ? { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : { viewport: { width: 1280, height: 800 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message + '\n' + e.stack));
 page.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('ERR_CERT')) errors.push('console: ' + m.text()); });
@@ -91,6 +92,61 @@ try {
     await wait(3000);
     console.log(JSON.stringify(await ev(() => ({ p: [G.state.player.q, G.state.player.r], combat: !!G.combat, path: G.state.player._path }))));
     await shot('c01');
+  }
+  if (scen === 'encounter') {
+    await ev(async () => { const t = await DF.travel(); t.exitToWorld(); });
+    await wait(500);
+    await ev(async () => { const w = await import('/src/game/world.ts'); const e = w.ENCOUNTERS.find((x) => x.id === 'raiders'); w.startEncounterMap('desert', e); });
+    await wait(1500);
+    await shot('e01-encounter');
+    console.log(JSON.stringify(await ev(() => ({ map: G.map?.def.id, combat: !!G.combat, n: G.map?.actors.length }))));
+    await ev(async () => { const c = await DF.combat(); if (G.combat) c.endCombat(); G.map.actors.forEach(a => { if (a.hostile) a.dead = true; }); });
+    await ev(async () => { const w = await import('/src/game/world.ts'); const e = w.ENCOUNTERS.find((x) => x.id === 'trader'); w.startEncounterMap('scrub', e); });
+    await wait(1500);
+    await shot('e02-trader');
+    await ev(async () => { const b = await import('/src/ui/barter.ts'); b.openBarter(G.map.actors.find(a => a.barter)); });
+    await wait(500);
+    await shot('e03-barter');
+    await ev(async () => { const cm = await import('/src/ui/common.ts'); cm.closeAllModals(); const l = await import('/src/ui/loot.ts'); l.openLoot({ kind: 'body', actor: G.map.actors.find(a => a.barter) }); });
+    await wait(400);
+    await shot('e04-loot');
+    await ev(async () => { const cm = await import('/src/ui/common.ts'); cm.closeAllModals(); });
+    // save & load round trip
+    const before = await ev(() => JSON.stringify([G.state.player.q, G.state.player.r, G.map.def.id, G.state.time]));
+    await ev(async () => { const s = await DF.save(); s.saveGame('1'); });
+    await ev(async () => { const s = await DF.save(); await s.loadGame('1'); });
+    await wait(800);
+    const after = await ev(() => JSON.stringify([G.state.player.q, G.state.player.r, G.map?.def.id, G.state.time]));
+    console.log('save/load', before, after);
+    await shot('e05-loaded');
+    // Night lighting
+    await ev(() => { G.state.time += 14 * 60; });
+    await wait(400);
+    await shot('e06-night');
+  }
+  if (scen === 'mobile') {
+    await shot('m01-shelter');
+    await ev(async () => { const d = await DF.dialogue(); d.openDialogue('warden', G.map.actors.find((a) => a.npc === 'warden')); });
+    await wait(300);
+    await shot('m02-dialog');
+    await ev(async () => { const cm = await import('/src/ui/common.ts'); cm.closeAllModals(); const i = await import('/src/ui/inventory.ts'); i.openInventory(); });
+    await wait(300);
+    await shot('m03-inv');
+    await ev(async () => { const cm = await import('/src/ui/common.ts'); cm.closeAllModals(); const i = await import('/src/ui/charscreen.ts'); i.openCharacter(); });
+    await wait(300);
+    await shot('m04-cha');
+    await ev(async () => { const cm = await import('/src/ui/common.ts'); cm.closeAllModals(); const t = await DF.travel(); t.exitToWorld(); });
+    await wait(500);
+    await shot('m05-world');
+  }
+  if (scen === 'create') {
+    await page.reload();
+    await wait(500);
+    await page.click('text=New Game');
+    await wait(200);
+    await page.click('text=Create your own');
+    await wait(400);
+    await shot('k01-create');
   }
   if (scen === 'start') {
     await shot('p01-shelter');

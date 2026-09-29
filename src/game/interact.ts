@@ -9,7 +9,7 @@ import { ctx, setSpeaker, bark } from './script';
 import { OBJ_SCRIPTS } from '../content/registry';
 import { PROTOS } from '../data/protos';
 import { ITEMS } from '../data/items';
-import { skill, stat, maxHp, isPlayer } from './character';
+import { skill, stat, maxHp, isPlayer, inventoryWeight, carryWeight } from './character';
 import { chance, rand } from '../core/rng';
 import { giveXp } from './progress';
 import { heal } from './effects';
@@ -28,6 +28,10 @@ async function approach(target: Hex, adjacent: boolean, then?: () => void, reach
   const token = ++busyToken;
   if (hexDist(p, target) <= reach && adjacent) {
     then?.();
+    return;
+  }
+  if (inventoryWeight(p) > carryWeight(p)) {
+    msg('You are carrying too much to move. Drop something.');
     return;
   }
   const path = pathTo(p, target, adjacent);
