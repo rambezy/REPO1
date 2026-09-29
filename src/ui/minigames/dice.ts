@@ -8,6 +8,7 @@ import { addXp } from '../../systems/stats';
 import { sfx } from '../../audio/sfx';
 import { notify, esc } from '../notify';
 import { emit } from '../../engine/events';
+import './minigames.css';
 
 // ---------- scoring ----------
 
@@ -96,6 +97,7 @@ export function playDice(opp: DiceOpponent): Promise<number> {
     let phase: 'bet' | 'throw' | 'select' | 'opp' | 'over' = 'bet';
     let log = '';
     let resolved = false;
+    let throws = 0, shownThrow = 0; // to tumble each fresh throw once
     const finish = (net: number, close: () => void) => {
       if (resolved) return;
       resolved = true;
@@ -103,29 +105,38 @@ export function playDice(opp: DiceOpponent): Promise<number> {
       resolve(net);
     };
     openScreen('dice', (close) => {
-      const m = el('div', { cls: 'vellum mg' });
+      const m = el('div', { cls: 'vellum mg mg-dice' });
       const header = el('h2', { html: `Dice with ${esc(opp.name)}` });
       const help = el('p', { cls: 'help', html: 'Throw, then click the scoring dice you want to keep. Keep throwing to build your score, or bank it. Throw nothing that scores, and you lose the turn. Ones are 100, fives 50; three of a kind is the face ×100 (three ones: 1000); each extra die doubles it; 1-5 = 500, 2-6 = 750, 1-6 = 1500.' });
       const board = el('div', { cls: 'score-table' });
       const logEl = el('div', { cls: 'dice-log' });
-      const row = el('div', { cls: 'dice-row' });
-      const aside = el('div', { cls: 'dice-row' });
+      const row = el('div', { cls: 'dice-row dice-felt' });
+      const aside = el('div', { cls: 'dice-row dice-kept' });
+      const tray = el('div', { cls: 'dice-tray' });
+      tray.append(aside, row);
       const actions = el('div', { cls: 'actions' });
       actions.style.justifyContent = 'center';
-      m.append(header, help, board, aside, row, logEl, actions);
+      m.append(header, help, board, tray, logEl, actions);
       const dieEl = (v: number, extra = '') => {
         const d = el('div', { cls: 'die ' + extra });
         for (let i = 0; i < 9; i++) d.append(el('i', { cls: (PIPS[v] || []).includes(i) ? 'on' : '' }));
         return d;
       };
       const render = () => {
-        board.innerHTML = `<span>You</span><span>${scores[0]}</span><span></span><span>${esc(opp.name)}</span><span>${scores[1]}</span><span></span><span>This turn</span><span>${turnScore}</span><span>target ${target} · pot ${bet * 2} g</span>`;
+        const playing = phase !== 'bet' && phase !== 'over';
+        const now = (who: number) => (playing && turn === who ? ' class="now"' : '');
+        board.innerHTML = `<span${now(0)}>You</span><span>${scores[0]}</span><span></span><span${now(1)}>${esc(opp.name)}</span><span>${scores[1]}</span><span></span><span>This turn</span><span>${turnScore}</span><span>target ${target} · pot ${bet * 2} g</span>`;
         logEl.innerHTML = log;
         aside.innerHTML = '';
         for (const v of setAside) aside.append(dieEl(v, 'set'));
         row.innerHTML = '';
+        const fresh = throws !== shownThrow;
+        shownThrow = throws;
+        const kinds = turn === 0 ? myKinds : oppKinds;
+        tray.classList.toggle('pick', phase === 'select' && turn === 0);
         dice.forEach((v, i) => {
-          const d = dieEl(v, (selected.has(i) ? 'held' : '') + (phase === 'throw' ? ' roll' : ''));
+          const kind = kinds[i] && kinds[i] !== 'plain' ? ' ' + kinds[i] : '';
+          const d = dieEl(v, (selected.has(i) ? 'held' : '') + (phase === 'throw' || fresh ? ' roll' : '') + kind);
           d.addEventListener('click', () => {
             if (phase !== 'select' || turn !== 0) return;
             if (selected.has(i)) selected.delete(i); else selected.add(i);
@@ -161,6 +172,7 @@ export function playDice(opp: DiceOpponent): Promise<number> {
         dice = [];
         for (let i = 0; i < available; i++) dice.push(rollDie(kinds[i] || 'plain'));
         selected.clear();
+        throws++;
         sfx('dice');
       };
       const startTurn = () => {

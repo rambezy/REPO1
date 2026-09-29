@@ -69,33 +69,79 @@ export class MapBuilder {
   }
 
   road(points: [number, number][], width = 2) {
-    this.path(points, width, T.ROAD, 0.7, true, [T.GRASS, T.FOREST, T.MEADOW, T.DIRT, T.FIELD, T.WHEAT, T.SAND, T.MUD, T.ASH, T.VEG, T.ROAD]);
-    // bridges only where the road actually crosses water (short runs along the centreline)
+    const wobble = 0.7;
+    this.path(points, width, T.ROAD, wobble, true, [T.GRASS, T.FOREST, T.MEADOW, T.DIRT, T.FIELD, T.WHEAT, T.SAND, T.MUD, T.ASH, T.VEG, T.ROAD]);
+    // Bridges carry the road itself over the water: the same wobbly footprint
+    // the road was painted with, over short crossings only (a road that runs
+    // beside a river never becomes a boardwalk). Decks that come out nearly
+    // rectangular are squared off.
+    const r = width / 2;
+    const wet = (t: number) => t === T.WATER || t === T.DEEP;
+    const placed = new Map<number, number>();
     for (let i = 0; i < points.length - 1; i++) {
       const [x0, y0] = points[i], [x1, y1] = points[i + 1];
       const len = Math.hypot(x1 - x0, y1 - y0);
       const steps = Math.max(1, Math.ceil(len * 2));
-      const horizontal = Math.abs(x1 - x0) >= Math.abs(y1 - y0);
-      let run: [number, number][] = [];
-      const flush = () => {
-        const uniq = new Set(run.map(([x, y]) => x + ',' + y));
-        if (run.length && uniq.size <= 9) {
-          for (const [cx, cy] of run) for (let d = -Math.ceil(width / 2); d <= Math.ceil(width / 2); d++) {
-            const x = horizontal ? cx : cx + d, y = horizontal ? cy + d : cy;
-            const t = this.get(x, y);
-            if (t === T.WATER || t === T.DEEP || t === T.SAND) { this.set(x, y, horizontal ? T.BRIDGE : T.BRIDGE_V); this.reserve(x, y, 1, 1); }
+      const kind = Math.abs(x1 - x0) >= Math.abs(y1 - y0) ? T.BRIDGE : T.BRIDGE_V;
+      const nx = -(y1 - y0) / (len || 1), ny = (x1 - x0) / (len || 1);
+      const centre = (s: number): [number, number] => {
+        const k = s / steps;
+        const off = (valueNoise((x0 + (x1 - x0) * k) * 0.15, (y0 + (y1 - y0) * k) * 0.15, this.map.seed + 3) - 0.5) * 2 * wobble;
+        return [x0 + (x1 - x0) * k + nx * off, y0 + (y1 - y0) * k + ny * off];
+      };
+      const wetAt = (s: number) => { const [cx, cy] = centre(s); return wet(this.get(Math.floor(cx), Math.floor(cy))); };
+      let s = 0;
+      while (s <= steps) {
+        if (!wetAt(s)) { s++; continue; }
+        const start = s;
+        let e = s;
+        while (e + 1 <= steps && wetAt(e + 1)) e++;
+        s = e + 1;
+        const [ax, ay] = centre(start), [bx, by] = centre(e);
+        if (Math.hypot(bx - ax, by - ay) > 8) continue;
+        for (let q = Math.max(0, start - 3); q <= Math.min(steps, e + 3); q++) {
+          const [cx, cy] = centre(q);
+          for (let y = Math.floor(cy - r); y <= Math.ceil(cy + r); y++) for (let x = Math.floor(cx - r); x <= Math.ceil(cx + r); x++) {
+            if ((x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2 > r * r + 0.3) continue;
+            if (!wet(this.get(x, y))) continue;
+            this.set(x, y, kind);
+            placed.set(y * this.map.w + x, kind);
           }
         }
-        run = [];
-      };
-      for (let s2 = 0; s2 <= steps; s2++) {
-        const k = s2 / steps;
-        const cx = Math.round(x0 + (x1 - x0) * k), cy = Math.round(y0 + (y1 - y0) * k);
-        const t = this.get(cx, cy);
-        if (t === T.WATER || t === T.DEEP) run.push([cx, cy]);
-        else flush();
       }
-      flush();
+    }
+    // square off each deck when it nearly fills its bounding box
+    const seen = new Set<number>();
+    for (const [start, kind] of placed) {
+      if (seen.has(start)) continue;
+      const cells: number[] = [];
+      const stack = [start];
+      seen.add(start);
+      while (stack.length) {
+        const k = stack.pop()!;
+        cells.push(k);
+        const x = k % this.map.w, y = Math.floor(k / this.map.w);
+        for (const n of [k - 1, k + 1, k - this.map.w, k + this.map.w]) {
+          const nx2 = n % this.map.w;
+          if (Math.abs(nx2 - x) > 1 || !placed.has(n) || seen.has(n)) continue;
+          seen.add(n);
+          stack.push(n);
+        }
+        void y;
+      }
+      const xs = cells.map((k) => k % this.map.w), ys = cells.map((k) => Math.floor(k / this.map.w));
+      const bx0 = Math.min(...xs), bx1 = Math.max(...xs), by0 = Math.min(...ys), by1 = Math.max(...ys);
+      const area = (bx1 - bx0 + 1) * (by1 - by0 + 1);
+      if (cells.length / area >= 0.6 && area <= 24) {
+        for (let y = by0; y <= by1; y++) for (let x = bx0; x <= bx1; x++) {
+          const t = this.get(x, y);
+          if (wet(t) || t === T.SAND || t === T.ROAD) this.set(x, y, kind);
+        }
+      }
+      for (let y = by0; y <= by1; y++) for (let x = bx0; x <= bx1; x++) {
+        const t = this.get(x, y);
+        if (t === T.BRIDGE || t === T.BRIDGE_V) this.reserve(x, y, 1, 1);
+      }
     }
   }
 

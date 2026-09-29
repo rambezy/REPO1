@@ -43,7 +43,7 @@ export const ROADS: [number, number][][] = [
   // war camp spur
   [[156, 35], [164, 42]],
   // Linden Hill east gate -> Priory
-  [[132, 68], [142, 76], [152, 88], [166, 98], [180, 102]],
+  [[132, 68], [142, 76], [146, 84], [157, 86], [166, 98], [180, 102]],
   // Linden Hill south gate -> crossroads -> forest
   [[110, 89], [114, 104], [118, 118], [119, 128], [118, 140], [124, 150], [134, 152]],
   // crossroads -> Hollowbrook (southern way)

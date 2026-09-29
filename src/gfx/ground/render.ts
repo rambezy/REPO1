@@ -148,6 +148,11 @@ const C = {
   soilFaceLit: hexPack('#5a4430'),
   bankTop: hexPack('#5c4a36'),
   bankBot: hexPack('#2a2219'),
+  beamLit: hexPack('#8a6c4c'),
+  beamD: hexPack('#4a3624'),
+  beamLine: hexPack('#22180f'),
+  postLit: hexPack('#a08058'),
+  postD: hexPack('#5a4230'),
   bridgeBeam: hexPack('#4a3a2c'),
   bridgeBeamD: hexPack('#261c14'),
   shallow: hexPack('#5d8a7c'),
@@ -367,8 +372,28 @@ export function renderGround(src: GroundSource, ccx: number, ccy: number, tr: nu
         case T.FLAGSTONE: c = samp(flagTex, gx, gy); natural = false; break;
         case T.WOOD: c = samp(tx.wood, gx, gy); natural = false; break;
         case T.STRAW: c = samp(tx.straw, gx, gy); natural = false; break;
-        case T.BRIDGE: c = sampT(tx.bridge, gx, gy); natural = false; break;
-        case T.BRIDGE_V: c = samp(tx.bridge, gx, gy); natural = false; break;
+        case T.BRIDGE: case T.BRIDGE_V: {
+          natural = false;
+          // deck planks laid across the way, a side timber with posts along
+          // each open edge, and the near timber's shadow on the deck
+          const horiz = t === T.BRIDGE;
+          c = horiz ? sampT(tx.bridge, gx, gy) : samp(tx.bridge, gx, gy);
+          const cx = Math.floor(wx / TS);
+          const lx = wx - cx * TS;
+          const isB = (n: number) => n === T.BRIDGE || n === T.BRIDGE_V;
+          const across = horiz ? ly : lx, along = horiz ? wx : wy;
+          const openLo = !isB(horiz ? cellAt(src, cx, cy - 1) : cellAt(src, cx - 1, cy));
+          const openHi = !isB(horiz ? cellAt(src, cx, cy + 1) : cellAt(src, cx + 1, cy));
+          const bw = 2.4;
+          const e = openLo && across < bw ? across : openHi && across > TS - bw ? TS - across : -1;
+          if (e >= 0) {
+            const post = (((along % 11) + 11) % 11) < 2.4;
+            const f = e / bw;
+            c = post ? lerpC(C.postLit, C.postD, f * 0.7) : lerpC(C.beamLit, C.beamD, Math.min(1, Math.abs(f - 0.4) * 1.6));
+            if (e < 0.35 || e > bw - 0.3) c = C.beamLine;
+          } else if (openLo && across < bw + 1) c = shadeC(c, 0.72 + 0.28 * (across - bw));
+          break;
+        }
         case T.CARPET: {
           natural = false;
           const cx = Math.floor(wx / TS);
