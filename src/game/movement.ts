@@ -159,10 +159,14 @@ export function isMoving(a: Actor): boolean {
   return !!a._move || !!(a._path && a._path.length);
 }
 
+let lastFollow = 0;
+
 export function followParty() {
   // Companions trail the player when not in combat.
   const m = G.map;
   if (!m || G.combat) return;
+  if (G.now - lastFollow < 400) return;
+  lastFollow = G.now;
   const p = player();
   for (const c of m.actors) {
     if (!c.companion || c.dead || isMoving(c)) continue;

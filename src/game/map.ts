@@ -8,6 +8,7 @@ import { makeActor } from './actors';
 import { ctx } from './script';
 import { rand } from '../core/rng';
 
+const EMPTY: MapObject[] = [];
 export const T_VOID = 0;
 export const T_FLOOR = 1;
 export const T_WALL = 2;
@@ -150,13 +151,33 @@ export class MapRuntime {
     return list[Math.min(nth, list.length - 1)];
   }
 
+  private objIndex: Map<number, MapObject[]> | null = null;
+  private objIndexOf: MapObject[] | null = null;
+  private objIndexLen = -1;
+
+  /** Objects on a cell (including hidden ones), via a lazily rebuilt index. */
+  private cellObjects(q: number, r: number): MapObject[] {
+    if (!this.objIndex || this.objIndexOf !== this.objects || this.objIndexLen !== this.objects.length) {
+      this.objIndex = new Map();
+      for (const o of this.objects) {
+        const k = o.r * this.w + o.q;
+        const l = this.objIndex.get(k);
+        if (l) l.push(o);
+        else this.objIndex.set(k, [o]);
+      }
+      this.objIndexOf = this.objects;
+      this.objIndexLen = this.objects.length;
+    }
+    return this.objIndex.get(r * this.w + q) ?? EMPTY;
+  }
+
   objectAt(q: number, r: number): MapObject | undefined {
-    for (const o of this.objects) if (o.q === q && o.r === r && !o.hidden) return o;
+    for (const o of this.cellObjects(q, r)) if (o.q === q && o.r === r && !o.hidden) return o;
     return undefined;
   }
 
   objectsAt(q: number, r: number): MapObject[] {
-    return this.objects.filter((o) => o.q === q && o.r === r && !o.hidden);
+    return this.cellObjects(q, r).filter((o) => o.q === q && o.r === r && !o.hidden);
   }
 
   actorAt(q: number, r: number, includeDead = false): Actor | undefined {
@@ -173,7 +194,7 @@ export class MapRuntime {
   /** Static passability, ignoring actors. */
   walkable(q: number, r: number, opts: { ignoreDoors?: boolean } = {}): boolean {
     if (this.tileAt(q, r) !== T_FLOOR) return false;
-    for (const o of this.objects) {
+    for (const o of this.cellObjects(q, r)) {
       if (o.q !== q || o.r !== r || o.hidden) continue;
       const isDoor = o.kind === 'door' || o.kind === 'hatch' || o.kind === 'gate';
       if (isDoor) {
@@ -193,7 +214,7 @@ export class MapRuntime {
   blocksSight(q: number, r: number): boolean {
     const t = this.tileAt(q, r);
     if (t === T_WALL || t === T_VOID) return true;
-    for (const o of this.objects) {
+    for (const o of this.cellObjects(q, r)) {
       if (o.q === q && o.r === r && !o.hidden) {
         if ((o.kind === 'door' || o.kind === 'hatch' || o.kind === 'gate') && !o.open) return true;
         if (o.kind === 'rockwall') return true;
