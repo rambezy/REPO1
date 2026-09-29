@@ -242,7 +242,8 @@ export function runOrder(c: Char, dt: number) {
     case 'operate': {
       const ob = S.W.objs.get(o.obj);
       if (!ob) { c.order = null; return; }
-      const job = { k: o.k === 'operate' ? 'operate' : o.k, obj: ob.id, label: '' } as any;
+      // the work a thing is for (farm a field, research at a bench, man a turret...), not only machines
+      const job = { k: o.k === 'operate' ? ob.data?.job ?? 'operate' : o.k, obj: ob.id, label: o.k === 'operate' ? ob.data?.jobLabel ?? '' : '' } as any;
       if (!c.jobs.some((j) => j.obj === ob.id)) c.jobs.unshift(job);
       c.order = null;
       return;

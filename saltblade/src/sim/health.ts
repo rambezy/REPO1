@@ -86,14 +86,18 @@ export function tickHealth(c: Char, dt: number) {
   // bleeding
   let bleeding = 0;
   if (!b.robotic) {
-    const clot = (0.004 + c.skill('toughness') * 0.00005) * dt;
+    // the unconscious bleed slower and clot sooner (a slow heart), and everyone bleeds slower as the
+    // blood runs low: a beaten band mostly wakes up again, hurt, unless the wounds are dreadful
+    const out = c.status === 'ko';
+    const clot = (0.004 + c.skill('toughness') * 0.00005) * dt * (out ? 2.5 : 1);
     for (let l = 0; l < 7; l++) {
       if (b.bleed[l] <= 0) continue;
       const k = b.treated[l] > 0 ? 6 : 1;
       b.bleed[l] = Math.max(0, b.bleed[l] - clot * k);
       bleeding += b.bleed[l];
     }
-    b.blood -= bleeding * dt * (race?.bleed ?? 1);
+    const pressure = 0.35 + 0.65 * Math.max(0, b.blood / b.bloodMax);
+    b.blood -= bleeding * dt * (race?.bleed ?? 1) * (out ? 0.35 : 1) * pressure;
     if (bleeding < 0.001 && c.hunger > 40 && b.blood < b.bloodMax) b.blood = Math.min(b.bloodMax, b.blood + 5 * gameH);
   }
   // healing

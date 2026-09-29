@@ -19,6 +19,7 @@ import { LI } from '../sim/body';
 import { DAY, HOUR } from '../sim/clock';
 import { Site } from '../world/terrain';
 import { ITEM } from '../content/items';
+import { makeItem } from '../sim/inventory';
 import { World } from '../sim/world';
 import { postBounties } from '../sim/bounties';
 import { markHousesForSale } from '../sim/property';
@@ -156,6 +157,12 @@ export function makePlayerPerson(p: ScenarioPerson, who: { name: string; look: L
   c.name = who.name.trim() || c.name;
   c.money = 0;
   for (const [id, n] of p.kit ?? []) if (ITEM[id]) { const left = c.inv.add(id, n); if (left && c.eq.back?.inv) c.eq.back.inv.add(id, left); }
+  // a weapon the scenario promises: in hand, whatever the loadout rolled going to the spare slot or the pack
+  if (p.weapon && ITEM[p.weapon] && c.eq.weapon?.id !== p.weapon) {
+    const had = c.eq.weapon;
+    c.eq.weapon = makeItem(p.weapon, 1, 1 + Math.floor(rng.next() * 2));
+    if (had) { if (!c.eq.weapon2) c.eq.weapon2 = had; else if (!c.inv.put(had)) c.eq.back?.inv?.put(had); }
+  }
   for (const l of p.lost ?? []) { c.body.lost |= 1 << l; c.body.hp[l] = 0; }
   if (p.hurt) for (let l = 0; l < 7; l++) if (c.body.has(l)) c.body.hp[l] = Math.round(c.body.hp[l] * (1 - p.hurt * (l <= LI.chest ? 0.7 : 1)));
   if (p.hurt) c.body.bleed[LI.chest] = 0.05;

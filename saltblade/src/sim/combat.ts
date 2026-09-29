@@ -207,6 +207,9 @@ function GRADESMUL(a: Char) {
 }
 
 /** Applies damage to a body part after armour and toughness. */
+/** The most one body part can bleed, in blood a second. */
+const BLEED_CAP = 0.9;
+
 export function applyDamage(d: Char, limb: number, cut: number, blunt: number, by: Char | null, bleedMul = 1, fx = true, pierce = 0) {
   const b = d.body;
   const [ac, ab] = d.armourAt(limb);
@@ -218,7 +221,8 @@ export function applyDamage(d: Char, limb: number, cut: number, blunt: number, b
   ct *= tough; bl *= tough;
   const dmg = ct + bl;
   b.hp[limb] -= dmg;
-  if (!b.robotic) b.bleed[limb] += ct * 0.013 * bleedMul * (RACE[d.look.race]?.bleed ?? 1) * (d.animal ? ANIMAL[d.animal].bleedMul ?? 1 : 1);
+  // wounds on one part run together: past a point more cuts there tear the same flesh, not new veins
+  if (!b.robotic) b.bleed[limb] = Math.min(BLEED_CAP, b.bleed[limb] + ct * 0.013 * bleedMul * (RACE[d.look.race]?.bleed ?? 1) * (d.animal ? ANIMAL[d.animal].bleedMul ?? 1 : 1));
   // toughness grows from punishment
   if (!d.animal && dmg > 2) train(d, 'toughness', dmg / 14, by ? versus(d.skill('toughness'), by.skill('strength') + 10) : 1);
   // severing: a limb beaten past its maximum can come off

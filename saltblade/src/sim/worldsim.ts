@@ -18,6 +18,7 @@ import { anchors } from './sim';
 import { tickShops } from './shops';
 import { kill, knockOut } from './health';
 import { WORLD } from '../world/consts';
+import { HOUR } from './clock';
 
 const rng = new RNG((Date.now() ^ 4242) >>> 0); // a different world story each game
 let t = 0;
@@ -109,12 +110,15 @@ function randomPointIn(reg: string): [number, number] | null {
   return null;
 }
 
-function spawn(spec: Spec): Squad | null {
+/** Sends a squad of a kind into the world: on its roads or in its lands, or (`at`) from a given place along a given route. */
+function spawn(spec: Spec, at?: { x: number; z: number; route: number[]; cap?: number }): Squad | null {
   const W = S.W;
   let x = 0, z = 0;
   let route: number[] | null = null;
   let dest = 0;
-  if (spec.from) {
+  if (at) {
+    x = at.x; z = at.z; route = at.route;
+  } else if (spec.from) {
     const fromKey = rng.pick(spec.from), toKey = rng.pick(spec.to!.filter((k) => k !== fromKey));
     const a = siteOf(fromKey), b = siteOf(toKey);
     if (!a || !b) return null;
@@ -144,10 +148,12 @@ function spawn(spec: Spec): Squad | null {
   sq.ri = 0;
   sq.born = S.clock.t;
   sq.ttl = S.clock.t + 86400 * rng.range(1.5, 3);
-  sq.task = dest ? { k: 'travel', to: dest, x: 0, z: 0, then: 'despawn' } : { k: 'wander', cx: x, cz: z, r: 900 };
+  sq.task = dest ? { k: 'travel', to: dest, x: 0, z: 0, then: 'despawn' }
+    : at ? { k: 'travel', to: 0, x: route[route.length - 2], z: route[route.length - 1], then: 'despawn' }
+    : { k: 'wander', cx: x, cz: z, r: 900 };
   sq.flags.spec = spec.key;
   W.addSquad(sq);
-  const n = rng.int(spec.n[0], spec.n[1]);
+  const n = Math.min(rng.int(spec.n[0], spec.n[1]), at?.cap ?? 99);
   for (let i = 0; i < n; i++) {
     const c: Char = spec.species ? makeAnimal(W, spec.species, rng, 1 + REGIONS[S.T.regionIdAt(x, z)].danger * 0.07) : makePerson(W, { faction: spec.faction, role: spec.role }, rng);
     W.moveToSquad(c, sq);
@@ -176,6 +182,81 @@ function spawn(spec: Spec): Squad | null {
     beast.x = x - 3; beast.z = z; beast.y = S.T.heightAt(beast.x, beast.z);
   }
   return sq;
+}
+
+// ---------------------------------------------------------------- passers-by
+// The world comes to the player, as it does round the Hub: every few hours
+// somebody crosses their path (the region's own bandits, beasts, slavers and
+// wanderers, or a trader with guards) from beyond sight, past the player's
+// people and on. What happens then is up to them, and to you.
+
+/** Squads that mean harm to whoever they meet. */
+const hostileKind = (spec: Spec) => spec.kind === 'raid' || spec.kind === 'slavers' || (!!spec.species && ANIMAL[spec.species].diet !== 'grazer');
+
+/** Who might come by in a region, by weight (only the harmless while `gentle`). */
+function passerSpecs(reg: string, gentle: boolean): [Spec, number][] {
+  const out: [Spec, number][] = [];
+  for (const s of SPECS) if (s.regions?.includes(reg) && !(gentle && hostileKind(s))) out.push([s, s.weight]);
+  for (const b of BEASTS) {
+    if (!b.regions?.includes(reg)) continue;
+    const grazer = ANIMAL[b.species!].diet === 'grazer';
+    if (gentle && !grazer) continue;
+    out.push([b, b.weight * (grazer ? 0.4 : 0.5)]);
+  }
+  out.push([SPECS.find((s) => s.key === 'caravan')!, 2.5]);
+  if (!out.some(([s]) => s.key === 'wanderer')) out.push([SPECS.find((s) => s.key === 'wanderer')!, 1.5]);
+  return out;
+}
+
+function tickPassers() {
+  const W = S.W;
+  if (W.flags.nextPasser === undefined) { W.flags.nextPasser = S.clock.t + rng.range(0.8, 1.6) * HOUR; W.flags.passersFrom = S.clock.t; }
+  // keep those on the way aimed at wherever the player's people have got to
+  for (const sq of W.squads.values()) {
+    if (!sq.flags.passer || !sq.active || sq.ri !== 0 || !sq.route) continue;
+    const p = W.char(sq.flags.passer);
+    if (!p || !p.up) continue;
+    const tx = p.x + (sq.flags.passOff?.[0] ?? 0), tz = p.z + (sq.flags.passOff?.[1] ?? 0);
+    if (Math.hypot(tx - sq.route[0], tz - sq.route[1]) < 25) continue;
+    sq.route[0] = tx; sq.route[1] = tz;
+    const L = W.char(sq.leader);
+    if (L && L.hasGoal && !L.brain.enemy) L.hasGoal = false; // set off again for the new spot
+  }
+  if (S.clock.t < W.flags.nextPasser) return;
+  // not now: look again within the hour
+  W.flags.nextPasser = S.clock.t + rng.range(0.4, 0.7) * HOUR;
+  // (sleepers get visitors too)
+  const lead = W.playerChars().find((c) => c.alive && !c.animal && !c.cage && !c.carriedBy);
+  if (!lead) return;
+  if (S.T.siteAt(lead.x, lead.z, 60)?.kind === 'town') return; // towns are busy enough
+  // company already on the way (grazing herds don't count: they are everywhere, and slow)
+  for (const s of W.squads.values()) {
+    if (!s.flags.spec || s.faction === 'player') continue;
+    if (s.kind === 'herd') { const a = W.char(s.members[0]); if (!a?.animal || ANIMAL[a.animal].diet === 'grazer') continue; }
+    if (Math.hypot(s.x - lead.x, s.z - lead.z) < 350) return;
+  }
+  // the first half day brings only the harmless: traders, wanderers, grazing beasts
+  const gentle = S.clock.t - (W.flags.passersFrom ?? 0) < 12 * HOUR;
+  // (the same kind twice running is less likely: the waste has more than one story)
+  const spec = rng.weighted(passerSpecs(S.T.regionAt(lead.x, lead.z).key, gentle).map(([sp, w]) => [sp, sp.key === W.flags.lastPasser ? w * 0.25 : w] as [Spec, number]));
+  for (let i = 0; i < 16; i++) {
+    const a = rng.range(0, Math.PI * 2), d = rng.range(540, 680);
+    const sx = lead.x + Math.sin(a) * d, sz = lead.z + Math.cos(a) * d;
+    if (sx < 300 || sz < 300 || sx > WORLD - 300 || sz > WORLD - 300) continue;
+    if (S.T.heightAt(sx, sz) < 0.4 || S.T.slopeAt(sx, sz) > 0.5 || S.T.siteAt(sx, sz, 80)) continue;
+    const open = S.nav.nearestOpen(sx, sz, 10);
+    if (!open) continue;
+    // past the player's people (close enough to be seen, closer for those who mean harm) and on the same way
+    const dx = (lead.x - sx) / d, dz = (lead.z - sz) / d;
+    const side = rng.range(hostileKind(spec) ? 5 : 14, hostileKind(spec) ? 22 : 40) * (rng.chance(0.5) ? 1 : -1);
+    const off: [number, number] = [-dz * side, dx * side];
+    const mx = lead.x + off[0], mz = lead.z + off[1];
+    // those who mean harm come in numbers a small band can stand up to
+    const cap = hostileKind(spec) ? W.playerChars().filter((c) => c.alive).length + 2 : undefined;
+    const sq = spawn(spec, { x: open[0], z: open[1], route: [mx, mz, mx + dx * 800, mz + dz * 800], cap });
+    if (sq) { sq.flags.passer = lead.id; sq.flags.passOff = off; W.flags.lastPasser = spec.key; W.flags.nextPasser = S.clock.t + rng.range(1.5, 3.5) * HOUR; }
+    return;
+  }
 }
 
 function roamingCount() {
@@ -303,6 +384,7 @@ export function tickWorld(dt: number) {
       sq.ri = 0;
     }
   }
+  tickPassers();
   // keep the world populated
   const n = roamingCount();
   if (n < TARGET) {

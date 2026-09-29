@@ -6,6 +6,7 @@ import { S } from '../sim/ctx';
 import { on } from '../core/events';
 import { uiSound } from '../audio';
 import { input } from '../core/input';
+import { SCENARIO } from '../content/scenarios';
 
 const seen = new Set<string>();
 let box: HTMLDivElement | null = null;
@@ -49,6 +50,9 @@ export function setupHints() {
     setTimeout(() => {
       if (input.touch || matchMedia('(pointer: coarse)').matches) hint('start_touch', 'Your people', 'Your people are the portraits at the bottom. <b>Tap</b> to select, <b>press and hold</b> the ground to move there or on someone for things to do. Drag to look around, pinch to zoom, twist with two fingers to turn. Saltblade plays best with a mouse and keyboard.');
       else hint('start', 'Your people', 'Your people are the portraits at the bottom. <b>Left-click</b> to select (drag a box for several), <b>right-click the ground</b> to move, <b>right-click someone</b> for things to do. <b>Space</b> pauses; <b>1–4</b> set the speed.');
+      // what to do first, for the way this game began
+      const sc = SCENARIO[S.W.flags.scenario];
+      if (sc?.firstSteps) hint('first_' + sc.key, 'First steps', sc.firstSteps);
     }, 1500);
   });
   on('ui:talk', () => hint('talk', 'Talking', 'People you talk to remember how you treat them. Recruits drink in bars; some join for free, some want paying.'));
