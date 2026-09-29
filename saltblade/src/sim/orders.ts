@@ -171,7 +171,7 @@ export function runOrder(c: Char, dt: number) {
           c.act = null;
           S.fx.notice(`${c.name} picked the lock.`, 'good');
           S.fx.sound('unlock', ob.x, ob.z);
-          if (ob.kind === 'cage' && ob.occupant) { freeFromCage(ob.occupant); }
+          if ((ob.kind === 'cage' || ob.kind === 'shackle_post') && ob.occupant) { freeFromCage(ob.occupant); }
           else if (ob.owner !== 'player' && ob.owner) crime(c, 'trespass', ob.owner, 50, true);
         } else if (S.rng.chance(0.08)) {
           S.fx.notice('The lockpick slips. Someone may have heard.', 'info');

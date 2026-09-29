@@ -138,7 +138,13 @@ export function apply(data: any, W: World) {
   W.explored = data.explored ? b64ToBytes(data.explored) : null;
   W.active = [];
   W.chars.clear(); W.squads.clear(); W.objs.clear(); W.shops.clear(); W.towns.clear();
-  for (const o of data.objs) { const ob = objFrom(o); W.objs.set(ob.id, ob); }
+  for (const o of data.objs) {
+    const ob = objFrom(o);
+    // older saves: a watchtower you can keep watch from, a Workshop Hall's crates as storage
+    if (ob.owner === 'player' && ob.kind === 'tower' && !ob.data?.job) Object.assign((ob.data ??= {}), { job: 'watch', jobLabel: 'Keep watch' });
+    if (ob.owner === 'player' && ob.kind === 'crate') { ob.kind = 'storage'; ob.locked = 0; ob.data = { ...ob.data, name: ob.data?.name ?? 'Crate' }; }
+    W.objs.set(ob.id, ob);
+  }
   W.rebuildObjHash();
   for (const s of data.squads) { const sq = Squad.from(s); W.squads.set(sq.id, sq); }
   for (const c of data.chars) { const ch = charFrom(c); W.chars.set(ch.id, ch); }

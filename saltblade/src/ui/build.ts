@@ -5,7 +5,7 @@ import { G } from '../state';
 import { S } from '../sim/ctx';
 import { BUILDABLES, BUILDABLE, Buildable, RECIPES, TECHS, TECH, BuildCat } from '../content/buildables';
 import { ITEM } from '../content/items';
-import { canPlace, placeSite, unlocked, deconstruct } from '../sim/base';
+import { canPlace, placeSite, unlocked, deconstruct, FUEL_REACH } from '../sim/base';
 import { on, emit } from '../core/events';
 import { input } from '../core/input';
 import { groundAt, selected } from '../game/control';
@@ -248,6 +248,16 @@ export function openObject(id: number) {
         clr.onclick = () => { q.length = 0; render(); };
         box.appendChild(clr);
       } else if (o.data.job === 'operate') {
+        // a machine that can make more than one thing (the still: grog or rum) makes what you pick
+        if (recs.length > 1) {
+          const row = h('div', { class: 'selrow' }, h('span', { class: 'dim' }, 'Make: '));
+          for (const k of recs) {
+            const t = h('button', { class: 'tog small' + (o.data.recipe === k ? ' on' : '') }, RECIPES[k].name);
+            t.onclick = () => { if (o.data.recipe !== k) { o.data.recipe = k; o.data.prog = 0; } render(); };
+            row.appendChild(t);
+          }
+          box.appendChild(row);
+        }
         const r = RECIPES[o.data.recipe];
         if (r) box.appendChild(h('div', {}, `${r.name}: ${costStr(r.in)} → ${costStr(r.out)} · ${Math.floor(((o.data.prog ?? 0) / r.time) * 100)}%`));
       }
@@ -260,7 +270,8 @@ export function openObject(id: number) {
       w.body.append(h('div', { class: 'selrow' }, bb), h('div', { class: 'dim small' }, workers.length ? 'Assigned: ' + workers.join(', ') : 'Nobody works here. Select people and click the button.'));
     }
     if (o.inv && mine) {
-      const v = new GridView(o.inv, { label: o.kind === 'storage' ? (o.data?.accepts ? 'Stores: ' + o.data.accepts.slice(0, 4).join(', ') + (o.data.accepts.length > 4 ? '…' : '') : 'Contents') : 'Contents', moved: () => setTimeout(render, 0) });
+      if (o.data?.bkey === 'generator') w.body.appendChild(h('div', { class: 'dim' }, `Fuel in the tank: ${o.inv.count('fuel')}. A can of fuel runs it for about six hours while machines draw power, and it tops itself up from your storage within ${FUEL_REACH} m.`));
+      const v = new GridView(o.inv, { label: o.data?.bkey === 'generator' ? 'Fuel tank' : o.kind === 'storage' ? (o.data?.accepts ? 'Stores: ' + o.data.accepts.slice(0, 4).join(', ') + (o.data.accepts.length > 4 ? '…' : '') : 'Contents') : 'Contents', moved: () => setTimeout(render, 0) });
       objViews.push(v);
       const c = selected()[0];
       if (c && Math.hypot(c.x - o.x, c.z - o.z) < 5) {

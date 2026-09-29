@@ -16,7 +16,7 @@ import { runOrder } from './orders';
 import { runRoutine } from './routine';
 import { runJobs } from './jobs';
 import { wantsToTalk } from './encounters';
-import { leaveFurniture } from './use';
+import { leaveFurniture, leaveBed } from './use';
 
 export const SIGHT_DAY = 42;
 export const SIGHT_NIGHT = 24;
@@ -24,7 +24,10 @@ export const SIGHT_NIGHT = 24;
 /** How far a character notices others, reduced at night and by sneaking. */
 export function canSee(c: Char, o: Char): boolean {
   const d = dist(c, o);
-  let r = S.clock.isNight ? SIGHT_NIGHT : SIGHT_DAY;
+  // by night only lamplit ground is seen as by day
+  let r = S.clock.isNight && !lamplit(o.x, o.z) ? SIGHT_NIGHT : SIGHT_DAY;
+  // a lookout up a watchtower sees twice as far
+  if (c.mem.using && onTower(c)) r *= 2;
   if (c.animal) r = Math.max(r, ANIMAL[c.animal].aggro);
   if (o.move === 'sneak' && o.speed < 3 && o.up) {
     const stealth = o.skill('stealth') * (1 - o.armourPenalty('stealth'));
@@ -37,6 +40,21 @@ export function canSee(c: Char, o: Char): boolean {
   if (!c.awake) r *= 0.15;
   if (S.weather) r *= S.weather.sight(c.x, c.z);
   return d <= r;
+}
+
+/** The watchtower someone is up, if they are. */
+export function onTower(c: Char) {
+  const t = c.mem.using ? S.W.objs.get(c.mem.using) : undefined;
+  return t?.kind === 'tower' && Math.hypot(c.x - t.x, c.z - t.z) < 0.6 ? t : undefined;
+}
+
+/** How far a lamp lights the ground around it. */
+export const LAMP_R = 9;
+/** Is this spot lit by a lamp? */
+export function lamplit(x: number, z: number) {
+  let lit = false;
+  S.W.objHash.near(x, z, LAMP_R, (l) => { if (!lit && l.kind === 'lamp' && Math.hypot(l.x - x, l.z - z) < LAMP_R) lit = true; });
+  return lit;
 }
 
 /** Nearest visible enemy within a radius. */
@@ -120,13 +138,16 @@ function playerAI(c: Char, dt: number, think: boolean) {
   const B = c.brain;
   if (think) {
     // fight back or engage enemies depending on stance
-    const threatR = c.combatMode === 'aggressive' ? 22 : c.combatMode === 'defensive' ? 8 : 0;
+    // someone manning a turret or a watchtower keeps to the post: only what comes within arm's reach draws them off it
+    const po = B.post ? S.W.objs.get(B.post) : undefined;
+    const post = !c.order && !!po && c.jobs.some((j) => j.obj === po.id) && Math.hypot(po.x - c.x, po.z - c.z) < 5;
+    const threatR = c.combatMode === 'passive' ? 0 : post ? 2.5 : c.combatMode === 'aggressive' ? 22 : c.combatMode === 'defensive' ? 8 : 0;
     let enemy: Char | null = null;
     const attacker = S.W.char(c.lastHitBy);
-    if (attacker && attacker.up && S.time - c.lastHitT < 6 && c.combatMode !== 'passive' && hostileOrProvoked(c, attacker)) enemy = attacker;
+    if (attacker && attacker.up && S.time - c.lastHitT < 6 && c.combatMode !== 'passive' && hostileOrProvoked(c, attacker) && (!post || dist(c, attacker) < 3)) enemy = attacker;
     if (!enemy && threatR > 0 && (!c.order || c.order.k === 'hold' || c.order.k === 'follow')) enemy = findEnemy(c, threatR);
     // help squadmates in trouble
-    if (!enemy && c.combatMode === 'aggressive' && (!c.order || c.order.k === 'follow' || c.order.k === 'hold')) {
+    if (!enemy && !post && c.combatMode === 'aggressive' && (!c.order || c.order.k === 'follow' || c.order.k === 'hold')) {
       for (const m of S.W.squadOf(c)?.members ?? []) {
         const a = S.W.char(m);
         if (!a || a === c || !a.up) continue;
@@ -151,6 +172,8 @@ function playerAI(c: Char, dt: number, think: boolean) {
   }
   c.target = 0;
   if (!B.enemy && c.drawn && S.time - c.lastHitT > 6) c.drawn = false;
+  // off watch: down from the tower before anything else
+  if (c.mem.using && !c.jobs.some((j) => j.obj === c.mem.using) && onTower(c)) leaveFurniture(c);
   if (order) { runOrder(c, dt); return; }
   if (c.jobs.length && runJobs(c, dt, think)) return;
   // idle: eat when hungry, patch yourself up
@@ -181,13 +204,20 @@ export function idleUpkeep(c: Char) {
   if (patient) c.order = { k: 'aid', id: patient.id };
 }
 
+/** Food eaten at one of your tables goes a third further. */
+export function tableBonus(x: number, z: number, r: number) {
+  let t = false;
+  S.W.objHash.near(x, z, r, (o) => { if (!t && o.kind === 'table' && o.owner === 'player' && Math.hypot(o.x - x, o.z - z) < r) t = true; });
+  return t ? 4 / 3 : 1;
+}
+
 export function eatSomething(c: Char): boolean {
   for (const g of [c.inv, c.eq.back?.inv]) {
     if (!g) continue;
     const it = g.first((d) => !!d.food && d.cat === 'food');
     if (it) {
       const d = ITEM[it.id];
-      c.hunger = Math.min(300, c.hunger + (d.food ?? 0));
+      c.hunger = Math.min(300, c.hunger + (d.food ?? 0) * tableBonus(c.x, c.z, 6));
       it.n--;
       if (it.n <= 0) g.remove(it);
       c.act = 'pickup'; c.actT = 0; c.actDur = 0.8;
@@ -363,7 +393,7 @@ export function pickUp(c: Char, o: Char) {
   o.carriedBy = c.id;
   o.path = null;
   o.hasGoal = false;
-  if (o.bed) { const b = S.W.objs.get(o.bed); if (b) b.occupant = 0; o.bed = 0; }
+  if (o.bed) leaveBed(o);
   return true;
 }
 

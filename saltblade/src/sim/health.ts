@@ -7,6 +7,7 @@ import { RATE } from './clock';
 import { S } from './ctx';
 import { train } from './train';
 import type { Grid, Item } from './inventory';
+import { bedRest } from './use';
 
 export function koThreshold(c: Char, limb: number) {
   const t = c.skill('toughness');
@@ -103,7 +104,8 @@ export function tickHealth(c: Char, dt: number) {
   // healing
   const heal = (race?.heal ?? 1) * (c.animal ? 1 : 1);
   if (heal > 0 && c.hunger > 30) {
-    const bed = c.bed ? 3.5 : c.sleeping ? 1.6 : 1;
+    // a proper bed heals faster than a bedroll; a seat is a little better than standing about
+    const bed = c.bed ? bedRest(S.W.objs.get(c.bed)) : c.sleeping ? 1.6 : c.mem.sit && c.mem.using ? 1.5 : 1;
     const rate = 4 * gameH * heal * bed;
     for (let l = 0; l < 7; l++) {
       if (!b.has(l) || b.hp[l] >= b.max[l]) continue;

@@ -11,6 +11,7 @@ import { S } from './ctx';
 import { train, versus } from './train';
 import { severLimb, isKOCondition, knockOut } from './health';
 import { angleTo, wrapAngle, clamp } from '../core/math';
+import { buildingAt } from './structures';
 
 export const RADIUS = 0.38;
 
@@ -72,7 +73,7 @@ export function canBlock(d: Char, a: Char) {
 }
 
 export function startAttack(c: Char, t: Char, kick = false) {
-  const dur = c.attackTime() * (kick ? 1.1 : 1);
+  const dur = c.attackTime() * (kick ? 1.1 : 1) * (1 + cramped(c));
   c.atk = { t: 0, dur, variant: S.rng.int(0, 3), hit: false, target: t.id, kick };
   c.drawn = true;
   c.dir = angleTo(c.x, c.z, t.x, t.z);
@@ -115,12 +116,27 @@ function pickLimb(d: Char, variant: number, attacker: Char): number {
   return 1;
 }
 
+/** Within 25 m of their own faction's banner, people fight a little better. */
+export const BANNER_R = 25;
+export function colours(c: Char) {
+  if (c.animal) return 0;
+  let near = false;
+  S.W.objHash.near(c.x, c.z, BANNER_R, (o) => { if (!near && o.kind === 'banner' && o.owner === c.faction && Math.hypot(o.x - c.x, o.z - c.z) < BANNER_R) near = true; });
+  return near ? 5 : 0;
+}
+
+/** Long and heavy weapons are clumsy inside a building: their `indoor` penalty, or nothing. */
+export function cramped(c: Char) {
+  const w = c.weaponStats();
+  return w.indoor && buildingAt(c.x, c.z) ? w.indoor : 0;
+}
+
 export function resolveBlow(a: Char, d: Char, variant: number, kick = false) {
   const w = a.weaponStats();
   const wskill = a.animal ? a.skill('melee_atk') : a.skill(w.skill);
-  const att = a.skill('melee_atk') * 0.6 + wskill * 0.4 + (a.animal ? 0 : 0);
+  const att = (a.skill('melee_atk') * 0.6 + wskill * 0.4 + colours(a)) * (1 - cramped(a));
   const dw = d.weaponStats();
-  let def = d.skill('melee_def') * 0.7 + (d.animal ? d.skill('melee_def') * 0.3 : d.skill(dw.skill) * 0.3) + (dw.def ?? 0);
+  let def = d.skill('melee_def') * 0.7 + (d.animal ? d.skill('melee_def') * 0.3 : d.skill(dw.skill) * 0.3) + (dw.def ?? 0) + colours(d);
   if (d.combatMode === 'defensive') def += 8;
   if (d.eq.back && ITEM[d.eq.back.id].pack) def -= ITEM[d.eq.back.id].pack!.combat * 40;
   const downed = d.status !== 'up' || d.knockT > 0;
@@ -266,13 +282,13 @@ export function rangedStats(c: Char) {
   return c.eq.ranged ? ITEM[c.eq.ranged.id].ranged! : null;
 }
 
-/** Fires at a target if loaded; returns true if a shot was taken. */
-export function shoot(c: Char, t: Char): boolean {
+/** Fires at a target if loaded; returns true if a shot was taken. `from` is where the line of fire starts (a tower's edge). */
+export function shoot(c: Char, t: Char, from?: [number, number]): boolean {
   const r = rangedStats(c);
   if (!r || c.reload > 0 || !hasBolts(c)) return false;
   const d = dist(c, t);
   if (d > r.range) return false;
-  if (!S.nav.clearLine(c.x, c.z, t.x, t.z)) return false;
+  if (!S.nav.clearLine(from?.[0] ?? c.x, from?.[1] ?? c.z, t.x, t.z)) return false;
   (c.inv.take('bolts', 1) || c.eq.back?.inv?.take('bolts', 1));
   c.dir = angleTo(c.x, c.z, t.x, t.z);
   c.act = 'shoot'; c.actT = 0; c.actDur = 0.4;

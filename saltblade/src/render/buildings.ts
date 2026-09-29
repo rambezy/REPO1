@@ -602,9 +602,11 @@ export function buildWallPiece(o: WObj): THREE.Mesh {
       g.push().translate(0, h, 0).cyl(r * 1.15, r * 1.15, 0.5, 8, { color: dk(col, 0.9) }).pop();
       for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; g.push().translate(Math.sin(a) * r, h + 0.5, Math.cos(a) * r).block(0.6, 0.8, 0.6, { color: col }).pop(); }
     } else {
-      for (const [px, pz] of [[-r, -r], [r, -r], [-r, r], [r, r]]) g.push().translate(px * 0.8, -1, pz * 0.8).cyl(0.18, 0.2, h + 1, 5, { color: col }).pop();
+      // posts up past the platform to a roof with headroom under it for a lookout, and a rail round it
+      for (const [px, pz] of [[-r, -r], [r, -r], [-r, r], [r, r]]) g.push().translate(px * 0.8, -1, pz * 0.8).cyl(0.18, 0.2, h + 2.2, 5, { color: col }).pop();
       g.push().translate(0, h - 1, 0).box(r * 2.2, 0.25, r * 2.2, { color: dk(col, 1.1) }).pop();
-      g.push().translate(0, h + 0.8, 0).cone(r * 1.5, 1.6, 4, { color: 0x7a6a4a }).pop();
+      for (const [px, pz, rw, rd] of [[0, -r * 1.05, r * 2.2, 0.08], [0, r * 1.05, r * 2.2, 0.08], [-r * 1.05, 0, 0.08, r * 2.2], [r * 1.05, 0, 0.08, r * 2.2]]) g.push().translate(px, h - 0.05, pz).box(rw, 0.1, rd, { color: col }).pop();
+      g.push().translate(0, h + 2, 0).cone(r * 1.5, 1.6, 4, { color: 0x7a6a4a }).pop();
     }
   }
   const m = new THREE.Mesh(g.build(), buildingMat);

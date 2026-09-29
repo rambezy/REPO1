@@ -40,7 +40,7 @@ export type Order =
   | { k: 'shop'; id: number }
   | { k: 'hold' };
 
-export type JobKind = 'mine' | 'build' | 'operate' | 'haul' | 'farm' | 'research' | 'craft' | 'turret' | 'repair' | 'medic' | 'guard' | 'cook';
+export type JobKind = 'mine' | 'build' | 'operate' | 'haul' | 'farm' | 'research' | 'craft' | 'turret' | 'repair' | 'medic' | 'guard' | 'cook' | 'watch';
 export interface Job { k: JobKind; obj: number; label: string; }
 
 export const EQUIP_SLOTS: EquipSlot[] = ['weapon', 'weapon2', 'ranged', 'head', 'shirt', 'body', 'legs', 'feet', 'back'];

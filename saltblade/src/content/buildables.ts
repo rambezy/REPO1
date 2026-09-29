@@ -30,7 +30,7 @@ export interface Buildable {
   power?: number; // + produces, - consumes
   store?: { w: number; h: number; accepts?: string[] };
   recipes?: string[]; // production/crafting recipes available
-  job?: 'operate' | 'craft' | 'research' | 'farm' | 'turret' | 'cook';
+  job?: 'operate' | 'craft' | 'research' | 'farm' | 'turret' | 'cook' | 'watch';
   crop?: string;
   wall?: { len: number; h: number; style: string };
   building?: string; // a BUILDINGS key for enclosed buildings
@@ -126,18 +126,18 @@ export const BUILDABLES: Buildable[] = [
   // housing
   { key: 'shack', name: 'Shack', cat: 'Housing', kind: 'building', def: 'shack', building: 'shack', style: 'shanty', w: 7, d: 6, cost: { building_mats: 8 }, work: 180, desc: 'A small shelter of scrap and timber. Buildings let you put beds and benches under a roof.' },
   { key: 'house', name: 'Stone House', cat: 'Housing', kind: 'building', def: 'house', building: 'house', style: 'stone', w: 9, d: 8, cost: { building_mats: 16 }, work: 300, research: 'stone_building', desc: 'A solid stone house.' },
-  { key: 'big_house', name: 'Great House', cat: 'Housing', kind: 'building', def: 'house_big', building: 'house_big', style: 'stone', w: 12, d: 9, cost: { building_mats: 26, iron_plates: 4 }, work: 480, research: 'stone_building', desc: 'A large house with an upper floor.' },
-  { key: 'hall', name: 'Workshop Hall', cat: 'Housing', kind: 'building', def: 'warehouse', building: 'warehouse', style: 'shanty', w: 14, d: 10, cost: { building_mats: 24, iron_plates: 6 }, work: 520, research: 'stone_building', desc: 'A big open building for machines and benches.' },
+  { key: 'big_house', name: 'Great House', cat: 'Housing', kind: 'building', def: 'house_big', building: 'house_big', style: 'stone', w: 12, d: 9, cost: { building_mats: 26, iron_plates: 4 }, work: 480, research: 'stone_building', desc: 'A large house, with room for four beds and more besides.' },
+  { key: 'hall', name: 'Workshop Hall', cat: 'Housing', kind: 'building', def: 'warehouse', building: 'warehouse', style: 'shanty', w: 14, d: 10, cost: { building_mats: 24, iron_plates: 6 }, work: 520, research: 'stone_building', desc: 'A big open building for machines and benches, with crates along the walls for storage.' },
   // furniture
-  { key: 'bedroll', name: 'Bedroll', cat: 'Furniture', kind: 'bed', def: 'bedroll', w: 1, d: 2, cost: { fabric: 2 }, work: 30, desc: 'A place to sleep. Resting in a bed heals much faster.' },
+  { key: 'bedroll', name: 'Bedroll', cat: 'Furniture', kind: 'bed', def: 'bedroll', w: 1, d: 2, cost: { fabric: 2 }, work: 30, desc: 'A place to sleep. Resting in a bed heals much faster than on the ground, and a proper bed faster still.' },
   { key: 'bed', name: 'Bed', cat: 'Furniture', kind: 'bed', def: 'bed', w: 1.1, d: 2.1, cost: { building_mats: 2, fabric: 2 }, work: 60, research: 'beds', desc: 'A proper bed. Heals faster than a bedroll.' },
   { key: 'bunk', name: 'Bunk Bed', cat: 'Furniture', kind: 'bed', def: 'bunk', w: 1.1, d: 2.1, cost: { building_mats: 3, fabric: 3 }, work: 90, research: 'beds', desc: 'Two sleepers, one footprint.' },
   { key: 'cage', name: 'Prisoner Cage', cat: 'Furniture', kind: 'cage', def: 'cage', w: 2, d: 2, cost: { iron_plates: 6 }, work: 120, desc: 'Keep a prisoner. Carry someone unconscious here and lock them in.' },
   { key: 'campfire', name: 'Campfire', cat: 'Furniture', kind: 'campfire', def: 'firepit', w: 2, d: 2, cost: { building_mats: 1 }, work: 20, recipes: ['dried_meat'], job: 'cook', desc: 'Cook raw meat into dried meat.' },
   { key: 'stove', name: 'Stove', cat: 'Production', kind: 'stove', def: 'stove', w: 1.4, d: 1, cost: { iron_plates: 4, building_mats: 2 }, work: 120, research: 'cooking', recipes: ['dustbread', 'dried_meat', 'porridge', 'stew', 'travel_ration'], job: 'cook', desc: 'Bakes bread and cooks proper meals.' },
-  { key: 'table', name: 'Table', cat: 'Furniture', kind: 'table', def: 'table', w: 1.2, d: 0.9, cost: { building_mats: 1 }, work: 20, desc: 'Somewhere to eat.' },
-  { key: 'stool', name: 'Stool', cat: 'Furniture', kind: 'stool', def: 'stool', w: 0.5, d: 0.5, cost: { building_mats: 1 }, work: 10, desc: 'Somewhere to sit.' },
-  { key: 'lamp', name: 'Lamp', cat: 'Furniture', kind: 'lamp', def: 'lamp', w: 0.4, d: 0.4, cost: { iron_plates: 1 }, work: 20, desc: 'Light for the night.' },
+  { key: 'table', name: 'Table', cat: 'Furniture', kind: 'table', def: 'table', w: 1.2, d: 0.9, cost: { building_mats: 1 }, work: 20, desc: 'Somewhere to eat: meals at your base go a third further with a table to eat them at.' },
+  { key: 'stool', name: 'Stool', cat: 'Furniture', kind: 'stool', def: 'stool', w: 0.5, d: 0.5, cost: { building_mats: 1 }, work: 10, desc: 'Somewhere to sit. Resting on a seat heals a little faster than standing about.' },
+  { key: 'lamp', name: 'Lamp', cat: 'Furniture', kind: 'lamp', def: 'lamp', w: 0.4, d: 0.4, cost: { iron_plates: 1 }, work: 20, desc: 'Lights the ground around it at night, so anyone sneaking about there is seen as if by day.' },
   { key: 'dummy', name: 'Training Dummy', cat: 'Furniture', kind: 'bench', def: 'dummy', w: 1, d: 1, cost: { building_mats: 3, fabric: 2 }, work: 60, job: 'operate', desc: 'Hit it with a weapon to train melee skills, up to level 20.' },
   // storage
   { key: 'chest', name: 'Storage Chest', cat: 'Storage', kind: 'storage', def: 'chest', w: 1, d: 0.7, cost: { building_mats: 2 }, work: 30, store: S(8, 6), desc: 'General storage.' },
@@ -151,7 +151,7 @@ export const BUILDABLES: Buildable[] = [
   { key: 'loom', name: 'Loom', cat: 'Production', kind: 'machine', def: 'loom', w: 2, d: 1.5, cost: { building_mats: 4 }, work: 160, recipes: ['fabric'], job: 'operate', desc: 'Weaves hemp into fabric.' },
   { key: 'tannery', name: 'Tanning Rack', cat: 'Production', kind: 'machine', def: 'tannery', w: 2, d: 1.2, cost: { building_mats: 3 }, work: 120, recipes: ['leather'], job: 'operate', desc: 'Turns hides into leather.' },
   { key: 'mill', name: 'Grain Mill', cat: 'Production', kind: 'machine', def: 'mill', w: 2.2, d: 2.2, cost: { building_mats: 5 }, work: 180, research: 'milling', recipes: ['flour'], job: 'operate', desc: 'Grinds wheat into flour.' },
-  { key: 'brewery', name: 'Still', cat: 'Production', kind: 'machine', def: 'still', w: 2, d: 2, cost: { building_mats: 4, iron_plates: 3 }, work: 200, research: 'brewing', recipes: ['grog', 'cactus_rum'], job: 'operate', desc: 'Brews grog and rum, which sell well.' },
+  { key: 'brewery', name: 'Still', cat: 'Production', kind: 'machine', def: 'still', w: 2, d: 2, cost: { building_mats: 4, iron_plates: 3 }, work: 200, research: 'brewing', recipes: ['grog', 'cactus_rum'], job: 'operate', desc: 'Brews grog or cactus rum (click it to choose), both of which sell well.' },
   { key: 'furnace', name: 'Steel Furnace', cat: 'Production', kind: 'machine', def: 'furnace', w: 3, d: 3, cost: { building_mats: 10, iron_plates: 8 }, work: 420, power: -25, research: 'steel', recipes: ['steel_bars'], job: 'operate', desc: 'Makes steel from iron plates and fuel.' },
   { key: 'fuelpress', name: 'Fuel Press', cat: 'Production', kind: 'machine', def: 'press', w: 2, d: 2, cost: { building_mats: 4, iron_plates: 4 }, work: 220, research: 'fuel', recipes: ['fuel'], job: 'operate', desc: 'Presses hemp into fuel.' },
   { key: 'electronics', name: 'Electronics Bench', cat: 'Production', kind: 'machine', def: 'electronics', w: 2, d: 1, cost: { iron_plates: 6, elec_parts: 1 }, work: 320, power: -20, research: 'electronics', recipes: ['elec_parts'], job: 'operate', desc: 'Makes electrical components from copper.' },
@@ -171,18 +171,18 @@ export const BUILDABLES: Buildable[] = [
   { key: 'farm_riceweed', name: 'Riceweed Paddy', cat: 'Farming', kind: 'farm', def: 'riceweed', w: 12, d: 8, cost: { building_mats: 2 }, work: 120, research: 'farming', crop: 'riceweed', job: 'farm', desc: 'Riceweed loves wet ground.' },
   { key: 'well', name: 'Well', cat: 'Farming', kind: 'well', def: 'well', w: 2.8, d: 2.8, cost: { building_mats: 6 }, work: 200, desc: 'Water makes nearby fields grow faster.' },
   // power
-  { key: 'windmill', name: 'Wind Generator', cat: 'Power', kind: 'generator', def: 'windmill', w: 2.5, d: 2.5, cost: { building_mats: 4, iron_plates: 6 }, work: 300, power: 20, research: 'power', desc: 'Makes power from the wind. More in open, windy land.' },
-  { key: 'generator', name: 'Fuel Generator', cat: 'Power', kind: 'generator', def: 'generator', w: 2, d: 2, cost: { iron_plates: 8, machine_parts: 1 }, work: 320, power: 45, research: 'fuel', desc: 'Burns fuel for steady power.' },
+  { key: 'windmill', name: 'Wind Generator', cat: 'Power', kind: 'generator', def: 'windmill', w: 2.5, d: 2.5, cost: { building_mats: 4, iron_plates: 6 }, work: 300, power: 20, research: 'power', desc: 'Makes power from the wind: more in windy country (the Salt Barrens, the Hollow Flats, the Karuk Highlands, the Bone Sea and the Grey Shore).' },
+  { key: 'generator', name: 'Fuel Generator', cat: 'Power', kind: 'generator', def: 'generator', w: 2, d: 2, cost: { iron_plates: 8, machine_parts: 1 }, work: 320, power: 45, research: 'fuel', desc: 'Burns fuel for steady power while machines draw on it, filling its tank from your storage nearby.' },
   // defence
   { key: 'wall_wood', name: 'Palisade Wall', cat: 'Defence', kind: 'wall', def: 'palisade', w: 0.8, d: 6, cost: { building_mats: 3 }, work: 90, wall: { len: 6, h: 4, style: 'palisade' }, desc: 'A six-metre stretch of sharpened logs.' },
   { key: 'wall_stone', name: 'Stone Wall', cat: 'Defence', kind: 'wall', def: 'stone', w: 1.4, d: 6, cost: { building_mats: 8 }, work: 220, research: 'stone_building', wall: { len: 6, h: 6, style: 'stone' }, desc: 'A six-metre stretch of stone wall.' },
   { key: 'gate_wood', name: 'Wooden Gate', cat: 'Defence', kind: 'gate', def: 'palisade', w: 1.2, d: 6, cost: { building_mats: 5 }, work: 150, desc: 'A gate you can open and close.' },
   { key: 'gate_stone', name: 'Iron Gate', cat: 'Defence', kind: 'gate', def: 'stone', w: 1.6, d: 6, cost: { building_mats: 10, iron_plates: 6 }, work: 300, research: 'stone_building', desc: 'A heavy gate.' },
-  { key: 'turret', name: 'Harpoon Turret', cat: 'Defence', kind: 'turret', def: 'turret', w: 2, d: 2, cost: { iron_plates: 8, building_mats: 4 }, work: 300, research: 'turrets', job: 'turret', desc: 'A manned harpoon turret. Punches through armour at range.' },
-  { key: 'tower', name: 'Watchtower', cat: 'Defence', kind: 'tower', def: 'palisade', w: 4, d: 4, cost: { building_mats: 10 }, work: 260, desc: 'A lookout tower.' },
+  { key: 'turret', name: 'Harpoon Turret', cat: 'Defence', kind: 'turret', def: 'turret', w: 2, d: 2, cost: { iron_plates: 8, building_mats: 4 }, work: 300, research: 'turrets', job: 'turret', desc: 'A manned harpoon turret. Punches through armour at range; it needs a clear line of fire.' },
+  { key: 'tower', name: 'Watchtower', cat: 'Defence', kind: 'tower', def: 'palisade', w: 4, d: 4, cost: { building_mats: 10 }, work: 260, job: 'watch', desc: 'A lookout keeping watch up top sees twice as far, raises the alarm when trouble comes, and can shoot a crossbow from it.' },
   // misc
-  { key: 'banner', name: 'Banner', cat: 'Misc', kind: 'banner', def: 'banner', w: 0.5, d: 0.5, cost: { fabric: 2 }, work: 20, desc: 'Your colours, flying.' },
-  { key: 'shackle_post', name: 'Shackle Post', cat: 'Misc', kind: 'shackle_post', def: 'post', w: 0.5, d: 0.5, cost: { iron_plates: 2 }, work: 40, desc: 'For prisoners.' },
+  { key: 'banner', name: 'Banner', cat: 'Misc', kind: 'banner', def: 'banner', w: 0.5, d: 0.5, cost: { fabric: 2 }, work: 20, desc: 'Your colours, flying: your people fight a little better within 25 m of them.' },
+  { key: 'shackle_post', name: 'Shackle Post', cat: 'Misc', kind: 'shackle_post', def: 'post', w: 0.5, d: 0.5, cost: { iron_plates: 2 }, work: 40, desc: 'Carry someone who is down here and chain them to it. They stay put until unchained, or until they pick the lock.' },
 ];
 export const BUILDABLE: Record<string, Buildable> = Object.fromEntries(BUILDABLES.map((b) => [b.key, b]));
 

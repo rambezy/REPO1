@@ -207,7 +207,11 @@ export class CharView {
       this.root.rotation.y = carrier.dir + Math.PI / 2;
     }
     if (c.cage) this.root.position.y += 0.05;
-    if (c.bed) this.root.position.y += 0.45;
+    if (c.bed) this.root.position.y += c.mem.upper ? 1.5 : 0.45;
+    if (c.mem.using) {
+      const t = W.objs.get(c.mem.using);
+      if (t?.kind === 'tower' && Math.hypot(c.x - t.x, c.z - t.z) < 0.6) this.root.position.y += t.data?.style === 'stone' || t.data?.style === 'metal' ? (t.data?.h ?? 7) + 0.25 : (t.data?.h ?? 7) - 0.875;
+    }
   }
 
   setRing(kind: 'none' | 'sel' | 'hover' | 'enemy') {

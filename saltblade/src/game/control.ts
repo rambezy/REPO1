@@ -209,6 +209,10 @@ export function objActions(o: WObj): MenuItem[] {
       if (lead.carrying && !o.occupant) out.push({ label: 'Lock them in the cage', run: one({ k: 'place', obj: o.id }) });
       if (o.occupant) out.push({ label: 'Pick the lock', run: one({ k: 'lockpick', obj: o.id }), danger: !mine });
       break;
+    case 'shackle_post':
+      if (lead.carrying && !o.occupant) out.push({ label: 'Chain them to the post', run: one({ k: 'place', obj: o.id }) });
+      if (o.occupant) out.push({ label: mine ? 'Unchain them' : 'Pick the shackles', run: one({ k: 'lockpick', obj: o.id }), danger: !mine });
+      break;
     case 'ore':
       out.push({ label: `Mine ${o.def === 'stone' ? 'stone' : o.def + ' ore'}`, run: () => who.forEach((c) => issue(c, { k: 'mine', obj: o.id })) });
       break;

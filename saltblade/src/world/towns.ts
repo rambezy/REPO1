@@ -430,7 +430,11 @@ function furnish(W: World, info: TownInfo | null, b: WObj, d: BuildingData, owne
       break;
     }
     case 'warehouse': {
-      for (let i = 0; i < 5; i++) add('crate', 'crate', -hw + 1 + (i % 3) * 2.2, -hd + 1 + Math.floor(i / 3) * 2.2, rng.range(0, 1), { inv: new Grid(6, 6), locked: lock(rng, 35) });
+      for (let i = 0; i < 5; i++) {
+        const [lx, lz, r] = [-hw + 1 + (i % 3) * 2.2, -hd + 1 + Math.floor(i / 3) * 2.2, rng.range(0, 1)];
+        if (owner === 'player') add('storage', 'crate', lx, lz, r, { inv: new Grid(6, 6), data: { name: 'Crate' } });
+        else add('crate', 'crate', lx, lz, r, { inv: new Grid(6, 6), locked: lock(rng, 35) });
+      }
       if (d.shop) {
         const counter = add('counter', 'counter', 0, hd - 2, Math.PI, { inv: new Grid(12, 10), shop: d.shop, data: { len: 3 } });
         info?.shops.push({ kind: d.shop, building: b, counter, spot: spot(0, hd - 3.1, Math.PI) });

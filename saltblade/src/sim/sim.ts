@@ -6,6 +6,7 @@ import { tickAI } from './ai';
 import { tickMove, newFrame } from './move';
 import { tickHealth } from './health';
 import { tickReload } from './combat';
+import { leaveBed } from './use';
 
 export const ACTIVE_R = 460;
 const LOOP_ACTS = new Set(['mine', 'build', 'farm', 'craft', 'research', 'talk']);
@@ -67,9 +68,7 @@ export function simStep(dt: number, focus?: { x: number; z: number }) {
     if (c.sleeping && c.faction === 'player' && (c.order || (c.hunger < 30 && !c.robot))) c.sleeping = false;
     if (c.sleeping && !S.clock.isNight && c.faction !== 'player' && S.clock.hour > 6 && S.clock.hour < 19) {
       c.sleeping = false;
-      const b = W.objs.get(c.bed);
-      if (b && b.occupant === c.id) b.occupant = 0;
-      c.bed = 0;
+      leaveBed(c);
     }
   }
   // carried bodies ride on their carriers

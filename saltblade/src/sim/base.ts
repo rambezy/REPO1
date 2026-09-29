@@ -9,15 +9,17 @@ import { BUILDABLE, Buildable, RECIPES, TECH, Recipe } from '../content/buildabl
 import { BUILDINGS } from '../content/buildings';
 import { ITEM, GRADES } from '../content/items';
 import { JOB_HANDLERS, walkTo } from './jobs';
+import { goTo, stop } from './move';
 import { train } from './train';
 import { placeBuilding } from '../world/towns';
 import { navDirty, buildingAt, reachOf } from './structures';
 import { RNG } from '../core/rng';
 import { SK, Skill } from './skills';
 import { emit } from '../core/events';
-import { findEnemy } from './ai';
-import { applyDamage, dist } from './combat';
+import { findEnemy, tableBonus } from './ai';
+import { applyDamage, dist, canShoot, shoot } from './combat';
 import { RATE, HOUR } from './clock';
+import { leaveFurniture } from './use';
 
 const rng = new RNG((Date.now() ^ 777) >>> 0); // a different world story each game
 
@@ -189,13 +191,13 @@ export function finishSite(site: WObj, quiet = false) {
   } else {
     const data: any = { bkey: b.key, name: b.name };
     if (b.recipes) { data.recipes = b.recipes; data.recipe = b.job === 'craft' ? '' : b.recipes[0]; data.prog = 0; data.queue = []; }
-    if (b.job) { data.job = b.job; data.jobLabel = b.job === 'operate' ? `Operate ${b.name}` : b.job === 'craft' ? `Craft at ${b.name}` : b.job === 'research' ? 'Research' : b.job === 'farm' ? `Farm ${b.name}` : b.job === 'turret' ? 'Man turret' : `Cook at ${b.name}`; }
+    if (b.job) { data.job = b.job; data.jobLabel = b.job === 'operate' ? `Operate ${b.name}` : b.job === 'craft' ? `Craft at ${b.name}` : b.job === 'research' ? 'Research' : b.job === 'farm' ? `Farm ${b.name}` : b.job === 'turret' ? 'Man turret' : b.job === 'watch' ? 'Keep watch' : `Cook at ${b.name}`; }
     if (b.power) data.power = b.power;
     if (b.crop) { data.crop = b.crop; data.growth = 0; data.w = b.w; data.d = b.d; }
     if (b.wall) { Object.assign(data, { len: b.wall.len, h: b.wall.h, thick: b.w, style: b.wall.style, ax: site.x - Math.sin(site.rot) * b.d / 2, az: site.z - Math.cos(site.rot) * b.d / 2, bx: site.x + Math.sin(site.rot) * b.d / 2, bz: site.z + Math.cos(site.rot) * b.d / 2 }); }
     if (b.kind === 'gate') { data.w = b.d - 1.2; data.style = b.def; }
     if (b.kind === 'tower') { data.h = 7; data.r = 2; }
-    const inv = b.store ? new Grid(b.store.w, b.store.h) : b.recipes ? new Grid(6, 6) : undefined;
+    const inv = b.store ? new Grid(b.store.w, b.store.h) : b.recipes ? new Grid(6, 6) : b.key === 'generator' ? new Grid(4, 4) : undefined;
     if (b.store?.accepts) data.accepts = b.store.accepts;
     o = S.W.addObj({ id: 0, kind: b.kind, def: b.def, x: site.x, z: site.z, y: site.y, rot: b.kind === 'wall' || b.kind === 'gate' ? site.rot : site.rot, owner: 'player', site: 0, parent: site.parent, built: true, inv, data, open: b.kind === 'gate' ? true : undefined });
     if (b.kind === 'wall' || b.kind === 'gate') o.y = Math.min(S.T.heightAt(data.ax ?? site.x, data.az ?? site.z), S.T.heightAt(data.bx ?? site.x, data.bz ?? site.z));
@@ -442,14 +444,22 @@ JOB_HANDLERS.farm = (c, job, o, dt, think) => {
 };
 
 JOB_HANDLERS.turret = (c, job, o, dt, think) => {
-  if (!walkTo(c, o.x, o.z, reachOf(o))) return 'work';
-  c.x = o.x; c.z = o.z;
+  const reach = reachOf(o);
+  if (!walkTo(c, o.x, o.z, reach + 0.4)) return 'work';
+  c.brain.post = o.id; // at their post: the fight comes to them (see playerAI)
   const e = findEnemy(c, 70);
   o.data.reload = Math.max(0, (o.data.reload ?? 0) - dt);
+  if (e) o.rot = Math.atan2(e.x - o.x, e.z - o.z);
+  // the gunner works it from behind, opposite where it points (in eighths of a turn, not every twitch)
+  const a = Math.round(o.rot / (Math.PI / 4)) * (Math.PI / 4);
+  const sx = o.x - Math.sin(a) * (reach - 0.25), sz = o.z - Math.cos(a) * (reach - 0.25);
+  if (Math.hypot(c.x - sx, c.z - sz) > 0.6 && S.nav.walkable(sx, sz)) { goTo(c, sx, sz); c.move = 'walk'; }
+  else stop(c);
+  c.dir = o.rot;
   if (e) {
-    c.dir = Math.atan2(e.x - c.x, e.z - c.z);
-    o.rot = c.dir;
-    if (o.data.reload <= 0 && S.nav.clearLine(c.x, c.z, e.x, e.z)) {
+    // the line of fire starts at the muzzle, clear of the turret's own frame
+    const mx = o.x + Math.sin(o.rot) * 1.3, mz = o.z + Math.cos(o.rot) * 1.3;
+    if (o.data.reload <= 0 && S.nav.clearLine(mx, mz, e.x, e.z)) {
       const d = dist(c, e);
       const p = Math.max(0.1, Math.min(0.9, 0.35 + c.skill('turrets') * 0.008 - d / 200));
       const hit = rng.chance(p);
@@ -462,6 +472,45 @@ JOB_HANDLERS.turret = (c, job, o, dt, think) => {
   }
   return 'work';
 };
+
+/** Keeping watch from a tower: twice the sight (see canSee), the alarm raised, a crossbow used from up there. */
+JOB_HANDLERS.watch = (c, job, o, dt, think) => {
+  if (c.mem.using !== o.id) {
+    if (o.user && o.user !== c.id && S.W.char(o.user)?.mem.using === o.id) return 'skip'; // one lookout at a time
+    if (!walkTo(c, o.x, o.z, reachOf(o))) return 'work';
+    leaveFurniture(c);
+    c.mem.using = o.id; o.user = c.id;
+    c.x = o.x; c.z = o.z;
+  }
+  stop(c);
+  c.brain.post = o.id;
+  if (!think) return 'work';
+  const e = findEnemy(c, 120);
+  if (!e) return 'work';
+  c.dir = Math.atan2(e.x - c.x, e.z - c.z);
+  // a crossbow from the platform: the line of fire starts at its edge
+  if (canShoot(c)) {
+    const r = (o.data?.r ?? 2) + 0.6;
+    shoot(c, e, [o.x + Math.sin(c.dir) * r, o.z + Math.cos(c.dir) * r]);
+  }
+  // the alarm, once for each band that turns up
+  const sq = S.W.squadOf(e);
+  const key = sq?.id ?? e.id;
+  if (c.brain.alarm !== key || S.time - (c.brain.alarmT ?? -1e9) > 300) {
+    c.brain.alarm = key; c.brain.alarmT = S.time;
+    const who = sq && sq.members.length > 1 ? `${sq.members.length} ${sq.name ?? 'strangers'}` : e.animal ? e.name.toLowerCase() : e.name;
+    S.fx.notice(`${c.name} spots ${who} to the ${compass(o.x, o.z, e.x, e.z)}!`, 'bad');
+    S.fx.sound('alarm', o.x, o.z, 1);
+    // wake the base
+    for (const p of S.W.playerChars()) if (p.sleeping && Math.hypot(p.x - o.x, p.z - o.z) < 120) { p.sleeping = false; if (p.bed) leaveFurniture(p); }
+  }
+  return 'work';
+};
+
+function compass(x0: number, z0: number, x1: number, z1: number) {
+  const a = Math.atan2(x1 - x0, -(z1 - z0)); // 0 = north (towards -z), clockwise
+  return ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'][((Math.round(a / (Math.PI / 4)) % 8) + 8) % 8];
+}
 
 // ---------------------------------------------------------------- upkeep
 let upT = 0;
@@ -476,9 +525,11 @@ export function tickBase(dt: number) {
     if (o.owner !== 'player' || !o.data?.power) continue;
     if (o.data.power > 0) gens.push(o); else users.push(o);
   }
+  const out = new Map<number, number>();
+  for (const g of gens) out.set(g.id, users.some((u) => Math.hypot(g.x - u.x, g.z - u.z) < 150) ? genOutput(g) : 0);
   for (const u of users) {
     let supply = 0, demand = 0;
-    for (const g of gens) if (Math.hypot(g.x - u.x, g.z - u.z) < 150) supply += genOutput(g);
+    for (const g of gens) if (Math.hypot(g.x - u.x, g.z - u.z) < 150) supply += out.get(g.id)!;
     for (const v of users) if (Math.hypot(v.x - u.x, v.z - u.z) < 150) demand += -v.data.power;
     u.data.powerOK = demand > 0 ? Math.min(1, supply / demand) : 1;
   }
@@ -510,7 +561,8 @@ export function tickBase(dt: number) {
       if (Math.hypot(o.x - c.x, o.z - c.z) > 60) continue;
       const f = o.inv.first((d) => d.cat === 'food');
       if (!f) continue;
-      c.hunger = Math.min(300, c.hunger + (ITEM[f.id].food ?? 0));
+      // at the base: with a table to sit at, the same food goes further
+      c.hunger = Math.min(300, c.hunger + (ITEM[f.id].food ?? 0) * tableBonus(o.x, o.z, 40));
       f.n--; if (f.n <= 0) o.inv.remove(f);
       break;
     }
@@ -526,13 +578,39 @@ function genOutput(g: WObj) {
     return b.power! * windy * (0.7 + 0.3 * Math.sin(S.time * 0.01 + g.id));
   }
   if (b.key === 'generator') {
-    // burns fuel stored in it
+    // burns fuel from its tank (a can lasts about six hours), and tops the tank up from storage nearby
     if (!g.inv) g.inv = new Grid(4, 4);
+    if (g.inv.count('fuel') < 2) {
+      const st = storeWith('fuel', g.x, g.z, FUEL_REACH);
+      if (st) g.inv.add('fuel', st.inv!.take('fuel', 3 - g.inv.count('fuel')));
+    }
     g.data.fuelT = (g.data.fuelT ?? 0) - 3;
-    if (g.data.fuelT <= 0) { if (g.inv.take('fuel', 1)) g.data.fuelT = 600; else return 0; }
+    if (g.data.fuelT <= 0) {
+      if (g.inv.take('fuel', 1)) g.data.fuelT = 600;
+      else {
+        g.data.fuelT = 0;
+        if (!g.data.dry) { g.data.dry = true; S.fx.notice(`The ${g.data.name ?? 'generator'} is out of fuel. Put fuel in it or in storage nearby.`); }
+        return 0;
+      }
+    }
+    g.data.dry = false;
     return b.power!;
   }
   return b.power ?? 0;
+}
+
+/** How far a fuel generator reaches for fuel in your storage. */
+export const FUEL_REACH = 40;
+
+/** The nearest of your storage boxes holding an item (not a machine's own stock). */
+function storeWith(id: string, x: number, z: number, r: number): WObj | null {
+  let best: WObj | null = null, bd = r;
+  for (const o of S.W.objs.values()) {
+    if (o.owner !== 'player' || (o.kind !== 'storage' && o.kind !== 'crate') || !o.inv?.count(id)) continue;
+    const d = Math.hypot(o.x - x, o.z - z);
+    if (d < bd) { bd = d; best = o; }
+  }
+  return best;
 }
 
 /** Where the player's base is, if they have one. */

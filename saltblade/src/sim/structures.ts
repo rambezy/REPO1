@@ -141,6 +141,7 @@ export function floorAt(x: number, z: number): number {
  * just past its edge, since it blocks the ground it stands on.
  */
 export function reachOf(o: WObj, least = 1.2) {
+  if (o.kind === 'tower') return Math.max(least, (o.data?.r ?? 2) + 2); // round its legs, wherever the path ends
   const f = FURN[o.def];
   return f ? Math.max(least, Math.hypot(f[0], f[1]) + 0.75) : least;
 }
