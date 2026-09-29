@@ -7,7 +7,7 @@ import { Actor } from '../world/actor';
 import { here, actorsNear } from '../world/world';
 import { MapObject } from '../world/map';
 import { S } from '../state';
-import { dirFromVec, dirFromAngle, DIR_VEC, rand } from '../engine/util';
+import { dirFromVec, dirFromAngle, DIR_VEC, rand, angleDiff } from '../engine/util';
 import { startAttack, startBlock, endBlock, startDodge, isPlayer, areHostile } from './combat';
 import { addXp, hasPerk, buffActive, maxStamina, maxHp } from './stats';
 import { overweight, has, refreshEquipment, useItem } from './inventory';
@@ -60,6 +60,21 @@ function nearestHostile(p: Actor, r: number): Actor | null {
   return best;
 }
 
+/**
+ * Something to swing at within a stride of the blade: a foe or a beast, or a
+ * bystander the blow is aimed straight at (the dog and companions never).
+ */
+function inStrikingRange(p: Actor, ang: number): boolean {
+  const r = p.combat.weapon.reach + 30;
+  for (const o of here()) {
+    if (o === p || o.dead || o.hidden || o.faction === 'dog' || o.faction === 'ally' || o.mem.follow === p.id) continue;
+    const dx = o.x - p.x, dy = o.y - p.y;
+    if (Math.hypot(dx, dy) >= r) continue;
+    if (o.hostile || o.isAnimal || angleDiff(Math.atan2(dy, dx), ang) < 0.8) return true;
+  }
+  return false;
+}
+
 export function updatePlayer(dt: number) {
   const p = G.player;
   if (!p || p.dead) return;
@@ -110,6 +125,8 @@ export function updatePlayer(dt: number) {
 
   const ang = aimAngle(p);
   const bowMode = c.weapon.kind === 'bow';
+  // the guard follows the aim between blows
+  if (c.phase === 'none') c.attackAngle = ang;
 
   // ---- combat input ----
   if (!locked) {
@@ -136,8 +153,9 @@ export function updatePlayer(dt: number) {
         p.mem.drawT = 0;
       }
     } else if (input.pressed('attack') && c.phase !== 'block') {
-      if (startAttack(p, c.combo >= 2 && c.comboWindow > 0 ? 'thrust' : 'slash', ang)) playerState.attackHeld = 0;
-      else if (c.phase === 'windup' || c.phase === 'strike') c.queued = true;
+      // a click only swings when there is something to swing at
+      if (c.phase === 'windup' || c.phase === 'strike') c.queued = true;
+      else if ((playerState.combatNear || c.phase === 'recover' || inStrikingRange(p, ang)) && startAttack(p, c.combo >= 2 && c.comboWindow > 0 ? 'thrust' : 'slash', ang)) playerState.attackHeld = 0;
     }
     if (!bowMode && input.down('attack') && c.phase === 'windup' && c.attackKind === 'slash') {
       playerState.attackHeld += dt;
@@ -190,6 +208,11 @@ export function updatePlayer(dt: number) {
   if (c.phase === 'block' || c.phase === 'draw' || (playerState.combatNear && c.phase === 'none' && input.lastDevice === 'mouse')) p.dir = dirFromAngle(ang);
 
   if (c.phase === 'none' && p.poseLock <= 0 && !p.sitting) p.pose = didMove ? 'walk' : (p.crouching ? 'crouch' : 'idle');
+  // moving while recovering, blocking or drawing a bow: the legs keep walking
+  else if ((c.phase === 'recover' || c.phase === 'block' || c.phase === 'draw') && p.poseLock <= 0 && !p.sitting) {
+    if (didMove) p.pose = 'walk';
+    else if (p.pose === 'walk') p.pose = c.phase === 'block' ? 'block' : c.phase === 'draw' ? 'windup' : 'idle';
+  }
   if (p.crouching && c.phase === 'none' && didMove) p.pose = 'walk';
 
   // ---- stamina regeneration ----

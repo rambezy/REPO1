@@ -10,6 +10,8 @@ export const UI = {
   bubbles: null as unknown as HTMLElement,
   layer: null as unknown as HTMLElement, // full screen panels
   screen: null as { el: HTMLElement; close: () => void; name: string; prevMode: Mode; onKey?: (k: string) => boolean } | null,
+  /** True while a conversation or cutscene is running (the script system sets this). */
+  scriptActive: () => false,
 };
 
 export function initUI(root: HTMLElement) {
@@ -44,7 +46,13 @@ export function openScreen(name: string, build: (close: () => void) => HTMLEleme
     closed = true;
     wrap.remove();
     if (UI.screen && UI.screen.el === wrap) UI.screen = null;
-    if (G.mode === (opts.mode ?? 'menu')) G.mode = prevMode === 'menu' ? 'play' : prevMode;
+    if (G.mode === (opts.mode ?? 'menu')) {
+      let back: Mode = prevMode === 'menu' ? 'play' : prevMode;
+      // a conversation can open a panel (a merchant's wares) and end while it
+      // is still open: don't hand control back to a dialogue that is over
+      if ((back === 'dialogue' || back === 'cutscene') && !UI.scriptActive()) back = 'play';
+      G.mode = back;
+    }
     document.body.classList.remove('menu-open');
     input.consumeAll();
     sfx('ui_back');

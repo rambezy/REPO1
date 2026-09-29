@@ -250,7 +250,6 @@ export class Actor {
     }
     if (!this.look) return;
     const wp = weaponPose(this, this === G.player);
-    const fighting = !!wp && !wp.rest;
     const hand = (this.mem.hand ||= { x: this.x, y: this.y - 11 });
     let seed = this.mem.animSeed as number | undefined;
     if (seed === undefined) { seed = 0; for (let i = 0; i < this.id.length; i++) seed = (seed * 31 + this.id.charCodeAt(i)) % 997; this.mem.animSeed = seed; }
@@ -261,8 +260,9 @@ export class Actor {
       t: this.animT,
       running: this.running,
       crouching: this.crouching,
-      aim: fighting ? wp!.A : null,
+      aim: wp ? wp.armA : null,
       reach: wp?.reach,
+      lunge: wp?.lean,
       flash: this.flash,
       alpha: this.alpha,
       seed,

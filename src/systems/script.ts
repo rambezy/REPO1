@@ -20,6 +20,7 @@ import { walkTo } from './ai';
 import { fadeTo } from './transition';
 import { emit } from '../engine/events';
 import { input } from '../engine/input';
+import { UI } from '../ui/ui';
 
 let depth = 0; // nested conversation/cutscene count
 let sceneDepth = 0;
@@ -138,6 +139,8 @@ export function charisma(): number {
 }
 
 /** Wraps a conversation: switches to dialogue mode and restores play afterwards. */
+UI.scriptActive = () => depth > 0 || sceneDepth > 0;
+
 export async function conversation(fn: () => Promise<void>) {
   depth++;
   const prev = G.mode;

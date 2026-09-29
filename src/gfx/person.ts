@@ -121,6 +121,8 @@ export interface PersonState {
   aim?: number | null;
   /** 0..1: how far the arm reaches toward `aim` */
   reach?: number;
+  /** body weight shift for attacks: negative leans back, positive into the blow */
+  lunge?: number;
   flash?: number;
   alpha?: number;
   seed?: number;          // per-actor offset for blinking/breathing
@@ -156,6 +158,9 @@ export function drawPerson(ctx: CanvasRenderingContext2D, look: Look, st: Person
   drawPersonAt(ctx, look, st, x, y);
 }
 
+/** How long a reaching arm looks: cocked at the shoulder (0) to fully out (1). */
+const armLen = (reach: number) => 0.6 + clamp(reach, 0, 1.1) * 0.42;
+
 function drawPersonAt(ctx: CanvasRenderingContext2D, look: Look, st: PersonState, x: number, y: number) {
   const b = bodyOf(look);
   const sets = partsFor(look);
@@ -179,14 +184,16 @@ function drawPersonAt(ctx: CanvasRenderingContext2D, look: Look, st: PersonState
   if (pose === 'sit') drop = 4.2 * b.scale;
   const bounce = walking ? -Math.abs(c2) * 0.55 * stride + 0.3 : 0;
   const hurtLean = pose === 'hurt' ? 1 : 0;
-  const lean = (pose === 'crouch' || st.crouching ? 1.2 : 0) + (st.running && walking ? 0.8 : 0) - hurtLean * 1.3;
+  const lunge = st.lunge ?? 0;
+  const lean = (pose === 'crouch' || st.crouching ? 1.2 : 0) + (st.running && walking ? 0.8 : 0) - hurtLean * 1.3 + lunge * 0.9;
   const sway = walking && view !== 1 ? s2 * 0.35 : 0;
 
   ctx.save();
   ctx.translate(x, y);
   if (flip) ctx.scale(-1, 1);
   if (pose === 'hurt') ctx.translate(0, 0.4);
-  const bodyY = drop + bounce;
+  // dip a little into a blow, rise a little on the wind-up
+  const bodyY = drop + bounce + lunge * 0.28;
 
   // ---- arm aims ----
   const hasAim = st.aim !== null && st.aim !== undefined;
@@ -245,12 +252,12 @@ function drawPersonAt(ctx: CanvasRenderingContext2D, look: Look, st: PersonState
     if (nearArmA === null) P(set.armNear, -0.1 + lean * 0.6, shY + breathe, armSwing, 1, 1);
     else {
       const a = nearArmA;
-      P(set.armNear, -0.1, shY, armRot(a), 1, 0.85 + reach * 0.15);
+      P(set.armNear, -0.1, shY, armRot(a), 1, armLen(reach));
     }
     if (hand) {
       const sx = -0.1, sy = shY;
       const a = nearArmA ?? (Math.PI / 2 + armSwing);
-      const L = b.armL * (nearArmA === null ? 1 : 0.85 + reach * 0.15);
+      const L = b.armL * (nearArmA === null ? 1 : armLen(reach));
       const hx = sx + Math.cos(a) * L, hy = sy + Math.sin(a) * L;
       hand.x = x + (flip ? -hx : hx);
       hand.y = y + hy;
@@ -280,12 +287,12 @@ function drawPersonAt(ctx: CanvasRenderingContext2D, look: Look, st: PersonState
         const inward = (side === 'L' ? 1 : -1) * (swing > 0 ? -swing * 0.3 : -swing * 0.12);
         P(p, ax + sway, armY - swing * 0.4, (side === 'L' ? 0.07 : -0.07) + inward + (pose === 'sit' ? (side === 'L' ? 0.25 : -0.25) : 0), 1, k);
       } else {
-        const sy = 0.82 + reach * 0.18;
+        const sy = armLen(reach);
         P(p, ax + sway, armY, armRot(a), 1, sy);
       }
       if (side === 'L' && st.hand) {
         const aa = a ?? Math.PI / 2;
-        const L = b.armL * (a === null ? 1 : 0.82 + reach * 0.18);
+        const L = b.armL * (a === null ? 1 : armLen(reach));
         const hx = ax + sway + Math.cos(aa) * L, hy = armY + Math.sin(aa) * L;
         st.hand.x = x + (flip ? -hx : hx);
         st.hand.y = y + hy;

@@ -173,7 +173,8 @@ export function updateActorCombat(a: Actor, dt: number) {
       }
       break;
     case 'recover':
-      a.pose = c.phaseT < 0.08 ? 'strike' : 'idle';
+      // stepping away after a blow keeps its walk cycle
+      if (a.pose !== 'walk') a.pose = c.phaseT < 0.08 ? 'strike' : 'idle';
       if (c.phaseT >= c.phaseLen) { c.phase = 'none'; a.pose = 'idle'; }
       break;
     case 'stagger':
