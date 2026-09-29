@@ -5,7 +5,7 @@ import { G } from '../state';
 import { S } from '../sim/ctx';
 import { BUILDABLES, BUILDABLE, Buildable, RECIPES, TECHS, TECH, BuildCat } from '../content/buildables';
 import { ITEM } from '../content/items';
-import { canPlace, placeSite, unlocked, deconstruct, FUEL_REACH } from '../sim/base';
+import { canPlace, placeSite, unlocked, deconstruct, FUEL_REACH, cropFitness } from '../sim/base';
 import { on, emit } from '../core/events';
 import { input } from '../core/input';
 import { groundAt, selected } from '../game/control';
@@ -220,7 +220,10 @@ export function openObject(id: number) {
     if (o.kind === 'farm') {
       const d = o.data;
       w.body.appendChild(h('div', {}, `${ITEM[d.crop]?.name ?? d.crop}: ${d.growth >= 1 ? 'ready to harvest' : `growing, ${Math.floor(d.growth * 100)}%`}`));
-      w.body.appendChild(h('div', { class: 'dim' }, `Ground fertility here: ${Math.round(S.T.regionAt(o.x, o.z).fertility * 100)}%. Wells nearby help. Tended fields grow faster.`));
+      const reg = S.T.regionAt(o.x, o.z);
+      const fit = Math.max(0.1, cropFitness(d.crop, reg.fertility, reg.water_table));
+      const note = d.crop === 'glowcap' ? ' Grows fastest by night.' : d.crop === 'bloodthorn' ? ' Heat helps it; rain slows it.' : '';
+      w.body.appendChild(h('div', { class: fit < 0.4 ? 'bad' : 'dim' }, `How well it takes to this ground: ${Math.round(fit * 100)}%.${note} Wells nearby help. Tended fields grow faster.`));
     }
     // recipes: machines pick one, benches queue several
     if (o.data?.recipes && mine) {

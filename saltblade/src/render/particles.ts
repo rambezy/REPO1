@@ -68,7 +68,7 @@ function pool(additive: boolean): Pool {
 
 interface Beam { mesh: THREE.Mesh; age: number; life: number; }
 
-export type Burst = 'sparks' | 'embers' | 'flash' | 'smoke' | 'dust' | 'blood' | 'steam' | 'oil';
+export type Burst = 'sparks' | 'embers' | 'flash' | 'smoke' | 'dust' | 'blood' | 'steam' | 'oil' | 'glint';
 
 export class Particles {
   glow = pool(true);
@@ -127,6 +127,10 @@ export class Particles {
           break;
         case 'blood':
           this.spawn(this.soft, x, y, z, Math.cos(a) * (1 + R()) + dx * 2, 0.5 + R() * 2, Math.sin(a) * (1 + R()) + dz * 2, 0.32, 0.02, 0.02, 0.08 + R() * 0.06, 0.4 + R() * 0.3, 0.8, 9.8);
+          break;
+        case 'glint':
+          // blue motes drifting up off someone on glowdust
+          this.spawn(this.glow, x + (R() - 0.5) * 0.5, y + (R() - 0.5) * 0.4, z + (R() - 0.5) * 0.5, (R() - 0.5) * 0.3, 0.3 + R() * 0.5, (R() - 0.5) * 0.3, 0.8, 2.6, 5, 0.04 + R() * 0.03, 0.8 + R() * 0.8, 0.8, -0.2);
           break;
         case 'oil':
           this.spawn(this.soft, x, y, z, Math.cos(a) * (1 + R()) + dx * 2, 0.5 + R() * 2, Math.sin(a) * (1 + R()) + dz * 2, 0.04, 0.035, 0.03, 0.09 + R() * 0.06, 0.45 + R() * 0.3, 0.8, 9.8);

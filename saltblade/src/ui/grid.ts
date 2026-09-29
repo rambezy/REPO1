@@ -5,6 +5,8 @@ import { ITEM, GRADES, gradeName, itemValue, EquipSlot, slotFor } from '../conte
 import { iconFor, CELL_PX } from './icons';
 import { LIMB_NAMES } from '../sim/body';
 import { SKILL_INFO } from '../sim/skills';
+import { DRUG } from '../sim/drugs';
+import { FACTION } from '../content/factions';
 
 export type Source = { kind: 'grid'; grid: Grid; view: GridView } | { kind: 'slot'; slot: EquipSlot; view: SlotView };
 
@@ -71,8 +73,16 @@ export function itemTip(it: Item, price?: number): string {
   if (d.food) rows.push(`Nutrition <b>${d.food}</b>`);
   if (d.med) rows.push(`${d.med.robot ? 'Repair' : 'Medical'} points <b>${d.med.points}</b> · quality <b>${d.med.quality}</b>${d.med.splint ? ' · splints broken limbs' : ''}`);
   if (d.limb) rows.push(`Prosthetic ${d.limb.part} · ${Object.entries(d.limb.bonus).map(([s, v]) => `${SKILL_INFO[s as keyof typeof SKILL_INFO].name} ${v! > 0 ? '+' : ''}${v}`).join(', ')}`);
+  if (it.cond !== undefined) rows.push(`<span class="${it.cond < 0.3 ? 'bad' : 'dim'}">Condition ${Math.round(it.cond * 100)}%</span>`);
+  const dose = d.drug ? DRUG[d.drug] : undefined;
+  if (dose) {
+    const skills = (m: Partial<Record<string, number>>) => Object.entries(m).map(([s, v]) => `${SKILL_INFO[s as keyof typeof SKILL_INFO].name} ${v! > 0 ? '+' : ''}${v}`).join(', ');
+    rows.push(`${dose.act}: <b>${skills(dose.lift)}</b>${dose.speed ? ` · runs ${Math.round((dose.speed - 1) * 100)}% faster` : ''}${dose.pain ? ' · dulls pain' : ''} for ${dose.hours}h`);
+    if (dose.crash) rows.push(`<span class="dim">Then ${dose.crash}h coming down: ${skills(dose.low)}</span>`);
+    rows.push(`<span class="${dose.hook >= 12 ? 'bad' : 'dim'}">${dose.hook >= 12 ? 'Hooks fast' : 'Habit-forming'}${dose.food ? ' · turns the stomach' : ''}</span>`);
+  }
   if (d.research) rows.push(`Research value: <b>tier ${d.research}</b>`);
-  if (d.illegal) rows.push(`<span class="bad">Illegal in Covenant lands</span>`);
+  if (d.illegal) rows.push(`<span class="bad">Contraband to the ${d.illegal.map((f) => FACTION[f]?.short ?? f).join(' and the ')}</span>`);
   if (it.stolen) rows.push(`<span class="bad">Stolen</span>`);
   rows.push(`<span class="dim">Weight ${(d.weight * it.n).toFixed(1)} kg · Value ${itemValue(d, it.q) * it.n}c${price !== undefined ? ` · <b style="color:#e8c060">Price ${price}c</b>` : ''}</span>`);
   return s + rows.map((r) => `<div class="tt-row">${r}</div>`).join('');

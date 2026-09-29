@@ -10,11 +10,13 @@ import { makeItem, type Grid, type Item } from './inventory';
 import { bedRest } from './use';
 import { machineSay } from './machines';
 import { clamp } from '../core/math';
+import { drugPain, tickDrugs } from './drugs';
 import { emit } from '../core/events';
 
 export function koThreshold(c: Char, limb: number) {
   const t = c.skill('toughness');
-  return -c.body.max[limb] * Math.min(0.85, t / 115);
+  // a painkiller (or rage) keeps them up a good way past where they'd drop
+  return -c.body.max[limb] * Math.min(c.mem.high ? 0.95 : 0.85, t / 115 + (c.mem.high ? drugPain(c) : 0));
 }
 
 export function isKOCondition(c: Char) {
@@ -78,6 +80,7 @@ export function dropCarried(c: Char) {
 export function tickHealth(c: Char, dt: number) {
   const b = c.body;
   if (c.status === 'dead') return;
+  if (c.mem.high || c.mem.habit) tickDrugs(c, dt);
   const race = RACE[c.look.race];
   const gameH = (dt * RATE) / 3600; // game hours this step
   // hunger

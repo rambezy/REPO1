@@ -39,7 +39,7 @@ export function canPlace(b: Buildable, x: number, z: number, rot: number): { ok:
     const h = T.heightAt(wx, wz);
     minH = Math.min(minH, h); maxH = Math.max(maxH, h);
   }
-  if (minH < 0.2 && b.crop !== 'riceweed') return { ok: false, why: 'Too wet to build here.' };
+  if (minH < 0.2 && b.crop !== 'riceweed' && b.crop !== 'dreamleaf') return { ok: false, why: 'Too wet to build here.' };
   const tol = b.kind === 'building' ? 3.6 : b.kind === 'farm' ? 2.2 : b.kind === 'wall' || b.kind === 'gate' || b.kind === 'tower' ? 4.5 : 1.6;
   if (maxH - minH > tol) return { ok: false, why: 'The ground is too steep.' };
   // overlaps
@@ -514,6 +514,19 @@ function compass(x0: number, z0: number, x1: number, z1: number) {
 
 // ---------------------------------------------------------------- upkeep
 let upT = 0;
+
+/** How well a crop takes to the ground: fertile soil for most, water for riceweed and dreamleaf, poor ground for cactus and the drug crops of the dry and the dark. */
+export function cropFitness(crop: string, fert: number, wet: number): number {
+  switch (crop) {
+    case 'cactus': return 0.6 + (1 - fert) * 0.4;
+    case 'riceweed': return wet;
+    case 'dreamleaf': return fert * 0.5 + wet * 0.5;
+    case 'glowcap': return 0.35 + wet * 0.45 + (1 - fert) * 0.2;
+    case 'bloodthorn': return 0.4 + (1 - wet) * 0.4 + (1 - fert) * 0.2;
+    default: return fert;
+  }
+}
+
 export function tickBase(dt: number) {
   upT -= dt;
   if (upT > 0) return;
@@ -539,15 +552,19 @@ export function tickBase(dt: number) {
     if (o.kind !== 'farm' || o.owner !== 'player') continue;
     const d = o.data;
     if (d.growth >= 1) continue;
-    const fert = S.T.regionAt(o.x, o.z).fertility;
-    const cropFit = d.crop === 'cactus' ? 0.6 + (1 - fert) * 0.4 : d.crop === 'riceweed' ? (S.T.regionAt(o.x, o.z).water_table) : fert;
+    const reg = S.T.regionAt(o.x, o.z), fert = reg.fertility, wet = reg.water_table;
+    const cropFit = cropFitness(d.crop, fert, wet);
     let water = 1;
     S.W.objHash.near(o.x, o.z, 40, (w) => { if (w.kind === 'well' && w.owner === 'player') water = 1.35; });
     const tended = S.clock.t - (d.tended ?? -1e9) < 7200 ? 1.2 : 0.75;
     const sky = S.weather?.at(o.x, o.z);
-    const rain = sky && sky.kind === 'rain' ? 1 + 0.4 * sky.i : sky && sky.kind === 'heat' ? 1 - 0.3 * sky.i : 1;
+    // rain helps most crops and heat hurts them; bloodthorn is the other way about
+    let rain = sky && sky.kind === 'rain' ? 1 + 0.4 * sky.i : sky && sky.kind === 'heat' ? 1 - 0.3 * sky.i : 1;
+    if (d.crop === 'bloodthorn') rain = 2 - rain;
+    // glowcaps grow in the dark
+    const night = d.crop === 'glowcap' ? (S.clock.isNight ? 1.5 : 0.7) : 1;
     const before = d.growth;
-    d.growth = Math.min(1, d.growth + (hours / 44) * Math.max(0.1, cropFit) * water * tended * rain);
+    d.growth = Math.min(1, d.growth + (hours / 44) * Math.max(0.1, cropFit) * water * tended * rain * night);
     if (Math.floor(before * 5) !== Math.floor(d.growth * 5)) emit('objs');
     if (before < 1 && d.growth >= 1) S.fx.notice(`The ${d.name ?? 'crop'} is ready to harvest.`, 'good');
   }

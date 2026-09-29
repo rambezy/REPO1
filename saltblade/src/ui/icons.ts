@@ -167,6 +167,53 @@ function draw(g: CanvasRenderingContext2D, d: ItemDef, W: number, H: number) {
       g.fillStyle = '#5a8a3a'; g.strokeStyle = '#2a4a1a'; g.lineWidth = 3;
       g.beginPath(); g.moveTo(W * 0.15, H * 0.85); g.quadraticCurveTo(W * 0.1, H * 0.1, W * 0.85, H * 0.15); g.quadraticCurveTo(W * 0.9, H * 0.9, W * 0.15, H * 0.85); g.fill(); g.stroke();
       break;
+    case 'mushroom': {
+      // a pale cap on a stalk, glowing
+      g.shadowColor = '#7ad0ff'; g.shadowBlur = 14;
+      g.fillStyle = '#d8e8e0'; g.fillRect(W * 0.43, H * 0.45, W * 0.14, H * 0.42);
+      g.fillStyle = '#9ad8f0'; g.strokeStyle = '#3a6878'; g.lineWidth = 3;
+      g.beginPath(); g.ellipse(cx, H * 0.45, W * 0.36, H * 0.24, 0, Math.PI, 0); g.closePath(); g.fill(); g.stroke();
+      g.fillStyle = '#e8fbff'; for (const [px, py] of [[0.36, 0.34], [0.55, 0.3], [0.64, 0.4]]) { g.beginPath(); g.arc(W * px, H * py, m * 0.045, 0, 7); g.fill(); }
+      break;
+    }
+    case 'thorn': {
+      // a thorny stem with red pods
+      g.strokeStyle = '#5a3a24'; g.lineWidth = m * 0.08;
+      g.beginPath(); g.moveTo(W * 0.2, H * 0.85); g.quadraticCurveTo(W * 0.5, H * 0.5, W * 0.8, H * 0.15); g.stroke();
+      g.lineWidth = m * 0.04; for (const k of [0.3, 0.5, 0.7]) { g.beginPath(); g.moveTo(W * (0.2 + k * 0.55), H * (0.85 - k * 0.7)); g.lineTo(W * (0.12 + k * 0.55), H * (0.72 - k * 0.7)); g.stroke(); }
+      g.fillStyle = '#c02a20'; g.strokeStyle = '#5a0a08'; g.lineWidth = 2;
+      for (const [px, py] of [[0.42, 0.62], [0.62, 0.38], [0.3, 0.42]]) { g.beginPath(); g.ellipse(W * px, H * py, m * 0.11, m * 0.08, 0.6, 0, 7); g.fill(); g.stroke(); }
+      break;
+    }
+    case 'roll': {
+      // three rolled smokes, tied
+      for (let i = 0; i < 3; i++) {
+        const y = H * (0.34 + i * 0.16);
+        g.fillStyle = '#e0d4b0'; g.strokeStyle = '#6a5a3a'; g.lineWidth = 2;
+        g.beginPath(); g.roundRect(W * 0.14, y - H * 0.06, W * 0.66, H * 0.12, 5); g.fill(); g.stroke();
+        g.fillStyle = '#6a4a2a'; g.fillRect(W * 0.74, y - H * 0.06, W * 0.1, H * 0.12);
+      }
+      g.fillStyle = '#8a2a20'; g.fillRect(W * 0.42, H * 0.24, W * 0.07, H * 0.52);
+      break;
+    }
+    case 'powder': {
+      // a twist of paper spilling glowing blue dust
+      g.fillStyle = '#c8bca0'; g.strokeStyle = '#5a4a30'; g.lineWidth = 3;
+      g.beginPath(); g.moveTo(W * 0.2, H * 0.25); g.lineTo(W * 0.8, H * 0.3); g.lineTo(W * 0.62, H * 0.62); g.closePath(); g.fill(); g.stroke();
+      g.fillStyle = '#6ad0ff'; g.shadowColor = '#6ad0ff'; g.shadowBlur = 16;
+      g.beginPath(); g.ellipse(W * 0.5, H * 0.78, W * 0.3, H * 0.1, 0, 0, 7); g.fill();
+      break;
+    }
+    case 'vial': {
+      // a stoppered glass vial of red syrup
+      g.strokeStyle = 'rgba(220,230,240,0.9)'; g.lineWidth = 3;
+      g.fillStyle = 'rgba(200,220,230,0.25)';
+      g.beginPath(); g.roundRect(W * 0.34, H * 0.2, W * 0.32, H * 0.68, 10); g.fill(); g.stroke();
+      g.fillStyle = '#e0302a'; g.shadowColor = '#ff4030'; g.shadowBlur = 14;
+      g.beginPath(); g.roundRect(W * 0.37, H * 0.42, W * 0.26, H * 0.43, 8); g.fill();
+      g.shadowBlur = 0; g.fillStyle = '#6a4a2a'; g.fillRect(W * 0.38, H * 0.1, W * 0.24, H * 0.12);
+      break;
+    }
     case 'med':
     case 'splint':
     case 'gear': {

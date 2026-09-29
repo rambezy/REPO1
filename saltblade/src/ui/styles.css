@@ -61,11 +61,14 @@ body.paused .hud-speed::after { content: 'PAUSED'; font: 700 11px var(--cond); c
 .bar.xp { height: 3px; background: #2a261e; } .bar.xp i { background: var(--accent); }
 .bar.food i { background: #c89a4a; }
 .bar.pr { background: #1e2226; } .bar.pr i { background: #8aa0b4; }
+.bar.habit { background: #2a1a24; } .bar.habit i { background: #b05a9a; }
 .pst { position: absolute; top: 4px; left: 4px; right: 4px; display: flex; flex-wrap: wrap; gap: 2px; font: 700 10px var(--cond); }
 .pst b { background: rgba(0,0,0,.7); padding: 0 3px; border-radius: 2px; }
 .ic { width: 13px; height: 13px; border-radius: 50%; display: inline-block; background: #222; border: 1px solid rgba(0,0,0,.6); }
 .ic.bleed { background: #c0302a; } .ic.hungry { background: #c8a050; } .ic.hungry.bad { background: #e05020; }
 .ic.sleep { background: #6a80c0; } .ic.carry { background: #8a7a5a; } .ic.carried { background: #5a4a3a; }
+.ic.high { background: #b070e0; box-shadow: 0 0 5px #b070e0; } .ic.crash { background: #5a4a6a; } .ic.crave { background: #7a2a6a; box-shadow: 0 0 4px #c03a8a; }
+.seldrug { font-size: 12px; margin: -3px 0 4px; } .seldrug.high { color: #c9a0f0; } .seldrug.crash { color: #9a8aa8; } .seldrug.crave { color: #e0709a; }
 .ic.chain { background: #6a6a6e; } .ic.wanted { background: #e0a020; box-shadow: 0 0 4px #e0a020; } .ic.sneak { background: #3a4a3a; } .ic.heavy { background: #a06a3a; }
 .bad { color: #e8765a; } .good { color: #9cd070; } .dim { color: var(--ink-dim); }
 

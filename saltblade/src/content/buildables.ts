@@ -57,6 +57,10 @@ R({ key: 'porridge', name: 'Riceweed Porridge', in: { riceweed: 3 }, out: { porr
 R({ key: 'travel_ration', name: 'Travel Ration', in: { dried_meat: 1, dustbread: 1, cactus: 1 }, out: { travel_ration: 2 }, time: 30, skill: 'cooking', research: 'cooking2' });
 R({ key: 'grog', name: 'Grog', in: { riceweed: 3 }, out: { grog: 1 }, time: 40, skill: 'cooking' });
 R({ key: 'cactus_rum', name: 'Cactus Rum', in: { cactus: 3 }, out: { cactus_rum: 1 }, time: 45, skill: 'cooking' });
+// the drug lab: leaf cured, caps ground, thorn boiled down
+R({ key: 'dreamsmoke', name: 'Dreamsmoke', in: { dreamleaf: 3 }, out: { dreamsmoke: 2 }, time: 50, skill: 'cooking', research: 'narcotics' });
+R({ key: 'glowdust', name: 'Glowdust', in: { glowcap: 4 }, out: { glowdust: 1 }, time: 80, skill: 'medic', research: 'narcotics' });
+R({ key: 'redrage', name: 'Redrage', in: { bloodthorn: 3, grog: 1 }, out: { redrage: 1 }, time: 90, skill: 'medic', research: 'narcotics' });
 // medicine
 R({ key: 'bandages', name: 'Bandages', in: { fabric: 1 }, out: { bandages: 2 }, time: 20, skill: 'medic' });
 R({ key: 'first_aid', name: 'First Aid Kit', in: { fabric: 2, hemp: 1 }, out: { first_aid: 1 }, time: 40, skill: 'medic', research: 'medicine' });
@@ -155,6 +159,7 @@ export const BUILDABLES: Buildable[] = [
   { key: 'loom', name: 'Loom', cat: 'Production', kind: 'machine', def: 'loom', w: 2, d: 1.5, cost: { building_mats: 4 }, work: 160, recipes: ['fabric'], job: 'operate', desc: 'Weaves hemp into fabric.' },
   { key: 'tannery', name: 'Tanning Rack', cat: 'Production', kind: 'machine', def: 'tannery', w: 2, d: 1.2, cost: { building_mats: 3 }, work: 120, recipes: ['leather'], job: 'operate', desc: 'Turns hides into leather.' },
   { key: 'mill', name: 'Grain Mill', cat: 'Production', kind: 'machine', def: 'mill', w: 2.2, d: 2.2, cost: { building_mats: 5 }, work: 180, research: 'milling', recipes: ['flour'], job: 'operate', desc: 'Grinds wheat into flour.' },
+  { key: 'druglab', name: 'Drug Lab', cat: 'Production', kind: 'machine', def: 'druglab', w: 2, d: 1, cost: { building_mats: 3, iron_plates: 2, fabric: 2 }, work: 220, research: 'narcotics', recipes: ['dreamsmoke', 'glowdust', 'redrage'], job: 'operate', desc: 'Cures dreamleaf into dreamsmoke, grinds glowcaps into glowdust and boils bloodthorn into redrage. Every one of them sells dear, and every one is contraband to the Covenant.' },
   { key: 'brewery', name: 'Still', cat: 'Production', kind: 'machine', def: 'still', w: 2, d: 2, cost: { building_mats: 4, iron_plates: 3 }, work: 200, research: 'brewing', recipes: ['grog', 'cactus_rum'], job: 'operate', desc: 'Brews grog or cactus rum (click it to choose), both of which sell well.' },
   { key: 'furnace', name: 'Steel Furnace', cat: 'Production', kind: 'machine', def: 'furnace', w: 3, d: 3, cost: { building_mats: 10, iron_plates: 8 }, work: 420, power: -25, research: 'steel', recipes: ['steel_bars'], job: 'operate', desc: 'Makes steel from iron plates and fuel.' },
   { key: 'fuelpress', name: 'Fuel Press', cat: 'Production', kind: 'machine', def: 'press', w: 2, d: 2, cost: { building_mats: 4, iron_plates: 4 }, work: 220, research: 'fuel', recipes: ['fuel'], job: 'operate', desc: 'Presses hemp into fuel.' },
@@ -173,6 +178,9 @@ export const BUILDABLES: Buildable[] = [
   { key: 'farm_wheat', name: 'Wheat Field', cat: 'Farming', kind: 'farm', def: 'wheat', w: 12, d: 8, cost: { building_mats: 2 }, work: 120, research: 'farming', crop: 'wheat', job: 'farm', desc: 'Grows wheat. Needs fertile ground.' },
   { key: 'farm_cactus', name: 'Cactus Field', cat: 'Farming', kind: 'farm', def: 'cactus', w: 12, d: 8, cost: { building_mats: 2 }, work: 120, crop: 'cactus', job: 'farm', desc: 'Cactus grows even in poor, dry ground.' },
   { key: 'farm_riceweed', name: 'Riceweed Paddy', cat: 'Farming', kind: 'farm', def: 'riceweed', w: 12, d: 8, cost: { building_mats: 2 }, work: 120, research: 'farming', crop: 'riceweed', job: 'farm', desc: 'Riceweed loves wet ground.' },
+  { key: 'farm_dreamleaf', name: 'Dreamleaf Patch', cat: 'Farming', kind: 'farm', def: 'dreamleaf', w: 10, d: 6, cost: { building_mats: 2 }, work: 120, research: 'narcotics', crop: 'dreamleaf', job: 'farm', desc: 'Scorched Hand leaf. Wants wet, rich ground, like the Mire\'s. Illegal in Covenant lands.' },
+  { key: 'farm_glowcap', name: 'Glowcap Beds', cat: 'Farming', kind: 'farm', def: 'glowcap', w: 10, d: 6, cost: { building_mats: 3, fabric: 2 }, work: 140, research: 'narcotics', crop: 'glowcap', job: 'farm', desc: 'Shaded, damp beds for the blue mushroom. It likes damp, poor ground and grows best by night. Illegal in Covenant lands.' },
+  { key: 'farm_bloodthorn', name: 'Bloodthorn Rows', cat: 'Farming', kind: 'farm', def: 'bloodthorn', w: 10, d: 6, cost: { building_mats: 2 }, work: 120, research: 'narcotics', crop: 'bloodthorn', job: 'farm', desc: 'A red desert thorn that thrives where nothing else will: heat, sand, no water. Illegal in Covenant lands.' },
   { key: 'well', name: 'Well', cat: 'Farming', kind: 'well', def: 'well', w: 2.8, d: 2.8, cost: { building_mats: 6 }, work: 200, desc: 'Water makes nearby fields grow faster.' },
   // power
   { key: 'windmill', name: 'Wind Generator', cat: 'Power', kind: 'generator', def: 'windmill', w: 2.5, d: 2.5, cost: { building_mats: 4, iron_plates: 6 }, work: 300, power: 20, research: 'power', desc: 'Makes power from the wind: more in windy country (the Salt Barrens, the Hollow Flats, the Karuk Highlands, the Bone Sea and the Grey Shore).' },
@@ -205,6 +213,7 @@ export const TECHS: Tech[] = [
   { key: 'medicine', name: 'Medicine', tier: 1, time: 200, desc: 'First aid kits and splints.' },
   { key: 'milling', name: 'Milling', tier: 1, time: 150, needs: ['farming'], desc: 'Grind wheat into flour.' },
   { key: 'brewing', name: 'Brewing', tier: 2, time: 260, cost: { maker_tablet: 1 }, needs: ['farming'], desc: 'Stills for grog and rum.' },
+  { key: 'narcotics', name: 'Narcotics', tier: 2, time: 300, cost: { maker_tablet: 1 }, needs: ['farming'], desc: 'Dreamleaf, glowcap and bloodthorn crops, and a lab to turn them into dreamsmoke, glowdust and redrage. The money is good. The Covenant will want to search every pack you carry.' },
   { key: 'cooking2', name: 'Fine Cooking', tier: 2, time: 260, cost: { maker_tablet: 1 }, needs: ['cooking'], desc: 'Stews and travel rations.' },
   { key: 'fuel', name: 'Fuel', tier: 2, time: 300, cost: { maker_tablet: 1 }, needs: ['power'], desc: 'Fuel presses and generators.' },
   { key: 'steel', name: 'Steel', tier: 2, time: 320, cost: { maker_tablet: 1 }, needs: ['refining'], desc: 'The steel furnace.' },

@@ -8,6 +8,7 @@ import type { Look, Vis, WeaponVis } from './look';
 import type { Path } from '../world/nav';
 import type { ActionKind } from '../render/anim';
 import { ANIMAL } from '../content/animals';
+import { drugLift, drugSpeed } from './drugs';
 
 export type Status = 'up' | 'ko' | 'dead';
 export type MoveMode = 'walk' | 'run' | 'sneak';
@@ -160,6 +161,7 @@ export class Char {
       // a wrecked limb gives nothing but its weight
       if (this.body.prostOK(l)) v += ITEM[this.body.prost[l]!]?.limb?.bonus[s] ?? 0;
     }
+    if (this.mem.high || this.mem.craving) v += drugLift(this, s);
     if (this.hunger < 60 && !this.robot && !this.animal) v *= 0.8;
     return Math.max(0, v);
   }
@@ -260,7 +262,7 @@ export class Char {
     const armour = 1 - this.armourPenalty('athletics');
     const carry = this.carrying ? 0.62 : 1;
     const shack = this.shackled ? 0.6 : 1;
-    return s * race * enc * armour * carry * shack * this.legFactor();
+    return s * race * enc * armour * carry * shack * this.legFactor() * (this.mem.high ? drugSpeed(this) : 1);
   }
   legFactor(): number {
     const b = this.body;

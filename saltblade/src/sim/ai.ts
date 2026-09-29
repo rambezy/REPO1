@@ -18,6 +18,7 @@ import { runJobs } from './jobs';
 import { wantsToTalk } from './encounters';
 import { leaveFurniture, leaveBed } from './use';
 import { machineSay } from './machines';
+import { stimFor, takeDrug } from './drugs';
 
 export const SIGHT_DAY = 42;
 export const SIGHT_NIGHT = 24;
@@ -272,6 +273,11 @@ function npcAI(c: Char, dt: number, think: boolean) {
     B.enemy = target ? target.id : 0;
     // machines announce themselves when they pick a fight, and mutter on patrol
     if (target && target.id !== B.foe) machineSay(c, 'engage');
+    // those who carry a fighting drug take it as the fight starts
+    if (target && target.id !== B.foe && !c.robot && !c.animal) {
+      const st = stimFor(c);
+      if (st && S.rng.chance(0.8)) { takeDrug(c, st.grid, st.it); S.fx.say(c, S.rng.pick(RAGE_LINES)); }
+    }
     else if (!target && S.rng.chance(0.006)) machineSay(c, 'idle');
     B.foe = target ? target.id : B.foe;
     if (!target && B.flee) {
@@ -296,6 +302,8 @@ function npcAI(c: Char, dt: number, think: boolean) {
   // after a fight: help the fallen, loot, capture
   if (think && !c.animal && postFight(c)) return;
   if (B.task && runTask(c, dt)) return;
+  // walking up to have a word with your people (see encounters): the post can wait
+  if (B.talkTo && S.time - (B.talkT ?? -1e9) < 1.5) return;
   runRoutine(c, dt, think);
 }
 
@@ -453,6 +461,8 @@ function deliverCaptive(c: Char, o: Char, kind: string) {
   }
   if (kind === 'eat' && o.faction === 'player') S.fx.notice(`${o.name} has been dragged off by the ${FACTION[c.faction]?.short ?? 'enemy'}.`, 'bad');
 }
+
+const RAGE_LINES = ['Red in the blood!', 'Can\'t feel a thing!', 'Come on, then! COME ON!', 'Nothing hurts! NOTHING!', 'I\'ll pull your arms off!'];
 
 /** Forces NPCs in a group to attack a target (demands refused, crimes). */
 export function aggro(group: Char[], target: Char) {

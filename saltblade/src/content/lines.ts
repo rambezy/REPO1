@@ -233,6 +233,12 @@ export const LINES = {
     'We haven\'t eaten in days. Give us something. Or we\'ll take it.',
     'Bread... anything... we\'re so hungry...',
   ],
+  inspection: [
+    'Halt! Covenant inspection. Open your packs and stand in the light.',
+    'By the Ember\'s law: every pack, every pocket. Leaf burns, and so do those who carry it.',
+    'Stop there. The Ember sees what you carry. Let us see it too.',
+    'Inspection. Arms out, packs down. Nothing to hide, nothing to fear.',
+  ],
   inquisitor: [
     'Halt! Your companions offend the Ember. Leave the Covenant\'s lands, or be cleansed.',
     'Abominations walk with you. The flame demands they burn.',

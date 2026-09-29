@@ -81,6 +81,7 @@ export interface ItemDef {
   research?: number; // artifact research tier value
   blueprint?: string; // research key unlocked
   illegal?: string[]; // factions that confiscate it
+  drug?: string; // taken as a dose (see sim/drugs DRUG)
   tags?: string[];
   icon?: string; // icon shape key
   color?: number;
@@ -356,7 +357,13 @@ def({ id: 'cactus_rum', name: 'Cactus Rum', cat: 'drink', w: 1, h: 2, weight: 0.
 def({ id: 'dustwine', name: 'Dustwine', cat: 'drink', w: 1, h: 2, weight: 0.8, value: 260, stack: 10, desc: 'A Vale wine the colour of sunset.', drink: { mood: 2 }, food: 8, icon: 'bottle' });
 def({ id: 'red_beer', name: 'Red Beer', cat: 'drink', w: 1, h: 2, weight: 0.8, value: 80, stack: 10, desc: 'Thick, bitter and red as the mesas. Hornspire brews it in stone vats.', drink: { mood: 1 }, food: 8, icon: 'bottle' });
 def({ id: 'hive_mead', name: 'Hive Mead', cat: 'drink', w: 1, h: 2, weight: 0.8, value: 180, stack: 10, desc: 'Resin wine from the Thrumwood hives. The Thrum do not drink it. They sell it.', drink: { mood: 2 }, food: 6, icon: 'bottle' });
-def({ id: 'dreamleaf', name: 'Dreamleaf', cat: 'drug', w: 1, h: 1, weight: 0.2, value: 180, stack: 30, desc: 'Scorched Hand leaf. Smoke it to forget. The Covenant burns those who carry it.', illegal: ['ember'], icon: 'leaf' });
+// the waste's drugs: three crops anyone with the nerve can grow, and what a lab makes of them
+def({ id: 'dreamleaf', name: 'Dreamleaf', cat: 'drug', w: 1, h: 1, weight: 0.2, value: 180, stack: 30, desc: 'Scorched Hand leaf, dried and ready to smoke. It takes the edge off pain, and off everything else. The Covenant burns those who carry it.', illegal: ['ember'], drug: 'dreamleaf', icon: 'leaf' });
+def({ id: 'glowcap', name: 'Glowcap', cat: 'resource', w: 1, h: 1, weight: 0.2, value: 110, stack: 30, desc: 'A pale mushroom that glows blue in the dark, grown in damp shade. Eaten raw it sharpens the eyes for an hour, then brings your dinner back up. Ground to dust it is worth a great deal more.', illegal: ['ember'], drug: 'glowcap', icon: 'mushroom', color: 0x9ad8f0 });
+def({ id: 'bloodthorn', name: 'Bloodthorn', cat: 'resource', w: 1, h: 1, weight: 0.2, value: 90, stack: 30, desc: 'Red sap pods off a desert thorn that thrives in heat. Karuk raiders chew them before a fight and never feel the first cut. Boiled down, they are redrage.', illegal: ['ember'], drug: 'bloodthorn', icon: 'thorn', color: 0xb02a20 });
+def({ id: 'dreamsmoke', name: 'Dreamsmoke', cat: 'drug', w: 1, h: 1, weight: 0.1, value: 420, stack: 20, desc: 'Dreamleaf cured with resin and rolled tight. One smoke and the pain goes a long way off for most of a day, and so does your aim. Mildly habit-forming, the Scorched Hand swears.', illegal: ['ember'], drug: 'dreamsmoke', icon: 'roll', color: 0xd8c8a0 });
+def({ id: 'glowdust', name: 'Glowdust', cat: 'drug', w: 1, h: 1, weight: 0.1, value: 650, stack: 20, desc: 'Glowcaps dried and ground to a blue powder that shines in the dark. Hours of sharp eyes and quick feet, then a crash like a falling wall. Runners, thieves and duellists pay well; the Covenant and the Concord hang for it.', illegal: ['ember', 'concord'], drug: 'glowdust', icon: 'powder', color: 0x6ad0ff });
+def({ id: 'redrage', name: 'Redrage', cat: 'drug', w: 1, h: 1, weight: 0.2, value: 780, stack: 10, desc: 'Bloodthorn boiled down in grog to a red syrup, sealed in glass. For an hour you are stronger than you are and nothing hurts. After, everything does. It hooks fast.', illegal: ['ember', 'concord'], drug: 'redrage', icon: 'vial', color: 0xe0302a });
 
 // ---------------------------------------------------------------- medicine
 def({ id: 'bandages', name: 'Bandages', cat: 'medical', w: 1, h: 1, weight: 0.3, value: 60, stack: 20, desc: 'Rolled cloth strips. Stops bleeding; little else.', med: { points: 40, quality: 0.5 }, icon: 'med' });

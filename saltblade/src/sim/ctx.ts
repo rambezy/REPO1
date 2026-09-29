@@ -10,7 +10,7 @@ import type { Weather } from './weather';
 /** What a shot looks like: a crossbow bolt, a turret's harpoon, a laser, a heavy laser. */
 export type ShotKind = 'bolt' | 'harpoon' | 'laser' | 'heavy';
 /** Effects the sim can ask for at a point (see render/particles.ts). */
-export type BurstKind = 'sparks' | 'embers' | 'flash' | 'smoke' | 'dust' | 'blood' | 'steam' | 'oil';
+export type BurstKind = 'sparks' | 'embers' | 'flash' | 'smoke' | 'dust' | 'blood' | 'steam' | 'oil' | 'glint';
 
 export interface SimCtx {
   W: World;

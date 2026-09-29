@@ -18,6 +18,7 @@
     "test:build": "tsx tools/buildtest.ts",
     "test:robots": "tsx tools/robottest.ts",
     "test:limbs": "tsx tools/limbtest.ts",
+    "test:drugs": "tsx tools/drugtest.ts",
     "map": "tsx tools/mapshot.ts",
     "artifact": "node tools/make-artifact.mjs"
   },

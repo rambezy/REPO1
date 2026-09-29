@@ -34,7 +34,7 @@ export function buildableMesh(b: Buildable, o: WObj): THREE.Object3D {
     root.add(m.shell);
     if (m.roof) root.add(m.roof);
   } else if (b.kind === 'wall' || b.kind === 'gate' || b.kind === 'tower') root.add(buildWallPiece(o));
-  else if (b.kind === 'farm') root.add(buildField(o));
+  else if (b.kind === 'farm') { const f = buildField(o); root.add(f.mesh); if (f.glow) root.add(f.glow); }
   else {
     const g = new GeoBuilder();
     drawFurniture(g, b.def, 0, 0, 0, 0, o.data, null);

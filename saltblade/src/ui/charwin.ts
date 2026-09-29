@@ -12,6 +12,7 @@ import { portrait } from '../render/portrait';
 import { Item } from '../sim/inventory';
 import { emit } from '../core/events';
 import { koThreshold } from '../sim/health';
+import { DRUG, takeDrug, drugStatus, habitList } from '../sim/drugs';
 import { totalBounty } from '../sim/crime';
 import { selected } from '../game/control';
 import { eatSomething } from '../sim/ai';
@@ -122,6 +123,7 @@ function itemMenu(c: Char, it: Item, grid: import('../sim/inventory').Grid) {
     it.n--; if (it.n <= 0) grid.remove(it);
     if (d.drink) c.mood += d.drink.mood;
   }]);
+  if (d.drug && DRUG[d.drug] && c.faction === 'player') acts.push([DRUG[d.drug].act, () => { const err = takeDrug(c, grid, it); if (err) emit('notice', err); }]);
   if (d.med) acts.push(['Treat self', () => { emit('order', c, { k: 'aid', id: c.id }); }]);
   if (d.limb) acts.push(['Fit prosthetic', () => emit('ui:prosthetic', c.id, it.uid)]);
   if (d.book) acts.push(['Read', () => emit('ui:read', d.book, c.id)]);
@@ -220,7 +222,10 @@ function healthTab(c: Char, el: HTMLElement) {
   const extra = h('div', { class: 'hextra' },
     h('div', {}, h('span', { class: 'hname' }, 'Blood'), bar(b.blood / b.bloodMax, 'bl'), h('span', { class: 'hval' }, `${Math.round(b.blood)} / ${b.bloodMax}`)),
     !c.robot ? h('div', {}, h('span', { class: 'hname' }, 'Hunger'), bar(c.hunger / 300, 'food'), h('span', { class: 'hval' }, c.hunger > 200 ? 'Full' : c.hunger > 100 ? 'Fed' : c.hunger > 40 ? 'Hungry' : 'Starving')) : h('div', { class: 'dim' }, 'Machines do not eat. Repair kits mend them.'),
-    h('div', { class: 'dim' }, `Toughness ${Math.floor(c.skill('toughness'))}: stays conscious to ${Math.round(Math.min(0.85, c.skill('toughness') / 115) * 100)}% below zero.`),
+    h('div', { class: 'dim' }, `Toughness ${Math.floor(c.skill('toughness'))}: stays conscious to ${Math.round(-koThreshold(c, 1) / b.max[1] * 100)}% below zero.`),
+    // what they're on, and what they're hooked on
+    ...drugStatus(c).map((st) => h('div', { class: st.kind === 'high' ? 'good' : 'bad' }, st.text)),
+    ...habitList(c).map(([name, v]) => h('div', {}, h('span', { class: 'hname' }, `${name[0].toUpperCase()}${name.slice(1)} habit`), bar(v / 100, 'habit'), h('span', { class: 'hval' }, v >= 60 ? 'Hooked' : v >= 30 ? 'Habit' : 'Taste'))),
   );
   el.append(h('div', { class: 'health' }, fig, h('div', {}, rows, extra)));
 }

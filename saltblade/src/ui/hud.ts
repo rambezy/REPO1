@@ -10,6 +10,7 @@ import { Char } from '../sim/char';
 import { Squad } from '../sim/squad';
 import { fmt } from '../core/math';
 import { totalBounty } from '../sim/crime';
+import { drugStatus } from '../sim/drugs';
 import { FACTION } from '../content/factions';
 
 let root: HTMLDivElement;
@@ -105,6 +106,7 @@ function statusOf(c: Char): string {
   if (c.body.bleeding() > 0.03 && !c.robot) icons.push('<i class="ic bleed" title="Bleeding"></i>');
   if (c.hunger < 100 && !c.robot) icons.push(`<i class="ic hungry ${c.hunger < 40 ? 'bad' : ''}" title="${c.hunger < 40 ? 'Starving' : 'Hungry'}"></i>`);
   if (c.sleeping) icons.push('<i class="ic sleep" title="Sleeping"></i>');
+  for (const st of c.mem.high || c.mem.craving ? drugStatus(c) : []) icons.push(`<i class="ic ${st.kind}" title="${esc(st.text)}"></i>`);
   if (c.carrying) icons.push('<i class="ic carry" title="Carrying someone"></i>');
   if (c.carriedBy) icons.push('<i class="ic carried" title="Being carried"></i>');
   if (c.cage) icons.push('<b class="bad">CAGED</b>');
@@ -252,12 +254,13 @@ function refreshSelBox() {
   selBox.style.display = '';
   const c = who[0];
   const multi = who.length > 1 ? ` <span class="dim">+${who.length - 1}</span>` : '';
-  const key = JSON.stringify([who.map((w) => w.id), c.move, c.mem.walk, c.order?.k, c.combatMode, activity(c)]);
+  const key = JSON.stringify([who.map((w) => w.id), c.move, c.mem.walk, c.order?.k, c.combatMode, activity(c), c.mem.high || c.mem.craving ? drugStatus(c) : 0]);
   if (selBox.dataset.k === key) return;
   selBox.dataset.k = key;
   selBox.innerHTML = '';
   selBox.appendChild(h('div', { class: 'selname', html: `${esc(c.name)}${multi}` }));
   selBox.appendChild(h('div', { class: 'selact' }, activity(c)));
+  for (const st of c.mem.high || c.mem.craving ? drugStatus(c) : []) selBox.appendChild(h('div', { class: `seldrug ${st.kind}` }, st.text));
   const row = h('div', { class: 'selrow' });
   const tog = (label: string, on: boolean, title: string, fn: () => void) => {
     const b = h('button', { class: 'tog' + (on ? ' on' : ''), title }, label);

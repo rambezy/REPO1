@@ -200,10 +200,13 @@ export class StructViews {
         return { root: m, key };
       }
       case 'farm': {
-        const m = buildField(o);
-        m.position.set(o.x, o.y, o.z);
-        m.rotation.y = o.rot;
-        return { root: m, key };
+        const { mesh, glow } = buildField(o);
+        const root = new THREE.Group();
+        root.position.set(o.x, o.y, o.z);
+        root.rotation.y = o.rot;
+        root.add(mesh);
+        if (glow) { root.add(glow); this.glowMat = glow.material as THREE.MeshBasicMaterial; }
+        return { root, glow, key };
       }
       case 'ore': {
         if ((o.data?.left ?? 1) <= 0) return null;

@@ -228,6 +228,31 @@ export function drawFurniture(g: GeoBuilder, def: string, x: number, y: number, 
       g.push().translate(0, 1.1, 0).cyl(0.8, 0.8, 0.25, 10, { color: 0x9a948a }).pop();
       g.push().translate(0, 1.35, 0).rotateZ(Math.PI / 2).cyl(0.06, 0.06, 2.2, 4, { color: wood }).pop();
       break;
+    case 'druglab': {
+      // a scarred table of flasks, a burner and a drying rack (cylinders are centred, so each stands at top + h/2)
+      const top = 0.89;
+      g.push().translate(0, 0.85, 0).box(1.9, 0.08, 0.9, { color: 0x5a4a38 }).pop();
+      for (const [px, pz] of [[-0.85, -0.38], [0.85, -0.38], [-0.85, 0.38], [0.85, 0.38]]) g.push().translate(px, 0, pz).block(0.08, 0.85, 0.08, { color: 0x3a3028 }).pop();
+      g.push().translate(-0.55, top + 0.06, 0).cyl(0.16, 0.18, 0.12, 8, { color: 0x3a3a3c }).pop(); // the burner
+      g.push().translate(-0.55, top + 0.175, 0).cyl(0.018, 0.018, 0.11, 4, { color: 0x6a6a6e }).pop();
+      g.push().translate(-0.55, top + 0.36, 0).sphere(0.13, 8, 6, { color: 0x9ab0b8 }).pop(); // the retort
+      g.push().translate(-0.3, top + 0.44, 0).rotateZ(-1.2).cyl(0.018, 0.018, 0.5, 4, { color: 0x9ab0b8 }).pop();
+      g.push().translate(0.2, top + 0.16, -0.15).cyl(0.025, 0.045, 0.1, 7, { color: 0x9ab0b8 }).pop(); // flask necks over the glowing stuff
+      g.push().translate(0.42, top + 0.14, 0.18).cyl(0.02, 0.04, 0.08, 7, { color: 0x9ab0b8 }).pop();
+      g.push().translate(0.75, top + 0.01, -0.1).box(0.3, 0.02, 0.4, { color: 0xc8bca0 }).pop(); // paper and powder
+      for (const px of [-0.2, 0.2]) g.push().translate(0.1 + px, 1.55, 0.4).block(0.04, 0.7, 0.04, { color: 0x4a3a2a }).pop();
+      g.push().translate(0.1, 2.2, 0.4).box(0.5, 0.03, 0.03, { color: 0x4a3a2a }).pop();
+      for (let k = 0; k < 4; k++) g.push().translate(-0.08 + k * 0.12, 2.05, 0.4).blade(0.09, -0.22, 0.02, { color: 0x3e6a34 }).pop(); // leaf hung to dry
+      if (glow) {
+        // (the glow is drawn unrotated, so turn each offset with the table)
+        glow.push().translate(x, y, z).rotateY(rot);
+        glow.push().translate(-0.55, top + 0.15, 0).cyl(0.07, 0.11, 0.06, 7, { color: [2.4, 1.0, 0.35] }).pop(); // the flame
+        glow.push().translate(0.2, top + 0.055, -0.15).cyl(0.05, 0.065, 0.11, 7, { color: [0.4, 1.6, 2.4] }).pop(); // a flask of blue dust
+        glow.push().translate(0.42, top + 0.05, 0.18).cyl(0.04, 0.055, 0.1, 7, { color: [2.2, 0.25, 0.2] }).pop(); // and one of red
+        glow.pop();
+      }
+      break;
+    }
     case 'still':
       g.push().translate(0, 0, 0).cyl(0.7, 0.8, 1.3, 10, { color: 0xa06a3a, grad: 0.2 }).pop();
       g.push().translate(0, 1.3, 0).sphere(0.7, 10, 5, { color: 0xb07a44 }).pop();
@@ -616,30 +641,51 @@ export function buildWallPiece(o: WObj): THREE.Mesh {
   return m;
 }
 
-/** A crop field: furrows and plants, height by growth. */
-export function buildField(o: WObj): THREE.Mesh {
+/**
+ * A crop field: furrows and plants, height by growth. Glowcaps shine at night
+ * (their caps go in the glow mesh, which brightens after dark).
+ */
+export function buildField(o: WObj): { mesh: THREE.Mesh; glow: THREE.Mesh | null } {
   const g = new GeoBuilder();
+  const glow = new GeoBuilder();
   const d = o.data;
   const w = d.w, dd = d.d;
   const crop = d.crop as string;
-  const col = crop === 'wheat' ? 0xc8b060 : crop === 'riceweed' ? 0x9aa860 : crop === 'cactus' ? 0x5a7a3a : crop === 'dreamleaf' ? 0x4a7a3a : 0x6a8a3a;
-  g.push().translate(0, 0.02, 0).box(w, 0.05, dd, { color: 0x5a4a34 }).pop();
+  const col = crop === 'wheat' ? 0xc8b060 : crop === 'riceweed' ? 0x9aa860 : crop === 'cactus' ? 0x5a7a3a : crop === 'dreamleaf' ? 0x3e6a34 : crop === 'bloodthorn' ? 0x5a3a2a : 0x6a8a3a;
+  const soil = crop === 'glowcap' ? 0x2e2a26 : 0x5a4a34;
+  g.push().translate(0, 0.02, 0).box(w, 0.05, dd, { color: soil }).pop();
   const rows = Math.floor(dd / 1.1);
   const growth = Math.max(0.15, d.growth ?? 0.5);
+  let seed = (o.id * 7919) % 1000;
+  const rnd = () => ((seed = (seed * 9301 + 49297) % 233280) / 233280);
   for (let r = 0; r < rows; r++) {
     const z = -dd / 2 + 0.55 + r * 1.1;
-    g.push().translate(0, 0.06, z).box(w - 0.4, 0.1, 0.35, { color: 0x4a3c2a }).pop();
+    g.push().translate(0, 0.06, z).box(w - 0.4, 0.1, 0.35, { color: crop === 'glowcap' ? 0x3a3028 : 0x4a3c2a }).pop();
     for (let i = 0; i < Math.floor(w / 0.9); i++) {
       const x = -w / 2 + 0.5 + i * 0.9;
       g.push().translate(x, 0.08, z);
       if (crop === 'cactus') g.cyl(0.12, 0.14, 0.7 * growth + 0.1, 6, { color: col });
-      else for (let k = 0; k < 3; k++) { g.push().rotateY(k * 2.1); g.blade(0.12, (crop === 'wheat' ? 1.0 : 0.8) * growth + 0.1, 0.1, { color: col }); g.pop(); }
+      else if (crop === 'dreamleaf') {
+        // broad drooping leaves, veined red as they ripen
+        for (let k = 0; k < 5; k++) { g.push().rotateY(k * 1.26 + rnd()).rotateX(0.5); g.blade(0.26, 0.55 * growth + 0.1, 0.18, { color: growth > 0.8 && k % 2 ? 0x6a3a3a : col }); g.pop(); }
+      } else if (crop === 'glowcap') {
+        // pale stalks and blue caps, in clusters
+        for (let k = 0; k < 3; k++) {
+          const a = k * 2.1 + rnd(), rr = 0.12 + rnd() * 0.08, sh = (0.1 + rnd() * 0.12) * growth + 0.03, cap = (0.05 + rnd() * 0.04) * (0.4 + growth * 0.6);
+          g.push().translate(Math.cos(a) * rr, 0, Math.sin(a) * rr).cyl(0.018, 0.024, sh, 5, { color: 0xd8e0d8 }).pop();
+          glow.push().translate(x + Math.cos(a) * rr, 0.08 + sh, z + Math.sin(a) * rr).scale(1, 0.45, 1).sphere(cap, 7, 4, { color: [0.35, 1.1, 1.6] }).pop();
+        }
+      } else if (crop === 'bloodthorn') {
+        // a thorny tangle with red pods
+        for (let k = 0; k < 4; k++) { g.push().rotateY(k * 1.57 + rnd()); g.blade(0.05, 0.6 * growth + 0.12, 0.2 + rnd() * 0.15, { color: col }); g.pop(); }
+        if (growth > 0.35) for (let k = 0; k < 3; k++) { const a = k * 2.1 + rnd(); g.push().translate(Math.cos(a) * 0.1, 0.25 + 0.3 * growth * rnd(), Math.sin(a) * 0.1).sphere(0.04 + 0.02 * growth, 5, 4, { color: 0xb02a20 }).pop(); }
+      } else for (let k = 0; k < 3; k++) { g.push().rotateY(k * 2.1); g.blade(0.12, (crop === 'wheat' ? 1.0 : 0.8) * growth + 0.1, 0.1, { color: col }); g.pop(); }
       g.pop();
     }
   }
   const m = new THREE.Mesh(g.build(), roofMat);
   m.receiveShadow = true;
-  return m;
+  return { mesh: m, glow: glow.vertexCount ? new THREE.Mesh(glow.build(), glowMat) : null };
 }
 
 /** A standalone outdoor object (plaza feature, well, cage in the open...). */

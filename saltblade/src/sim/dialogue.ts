@@ -5,7 +5,8 @@ import { S } from './ctx';
 import { FACTION } from '../content/factions';
 import { RACE } from '../content/races';
 import { SETTLEMENT } from '../content/layout';
-import { totalBounty } from './crime';
+import { totalBounty, crime } from './crime';
+import { search, fineFor, bribeFor, bribeTaken } from './inspect';
 import { aggro, pickUp } from './ai';
 import { emit } from '../core/events';
 import { greeting, rumour, aboutMe, aboutPlace, LINES } from '../content/lines';
@@ -206,6 +207,44 @@ const TREES: Record<string, Tree> = {
     },
     fed: { t: () => S.rng.pick(['Thank you... thank you.', 'Bless you. We won\'t forget.', 'Food! Oh, food!']), ch: [BYE] },
   },
+  inspection: {
+    start: {
+      t: () => S.rng.pick(LINES.inspection),
+      ch: [
+        { t: 'Search us, then.', next: 'search' },
+        { t: () => `Perhaps a gift for the Ember would do. (${bribeFor()} chits)`, if: () => S.W.money >= bribeFor(), fx: (c) => {
+          S.W.money -= bribeFor();
+          if (bribeTaken(c.n.faction)) { settle(c); return 'bribed'; }
+          c.vars.thorough = true; // bribing an officer of the Ember: they keep the chits and look twice as hard
+          S.W.rel.add('player', c.n.faction, -5);
+        }, next: 'caught' },
+        { t: 'You\'ll search nothing. (Fight)', fx: (c) => { S.W.rel.add('player', c.n.faction, -10); fightNow(c); return 'end'; } },
+      ],
+    },
+    caught: { t: 'You offer a bribe to an officer of the Ember? Search them. Every seam.', ch: [{ t: 'Go on, then.', next: 'search' }] },
+    search: {
+      fx: (c) => {
+        const r = search(c.n, !!c.vars.thorough);
+        c.vars.fine = r.found.length ? fineFor(r.value) * (c.vars.thorough ? 1.5 : 1) : 0;
+        c.vars.found = r.found.map(([id, n]) => `${n} ${ITEM[id].name}`).join(', ');
+        c.vars.chest = r.chest;
+        settle(c);
+        if (r.found.length) S.W.say(`The ${FACTION[c.n.faction].short} searched ${S.W.factionName} and took ${c.vars.found}.`, 'crime', S.clock.t);
+      },
+      t: (c) => c.vars.fine
+        ? `${c.vars.found}. Contraband. It ${c.vars.chest ? 'goes to the watch house' : 'burns'}, and you pay ${c.vars.fine} chits for the Ember's trouble.`
+        : S.rng.pick(['Clean. The Ember sees you. Go.', 'Nothing. Move along.', 'Clean... this time. On your way.']),
+      ch: [
+        { t: (c) => `Pay the ${c.vars.fine} chits.`, if: (c) => c.vars.fine > 0 && S.W.money >= c.vars.fine, fx: (c) => { S.W.money -= c.vars.fine; S.W.rel.add('player', c.n.faction, -2); }, next: 'paid' },
+        { t: 'We can\'t pay that.', if: (c) => c.vars.fine > 0 && S.W.money < c.vars.fine, fx: (c) => { crime(c.p, 'drugs', c.n.faction, c.vars.fine, false); }, next: 'owed' },
+        { t: 'Then burn with it. (Fight)', if: (c) => c.vars.fine > 0, fx: (c) => { S.W.rel.add('player', c.n.faction, -10); fightNow(c); return 'end'; } },
+        { t: 'We\'ll be on our way.', if: (c) => !c.vars.fine, fx: () => { S.W.rel.add('player', 'ember', 1); }, next: 'end' },
+      ],
+    },
+    paid: { t: 'The Ember forgives, once. Do not make it twice.', ch: [BYE] },
+    owed: { t: 'Then you owe the Ember. Your names go on every wall in the Emberlands.', ch: [BYE] },
+    bribed: { t: () => S.rng.pick(['...The Ember sees nothing today. Go.', 'I found nothing. Walk on.', 'Clean, I\'d say. Move along before I remember otherwise.']), ch: [BYE] },
+  },
   inquisitor: {
     start: {
       t: () => S.rng.pick(LINES.inquisitor),
@@ -315,7 +354,8 @@ export function treeFor(n: Char, p: Char): [Tree, string] {
   }
   if (sq?.flags.demand === 'tax' && !sq.flags.settled) return [TREES.demand_tax, 'start'];
   if (n.faction === 'starvelings') return [TREES.demand_food, 'start'];
-  if (n.faction === 'ember' && guardish(n) && RACE[p.look.race]?.race !== 'human') return [TREES.inquisitor, 'start'];
+  if (n.faction === 'ember' && guardish(n) && RACE[p.look.race]?.race !== 'human') { n.brain.inspect = false; return [TREES.inquisitor, 'start']; }
+  if (n.brain.inspect) { n.brain.inspect = false; return [TREES.inspection, 'start']; }
   if (n.recruitable) return [TREES.recruit, 'start'];
   if (guardish(n)) return [TREES.guard, 'start'];
   if (n.shop) return [TREES.shopkeeper, 'start'];

@@ -1,6 +1,7 @@
 // Encounters on the road: bandits who demand a toll, starving raiders who
-// beg for food, zealots who order non-humans away, slavers sizing up the
-// weak. Their leader walks up and talks before anyone draws steel.
+// beg for food, zealots who order non-humans away or search your packs for
+// leaf, slavers sizing up the weak. Their leader walks up and talks before
+// anyone draws steel.
 import { S } from './ctx';
 import { Char } from './char';
 import { FACTION } from '../content/factions';
@@ -9,13 +10,16 @@ import { canSee } from './ai';
 import { goTo, stop } from './move';
 import { emit } from '../core/events';
 import { strengthOf } from './combat';
+import { wantsToInspect } from './inspect';
 
 let t = 0;
 
 /** Would this NPC's squad rather talk than fight the player right now? */
 export function wantsToTalk(c: Char): boolean {
   const sq = S.W.squadOf(c);
-  if (!sq || sq.spoke || sq.faction === 'player') return false;
+  if (!sq || sq.faction === 'player') return false;
+  if (wantsToInspect(c, sq)) return true; // a search comes round again, whatever was said before
+  if (sq.spoke) return false;
   if (sq.flags.settled && S.clock.t - sq.flags.settled < 86400) return false;
   const f = FACTION[c.faction];
   if (!f) return false;
@@ -39,7 +43,7 @@ export function tickEncounters(dt: number) {
   if (t > 0) return;
   t = 0.5;
   for (const sq of S.W.squads.values()) {
-    if (sq.faction === 'player' || sq.spoke) continue;
+    if (sq.faction === 'player') continue;
     const L = S.W.char(sq.leader);
     if (!L || !L.active || !L.up || L.brain.enemy) continue;
     if (!wantsToTalk(L)) continue;
@@ -52,9 +56,10 @@ export function tickEncounters(dt: number) {
     }
     if (!best) continue;
     L.brain.talkTo = best.id;
-    if (bd > 3) { goTo(L, best.x, best.z); L.move = 'run'; continue; }
+    L.brain.talkT = S.time; // (their routine waits while they walk up)
+    if (bd > 3) { goTo(L, best.x, best.z); L.move = sq.kind === 'town' ? 'walk' : 'run'; continue; }
     stop(L);
-    sq.spoke = true;
+    if (wantsToInspect(L, sq)) { sq.flags.inspected = S.clock.t; L.brain.inspect = true; } else sq.spoke = true;
     emit('ui:talk', best.id, L.id);
   }
 }

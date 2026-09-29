@@ -49,6 +49,7 @@ import { Weather, WEATHER_NAME } from './sim/weather';
 import { WeatherFx } from './render/weatherFx';
 import { Decals } from './render/decals';
 import { Particles } from './render/particles';
+import { highLevel } from './sim/drugs';
 
 function loadingScreen() {
   const el = document.createElement('div');
@@ -224,12 +225,23 @@ function step(dt: number) {
   // sparks and smoke move in real time, slowed with the game
   G.particles.setScreen(G.R.height, G.R.camera.fov);
   G.particles.update(dt * (G.speed ? 1 : 0.02));
-  // wrecked machines smoulder
-  for (const c of G.W.active) if (c.view && c.status !== 'up' && (c.robot || c.body.robotic) && Math.random() < dt * 1.5) G.particles.burst(Math.random() < 0.7 ? 'smoke' : 'sparks', c.x, c.y + 0.4, c.z, Math.random() < 0.7 ? 1 : 3);
+  // wrecked machines smoulder; the raging give off sparks like a forge, and glowdust shines off those on it
+  for (const c of G.W.active) {
+    if (!c.view) continue;
+    if (c.status !== 'up' && (c.robot || c.body.robotic) && Math.random() < dt * 1.5) G.particles.burst(Math.random() < 0.7 ? 'smoke' : 'sparks', c.x, c.y + 0.4, c.z, Math.random() < 0.7 ? 1 : 3);
+    const hi = c.mem.high;
+    if (hi && c.up && G.speed) {
+      if ((hi.redrage?.until ?? 0) > G.clock.t && Math.random() < dt * 5) G.particles.burst('embers', c.x, c.y + 0.9 + Math.random() * 0.6, c.z, 1);
+      if ((hi.glowdust?.until ?? 0) > G.clock.t && Math.random() < dt * 3) G.particles.burst('glint', c.x, c.y + 1.2, c.z, 1);
+    }
+  }
   // the picture's edges pulse red when the one you have selected is badly hurt
   const watched = G.W.char([...sel][0]);
   const hurtT = watched && watched.alive && watched.faction === 'player' && !watched.robot ? Math.max(0, Math.min(1, (0.45 - watched.body.total()) / 0.3)) : 0;
   G.R.hurt += (hurtT - G.R.hurt) * Math.min(1, dt * 2);
+  // and the colours swim when they're high
+  const highT = watched && watched.up && watched.mem.high ? highLevel(watched) : 0;
+  G.R.high += (highT - G.R.high) * Math.min(1, dt * 0.8);
   const t2 = performance.now();
   perf.views = ema(perf.views, t2 - t1);
   G.R.render();
