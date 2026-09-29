@@ -529,6 +529,9 @@ function makeAllies(c: Ctx) {
     }
   }
   c.set('rw_alliesUp');
+  // Let Mott and his bodyguard come out of the back office to fight.
+  const door = c.obj('rw_officeDoor');
+  if (door) door.locked = 0;
 }
 
 function restoreAllies(c: Ctx) {
@@ -719,6 +722,7 @@ defineDialogues([
           { text: 'Where would I find proof?', to: 'proofwhere' },
           { text: 'I took Mott\'s money. Let me play along, and we spring the trap on them.', if: (c) => !!c.flag('rw_mottJob'), to: 'doubleplay' },
           { text: 'Me find paper. Okay.', lowInt: true, to: 'proofwhere' },
+          { text: 'Me took Mott scrip. Trick Mott?', lowInt: true, if: (c) => !!c.flag('rw_mottJob'), to: 'doubleplay' },
         ],
       },
       proofwhere: {

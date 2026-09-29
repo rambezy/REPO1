@@ -663,7 +663,7 @@ defineDialogues([
         text: (c) => `"Well?" Odessa looks up from the map. ${clueCount(c) + (c.flag('bz_clueScout') ? 1 : 0) > 0 ? '"You look like someone with news."' : '"Nothing yet, I take it."'}`,
         options: [
           { text: 'The caged one talked. They take people alive, to Fort Kessler.', if: (c) => !!c.flag('bz_clueScout'), to: 'solve' },
-          { text: 'Put it together: big hands, iron collars, living prisoners, crater ash on the wheels. It\'s the Grafted, and they\'re taking people north-east.', if: (c) => !c.flag('bz_clueScout') && clueCount(c) >= 2, to: 'deduce' },
+          { text: 'Put it together: giants in iron collars, taking people alive and heading north-east. It\'s the Grafted.', if: (c) => !c.flag('bz_clueScout') && clueCount(c) >= 2, to: 'deduce' },
           { text: 'Grey giants take people! To craters!', lowInt: true, if: (c) => caravansReady(c), to: 'deduce' },
           { text: 'Here\'s what I have so far.', if: (c) => !caravansReady(c) && clueCount(c) > 0, to: 'partial' },
           { text: 'Remind me where to look.', to: 'leads' },

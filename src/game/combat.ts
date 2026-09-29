@@ -67,7 +67,7 @@ export function weaponFor(a: Actor, hand: 0 | 1 = a.active): { w: WeaponDef; sta
   const d = st ? ITEMS[st.id] : null;
   if (d?.weapon) return { w: d.weapon, stack: st, natural: false };
   const nat = PROTOS[a.proto]?.natural;
-  if (nat && !isPlayer(a) && !a.companion) {
+  if (nat && !isPlayer(a)) {
     return {
       w: { skill: 'unarmed', dmg: nat.dmg, dmgType: nat.dmgType ?? 'normal', range: nat.range ?? 1, modes: ['punch'], ap: nat.ap, minST: 1, hands: 1, melee: (nat.range ?? 1) <= 1, sound: nat.dmgType === 'laser' ? 'laser' : 'punch', proj: nat.dmgType === 'laser' ? 'laser' : 'none' },
       stack: null,

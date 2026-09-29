@@ -242,6 +242,69 @@ try {
     console.log('after', await ev(() => ({ c: !!G.combat, allies: G.map.actors.filter((a) => a.companion).map((a) => a.npc), dead: G.map.actors.filter((a) => a.dead).map((a) => a.npc), flags: Object.keys(G.state.flags).filter((k) => k.startsWith('rw_') || k.startsWith('dead:')), q: G.state.quests.rw_trouble })));
     await shot('rw-33-after');
   }
+
+  if (scen === 'paths') {
+    await ev(() => DF.enterMap('rustwater'));
+    await wait(400);
+    const out = await ev(async () => {
+      const s = await DF.script(); const c = s.ctx();
+      const reg = await import('/src/content/registry.ts');
+      const D = reg.DIALOGUES;
+      const res = {};
+      // Mott path: accept, hit, get paid
+      D.rw_mott.nodes.offer.onEnter(c);
+      D.rw_mott.nodes.offer.options[0].do(c);
+      res.harlStart = D.rw_harl.start(c);
+      D.rw_harl.nodes.hit.onEnter(c);
+      res.grellGone = !G.map.actors.find((a) => a.npc === 'grell');
+      res.mottStart = D.rw_mott.start(c);
+      D.rw_mott.nodes.paid.onEnter(c);
+      res.q = c.questState('rw_trouble');
+      res.ending30 = reg.ENDINGS.find((e) => e.order === 30).text(c);
+      // Tobin
+      D.rw_corliss.nodes.accept.onEnter(c);
+      D.rw_fitch.nodes.tobin.onEnter(c);
+      c.set('rw_tobinHome');
+      res.corlissStart = D.rw_corliss.start(c);
+      D.rw_corliss.nodes.home.onEnter(c);
+      res.brother = c.questState('rw_brother');
+      return res;
+    });
+    console.log('mott path', JSON.stringify(out, null, 1));
+    // Bazaar paths
+    await ev(() => DF.enterMap('bazaar'));
+    await wait(400);
+    const bz = await ev(async () => {
+      const s = await DF.script(); const c = s.ctx();
+      const reg = await import('/src/content/registry.ts');
+      const D = reg.DIALOGUES;
+      const res = {};
+      D.bz_odessa.nodes.accept.onEnter(c);
+      D.bz_ezra.nodes.tell.onEnter(c);
+      reg.OBJ_SCRIPTS['use:bz_tape'](c, {}, G.state.player);
+      c.set('bz_metOdessa');
+      res.odStart = D.bz_odessa.start(c);
+      res.ready = D.bz_odessa.nodes.progress.options.filter((o) => !o.if || o.if(c)).map((o) => typeof o.text === 'string' ? o.text : 'fn');
+      D.bz_odessa.nodes.deduce.onEnter(c);
+      D.bz_odessa.nodes.solve.onEnter(c);
+      res.caravans = c.questState('bz_caravans');
+      res.kessler = G.state.discovered.includes('kessler');
+      // counterfeit via Oswin
+      D.bz_provost.nodes.accept.onEnter(c);
+      D.bz_hobb.nodes.lead.onEnter(c);
+      D.bz_corvin.nodes.uncle.onEnter(c);
+      c.set('bz_metOswin');
+      res.oswinOpts = D.bz_oswin.nodes.again.options.filter((o) => !o.if || o.if(c)).length;
+      D.bz_oswin.nodes.deal.onEnter(c);
+      res.cf = c.questState('bz_counterfeit');
+      res.junoFree = D.bz_juno.nodes.hire.options[0].if(c);
+      res.price = 0;
+      res.end40 = reg.ENDINGS.find((e) => e.order === 40).text(c);
+      return res;
+    });
+    console.log('bz paths', JSON.stringify(bz, null, 1));
+    await talk('bz_odessa', 'bz-20-odessa-done');
+  }
   if (scen === 'bz' || scen === 'all') {
     await ev(() => DF.enterMap('bazaar'));
     await wait(800);

@@ -148,6 +148,24 @@ try {
     await wait(400);
     await shot('k01-create');
   }
+  if (scen === 'allmaps') {
+    const res = await ev(async () => {
+      const reg = await import('/src/content/registry.ts');
+      const out = [];
+      for (const [id, d] of Object.entries(reg.DIALOGUES)) for (const [nid, n] of Object.entries(d.nodes)) for (const o of n.options) for (const t of [o.to, o.fail]) if (t && t !== 'end' && !d.nodes[t]) out.push(`dialog ${id}.${nid} -> ${t}`);
+      for (const id of Object.keys(reg.MAPS)) {
+        if (id === 'encounter') continue;
+        try { DF.enterMap(id); } catch (e) { out.push(`map ${id}: ${e.message}`); }
+        const m = G.map;
+        for (const [eid, ex] of Object.entries(m.def.exits ?? {})) if (ex.to !== 'world' && !reg.MAPS[ex.to]) out.push(`exit ${id}.${eid} -> ${ex.to}`);
+        for (const [eid, ex] of Object.entries(m.def.exits ?? {})) if (ex.to !== 'world' && reg.MAPS[ex.to] && ex.entrance && !reg.MAPS[ex.to].entrances[ex.entrance]) out.push(`entrance ${id}.${eid} -> ${ex.to}:${ex.entrance}`);
+        for (const a of m.actors) if (a.dialog && !reg.DIALOGUES[a.dialog]) out.push(`npc dialog ${id} ${a.name} -> ${a.dialog}`);
+      }
+      for (const l of Object.values(reg.LOCATIONS)) if (!reg.MAPS[l.map]) out.push(`location ${l.id} map ${l.map}`);
+      return out;
+    });
+    console.log(res.join('\n') || 'all maps ok');
+  }
   if (scen === 'start') {
     await shot('p01-shelter');
     await ev(async () => { const d = await DF.dialogue(); d.openDialogue('warden', G.map.actors.find((a) => a.npc === 'warden')); });
