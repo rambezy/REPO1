@@ -1,335 +1,377 @@
-// The world map (a tab in the book, and fast travel from signposts).
+// World map screen: terrain, fog, locations, travel and encounters.
 
-import { el, button, openScreen } from './ui';
-import { G } from '../G';
-import { getMap, hasMap, here } from '../world/world';
-import { PLACES, placeById, Place } from '../content/places';
-import { S, isNight, flag } from '../state';
-import { newCanvas } from '../gfx/paint';
-import { T, tdef } from '../world/terrain';
-import { TILE, rand } from '../engine/util';
-import { markerPositions, resolveMarker, QUESTS } from '../systems/quests';
-import { notify, esc } from './notify';
-import { travel } from '../systems/transition';
-import { applyNeeds } from '../systems/survival';
-import { emit } from '../engine/events';
-import { overweight } from '../systems/inventory';
+import { G, player } from '../game/G';
+import { el, esc } from '../core/util';
+import { button, uiRoot, openModal, closeModal } from './common';
+import { LOCATIONS } from '../content/registry';
+import { WORLD_W, WORLD_H, terrainAt, isExplored, reveal, travelHours, encounterChance, pickEncounter, startEncounterMap, type Terrain } from '../game/world';
+import { hash2 } from '../core/rng';
+import { advanceTime, fmtDate, fmtTime, waterDaysLeft } from '../game/time';
+import { skill } from '../game/character';
+import { chance } from '../core/rng';
+import { msg } from '../game/log';
+import { sfx, setAmbient } from '../audio/sfx';
+import { showHud } from './hud';
 
-const PX = 6; // canvas pixels per tile on the painted map
-let baseCache: { version: number; canvas: HTMLCanvasElement } | null = null;
+let root: HTMLElement | null = null;
+let canvas: HTMLCanvasElement;
+let infoEl: HTMLElement;
+let clockEl: HTMLElement;
+let target: { x: number; y: number; loc?: string } | null = null;
+let pos = { x: 0, y: 0 }; // fractional position in tiles
+let raf = 0;
+let lastT = 0;
+let tile = 24;
+let ox = 0;
+let oy = 0;
+let terrainImg: HTMLCanvasElement | null = null;
+let pausedForEncounter = false;
 
-const WASH: Partial<Record<number, [string, number]>> = {
-  [T.MEADOW]: ['#9aae5a', 0.22], [T.GRASS]: ['#b4b870', 0.1], [T.FOREST]: ['#5e7a3a', 0.42],
-  [T.FIELD]: ['#c89a5a', 0.35], [T.VEG]: ['#b89050', 0.35], [T.WHEAT]: ['#d8b050', 0.42],
-  [T.WATER]: ['#5a86a8', 0.75], [T.DEEP]: ['#46749a', 0.85], [T.FORD]: ['#7aa0b8', 0.6],
-  [T.SAND]: ['#e0c890', 0.4], [T.MUD]: ['#8a6a48', 0.35], [T.ASH]: ['#6a625a', 0.5], [T.BURNT_WHEAT]: ['#5a524a', 0.5],
-  [T.ROCK]: ['#9a9084', 0.5], [T.ROAD]: ['#a07a4e', 0.0], [T.COBBLE]: ['#9a8e7e', 0.45], [T.FLAGSTONE]: ['#9a8e7e', 0.45],
+const TER_COLORS: Record<Terrain, [number, number, number]> = {
+  desert: [168, 136, 92],
+  scrub: [136, 128, 82],
+  mountain: [120, 98, 74],
+  ruins: [110, 104, 96],
+  water: [40, 62, 70],
+  crater: [120, 128, 80],
 };
 
-/** The overworld painted as an old parchment map: washes, inked trees and peaks, roads, rivers, towns. */
-function mapCanvas(): HTMLCanvasElement {
-  const m = getMap('overworld');
-  if (baseCache && baseCache.version === m.version) return baseCache.canvas;
-  const W = m.w * PX, H = m.h * PX;
-  const c = newCanvas(W, H);
-  const g = c.getContext('2d')!;
-  const at = (x: number, y: number) => m.ground[Math.max(0, Math.min(m.h - 1, y)) * m.w + Math.max(0, Math.min(m.w - 1, x))];
-  // parchment
-  g.fillStyle = '#e6d6ac';
-  g.fillRect(0, 0, W, H);
-  for (let i = 0; i < 70; i++) {
-    const x = Math.random() * W, y = Math.random() * H, r = 30 + Math.random() * 140;
-    const gr = g.createRadialGradient(x, y, 0, x, y, r);
-    gr.addColorStop(0, `rgba(${Math.random() < 0.5 ? '150,110,60' : '255,245,215'},${0.05 + Math.random() * 0.06})`);
-    gr.addColorStop(1, 'rgba(150,110,60,0)');
-    g.fillStyle = gr;
-    g.fillRect(x - r, y - r, r * 2, r * 2);
+export function openWorldMap() {
+  if (root) return;
+  G.screen = 'world';
+  showHud(false);
+  pos = { x: G.state.world.x + 0.5, y: G.state.world.y + 0.5 };
+  reveal(G.state.world.x, G.state.world.y, 2);
+  target = null;
+  root = el('div', 'panel');
+  root.id = 'worldmap';
+  const wrap = el('div', 'mapwrap screen');
+  canvas = el('canvas') as HTMLCanvasElement;
+  wrap.appendChild(canvas);
+  const side = el('div', 'side panel');
+  clockEl = el('div', 'screen');
+  clockEl.style.cssText = 'padding:6px;text-align:center;font-family:var(--big);font-size:20px;line-height:20px';
+  side.appendChild(clockEl);
+  const towns = el('div', 'towns');
+  side.appendChild(el('div', 'label', 'Locations'));
+  for (const id of G.state.discovered) {
+    const l = LOCATIONS[id];
+    if (!l) continue;
+    const t = el('div', 'town', `<span class="dot"></span><span>${esc(l.name)}</span>`);
+    t.onclick = () => setTarget(l.x + 0.5, l.y + 0.5, l.id);
+    towns.appendChild(t);
   }
-  // watercolour washes, tile by tile as soft dabs
-  for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) {
-    const w = WASH[at(x, y)];
-    if (!w || w[1] <= 0) continue;
-    g.fillStyle = w[0];
-    g.globalAlpha = w[1] * 0.55;
-    g.beginPath();
-    g.arc((x + 0.5) * PX, (y + 0.5) * PX, PX * 0.95, 0, Math.PI * 2);
-    g.fill();
-  }
-  g.globalAlpha = 1;
-  // riverbanks inked
-  g.strokeStyle = 'rgba(40,70,100,0.55)';
-  g.lineWidth = 1;
-  const isW = (t: number) => t === T.WATER || t === T.DEEP || t === T.FORD;
-  for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) {
-    if (!isW(at(x, y))) continue;
-    const X = x * PX, Y = y * PX;
-    g.beginPath();
-    if (!isW(at(x, y - 1))) { g.moveTo(X, Y); g.lineTo(X + PX, Y); }
-    if (!isW(at(x, y + 1))) { g.moveTo(X, Y + PX); g.lineTo(X + PX, Y + PX); }
-    if (!isW(at(x - 1, y))) { g.moveTo(X, Y); g.lineTo(X, Y + PX); }
-    if (!isW(at(x + 1, y))) { g.moveTo(X + PX, Y); g.lineTo(X + PX, Y + PX); }
-    g.stroke();
-    if ((x * 7 + y * 13) % 23 === 0 && isW(at(x + 1, y)) && isW(at(x - 1, y))) {
-      g.strokeStyle = 'rgba(230,240,245,0.6)';
-      g.beginPath(); g.moveTo(X - 2, Y + 3); g.quadraticCurveTo(X + 1, Y, X + 4, Y + 3); g.quadraticCurveTo(X + 7, Y + 6, X + 10, Y + 3); g.stroke();
-      g.strokeStyle = 'rgba(40,70,100,0.55)';
-    }
-  }
-  // roads: brown ink trails
-  g.fillStyle = 'rgba(122,84,44,0.75)';
-  for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) {
-    const t = at(x, y);
-    if (t !== T.ROAD && t !== T.BRIDGE && t !== T.BRIDGE_V && t !== T.DIRT) continue;
-    g.globalAlpha = t === T.DIRT ? 0.35 : 0.8;
-    g.beginPath(); g.arc((x + 0.5) * PX, (y + 0.5) * PX, t === T.DIRT ? PX * 0.4 : PX * 0.36, 0, Math.PI * 2); g.fill();
-  }
-  g.globalAlpha = 1;
-  // mountains: inked peaks along the rock
-  for (let y = 0; y < m.h; y += 2) for (let x = 0; x < m.w; x += 3) {
-    if (at(x, y) !== T.ROCK || ((x * 31 + y * 17) % 3 === 0)) continue;
-    const X = (x + 0.5) * PX + ((y * 5) % 3), Y = (y + 1) * PX;
-    const h = PX * (1.6 + ((x * 13 + y * 7) % 5) * 0.25);
-    g.fillStyle = 'rgba(245,235,210,0.9)';
-    g.beginPath(); g.moveTo(X - h * 0.7, Y); g.lineTo(X, Y - h); g.lineTo(X + h * 0.7, Y); g.closePath(); g.fill();
-    g.fillStyle = 'rgba(110,96,80,0.55)';
-    g.beginPath(); g.moveTo(X, Y - h); g.lineTo(X + h * 0.7, Y); g.lineTo(X + h * 0.1, Y); g.closePath(); g.fill();
-    g.strokeStyle = 'rgba(70,56,40,0.85)'; g.lineWidth = 1;
-    g.beginPath(); g.moveTo(X - h * 0.7, Y); g.lineTo(X, Y - h); g.lineTo(X + h * 0.7, Y); g.stroke();
-  }
-  // forests: little inked trees
-  for (const o of m.objects) {
-    if (o.kind !== 'tree') continue;
-    const X = (o.x / TILE) * PX, Y = (o.y / TILE) * PX;
-    const pine = o.type === 'pine';
-    g.strokeStyle = 'rgba(58,44,28,0.8)'; g.lineWidth = 1;
-    g.beginPath(); g.moveTo(X, Y); g.lineTo(X, Y - 3); g.stroke();
-    g.fillStyle = o.type === 'burnt' || o.type === 'dead' ? 'rgba(90,80,70,0.8)' : pine ? 'rgba(62,92,60,0.9)' : 'rgba(92,120,62,0.9)';
-    g.beginPath();
-    if (pine) { g.moveTo(X - 3, Y - 2); g.lineTo(X, Y - 9); g.lineTo(X + 3, Y - 2); g.closePath(); }
-    else g.arc(X, Y - 5, 3.2, 0, Math.PI * 2);
-    g.fill();
-    g.strokeStyle = 'rgba(40,52,28,0.8)'; g.stroke();
-  }
-  // buildings and walls
-  for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) {
-    const t = at(x, y);
-    if (t === T.WALL_STONE) { g.fillStyle = 'rgba(80,72,64,0.9)'; g.fillRect(x * PX, y * PX, PX, PX); }
-  }
-  for (const o of m.objects) {
-    if (o.kind !== 'building' || !o.solid) continue;
-    const bx = (o.solid.x / TILE) * PX, by = (o.solid.y / TILE) * PX, bw = (o.solid.w / TILE) * PX, bh = (o.solid.h / TILE) * PX;
-    const burned = o.type === 'burned' || o.type === 'ruin';
-    g.fillStyle = burned ? 'rgba(60,54,50,0.85)' : o.type === 'tent' ? 'rgba(200,180,140,0.9)' : o.type === 'church' || o.type === 'keep' || o.type === 'tower' || o.type === 'stone' ? 'rgba(120,112,104,0.95)' : 'rgba(160,82,56,0.9)';
-    g.fillRect(bx + 1, by + 1, bw - 2, bh - 2);
-    g.strokeStyle = 'rgba(40,28,18,0.9)'; g.lineWidth = 1.2;
-    g.strokeRect(bx + 1, by + 1, bw - 2, bh - 2);
-  }
-  // paper grain and a burnt edge
-  const img = g.getImageData(0, 0, W, H);
-  for (let i = 0; i < img.data.length; i += 4) {
-    const n = (Math.random() - 0.5) * 14;
-    img.data[i] += n; img.data[i + 1] += n; img.data[i + 2] += n * 0.8;
-  }
-  g.putImageData(img, 0, 0);
-  const edge = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.72);
-  edge.addColorStop(0, 'rgba(120,80,40,0)');
-  edge.addColorStop(1, 'rgba(90,56,24,0.45)');
-  g.fillStyle = edge;
-  g.fillRect(0, 0, W, H);
-  baseCache = { version: m.version, canvas: c };
-  return c;
+  side.appendChild(towns);
+  infoEl = el('div', 'info screen', '');
+  side.appendChild(infoEl);
+  const row = el('div', 'row');
+  row.style.flexWrap = 'wrap';
+  row.append(
+    button('Enter', () => enterHere(), 'small'),
+    button('Stop', () => (target = null), 'small'),
+    button('Link', () => import('./pda').then((m) => m.openPda()), 'small'),
+    button('Inv', () => import('./inventory').then((m) => m.openInventory()), 'small'),
+    button('Cha', () => import('./charscreen').then((m) => m.openCharacter()), 'small'),
+    button('Opt', () => import('./menus').then((m) => m.openOptions()), 'small'),
+  );
+  side.appendChild(row);
+  root.append(wrap, side);
+  uiRoot().appendChild(root);
+  canvas.addEventListener('pointerdown', onClick);
+  window.addEventListener('resize', sizeCanvas);
+  sizeCanvas();
+  setAmbient('wind');
+  lastT = performance.now();
+  raf = requestAnimationFrame(loop);
+  updateInfo();
 }
 
-/** The painted overworld map (6 px per tile), shared with the minimap. */
-export function paintedMap(): HTMLCanvasElement { return mapCanvas(); }
-
-export function discovered(p: Place) {
-  if (S.discovered.includes(p.id)) return true;
-  return !p.hidden && p.kind !== 'wild' && !!flag('map_known');
+export function closeWorldMap() {
+  if (!root) return;
+  cancelAnimationFrame(raf);
+  window.removeEventListener('resize', sizeCanvas);
+  root.remove();
+  root = null;
+  showHud(true);
 }
 
-/** Builds the map panel. `travelFrom` enables fast travel. */
-export function mapPanel(travelFrom?: string, onClose?: () => void): HTMLElement {
-  const wrap = el('div', { cls: 'mapwrap' });
-  if (!hasMap('overworld')) { wrap.append(el('p', { html: 'No map.' })); return wrap; }
-  const base = mapCanvas();
-  const view = newCanvas(10, 10);
-  wrap.append(view);
-  const legend = el('div', { cls: 'maplegend', html: travelFrom ? 'Click a place you have visited to travel there.' : 'Drag to move · wheel to zoom' });
-  wrap.append(legend);
-  const tip = el('div', { cls: 'maptip' });
-  tip.hidden = true;
-  wrap.append(tip);
-  const m = getMap('overworld');
-  let zoom = 0.6;
-  const onOver = G.map.id === 'overworld';
-  const px = onOver ? G.player.x / TILE : (S.flags.lastOverX ?? m.w / 2);
-  const py = onOver ? G.player.y / TILE : (S.flags.lastOverY ?? m.h / 2);
-  let ox = 0, oy = 0; // pan offset in canvas px
-  let hover: Place | null = null;
-  const draw = () => {
-    const W = wrap.clientWidth || 800, H = wrap.clientHeight || 500;
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    view.width = Math.round(W * dpr); view.height = Math.round(H * dpr);
-    view.style.width = W + 'px'; view.style.height = H + 'px';
-    const ctx = view.getContext('2d')!;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-    ctx.fillStyle = '#c9b890';
-    ctx.fillRect(0, 0, W, H);
-    const s = zoom;
-    const cx = W / 2 - px * PX * s + ox, cy = H / 2 - py * PX * s + oy;
-    ctx.drawImage(base, cx, cy, base.width * s, base.height * s);
-    // places
-    ctx.font = '600 13px "Alegreya SC", Georgia, serif';
-    ctx.textAlign = 'center';
-    for (const p of PLACES) {
-      if (!discovered(p)) continue;
-      const x = cx + (p.x + 0.5) * PX * s, y = cy + (p.y + 0.5) * PX * s;
-      ctx.fillStyle = p === hover ? '#8e2f2f' : '#1b1410';
-      ctx.beginPath(); ctx.arc(x, y, p.kind === 'town' || p.kind === 'castle' ? 6 : 4, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#f4efe4';
-      ctx.beginPath(); ctx.arc(x, y, 2, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = 'rgba(233,223,198,0.8)';
-      const tw = ctx.measureText(p.name).width;
-      ctx.fillRect(x - tw / 2 - 4, y - 24, tw + 8, 16);
-      ctx.fillStyle = '#1b1410';
-      ctx.fillText(p.name, x, y - 12);
-    }
-    // quest marker
-    const tq = S.trackedQuest;
-    if (tq && QUESTS[tq]) {
-      const def = QUESTS[tq];
-      const st = def.stages[S.quests[tq]?.stage];
-      let mk = st?.marker;
-      if (typeof mk === 'function') mk = mk() || undefined;
-      const list = mk ? (Array.isArray(mk) ? mk : [mk]) : [];
-      for (const k of list) {
-        let tx: number | null = null, ty: number | null = null;
-        if ('map' in k && !('key' in k) && k.map === 'overworld') { tx = k.x; ty = k.y; }
-        else {
-          const r = resolveMarker(k);
-          if (r && (r.map === 'overworld' || G.map.id === 'overworld')) { const pos = r.map === 'overworld' ? r : null; if (pos) { tx = pos.x / TILE; ty = pos.y / TILE; } }
-          const interior = 'map' in k ? k.map : null;
-          if (tx === null && interior && hasMap(interior)) {
-            const im = getMap(interior);
-            if (im.parent === 'overworld') for (const o of m.objects) if (o.interact?.type === 'door' && o.interact.to === interior) { tx = o.x / TILE; ty = o.y / TILE; }
-          }
+function sizeCanvas() {
+  const r = canvas.parentElement!.getBoundingClientRect();
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  canvas.width = Math.round(r.width * dpr);
+  canvas.height = Math.round(r.height * dpr);
+  tile = Math.max(12, Math.min(canvas.width / WORLD_W, canvas.height / WORLD_H));
+  ox = (canvas.width - tile * WORLD_W) / 2;
+  oy = (canvas.height - tile * WORLD_H) / 2;
+  terrainImg = null;
+}
+
+function buildTerrainImage() {
+  const cv = document.createElement('canvas');
+  cv.width = Math.ceil(tile * WORLD_W);
+  cv.height = Math.ceil(tile * WORLD_H);
+  const c = cv.getContext('2d')!;
+  const px = Math.max(2, Math.floor(tile / 8));
+  for (let y = 0; y < WORLD_H; y++) {
+    for (let x = 0; x < WORLD_W; x++) {
+      const ter = terrainAt(x, y);
+      const [r, g, b] = TER_COLORS[ter];
+      for (let sy = 0; sy < tile; sy += px) {
+        for (let sx = 0; sx < tile; sx += px) {
+          const n = (hash2(x * 64 + sx, y * 64 + sy, 3) - 0.5) * 22;
+          c.fillStyle = `rgb(${r + n},${g + n},${b + n * 0.8})`;
+          c.fillRect(x * tile + sx, y * tile + sy, px + 0.5, px + 0.5);
         }
-        if (tx === null || ty === null) continue;
-        const x = cx + tx * PX * s, y = cy + ty * PX * s;
-        ctx.fillStyle = '#1b1410';
-        ctx.beginPath(); ctx.moveTo(x, y - 14); ctx.lineTo(x + 7, y - 7); ctx.lineTo(x, y); ctx.lineTo(x - 7, y - 7); ctx.fill();
-        ctx.fillStyle = '#e0a020';
-        ctx.beginPath(); ctx.moveTo(x, y - 12); ctx.lineTo(x + 5, y - 7); ctx.lineTo(x, y - 2); ctx.lineTo(x - 5, y - 7); ctx.fill();
+      }
+      if (ter === 'mountain') {
+        c.fillStyle = 'rgba(60,44,30,0.6)';
+        for (let k = 0; k < 2; k++) {
+          const mx = x * tile + hash2(x, y, k) * tile * 0.7;
+          const my = y * tile + tile * 0.8;
+          c.beginPath();
+          c.moveTo(mx, my);
+          c.lineTo(mx + tile * 0.2, my - tile * 0.45);
+          c.lineTo(mx + tile * 0.4, my);
+          c.fill();
+        }
+      } else if (ter === 'ruins') {
+        c.fillStyle = 'rgba(50,48,44,0.7)';
+        for (let k = 0; k < 3; k++) c.fillRect(x * tile + hash2(x, y, k + 5) * tile * 0.8, y * tile + hash2(x, y, k + 9) * tile * 0.6, tile * 0.18, tile * 0.3);
+      } else if (ter === 'water') {
+        c.strokeStyle = 'rgba(150,190,190,0.25)';
+        c.beginPath();
+        c.moveTo(x * tile + 2, y * tile + tile / 2);
+        c.quadraticCurveTo(x * tile + tile / 2, y * tile + tile / 2 - 3, x * tile + tile - 2, y * tile + tile / 2);
+        c.stroke();
+      } else if (ter === 'crater') {
+        c.fillStyle = 'rgba(160,220,90,0.25)';
+        c.beginPath();
+        c.arc(x * tile + tile / 2, y * tile + tile / 2, tile * 0.3, 0, 7);
+        c.fill();
       }
     }
-    // player
-    const pxs = cx + px * PX * s, pys = cy + py * PX * s;
-    ctx.fillStyle = '#8e2f2f';
-    ctx.beginPath(); ctx.arc(pxs, pys, 5, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = '#f4efe4'; ctx.lineWidth = 2; ctx.stroke(); ctx.lineWidth = 1;
-    // compass rose
-    ctx.fillStyle = '#3a2c1e';
-    ctx.font = '700 16px "Grenze Gotisch", Georgia, serif';
-    ctx.fillText('N', W - 30, 34);
-    ctx.beginPath(); ctx.moveTo(W - 30, 38); ctx.lineTo(W - 25, 60); ctx.lineTo(W - 35, 60); ctx.fill();
-  };
-  requestAnimationFrame(draw);
-  let drag: { x: number; y: number; ox: number; oy: number; moved: boolean } | null = null;
-  const placeAt = (clientX: number, clientY: number): Place | null => {
-    const r = view.getBoundingClientRect();
-    const W = r.width, H = r.height;
-    const cx = W / 2 - px * PX * zoom + ox, cy = H / 2 - py * PX * zoom + oy;
-    const mx = clientX - r.left, my = clientY - r.top;
-    let best: Place | null = null, bd = 14;
-    for (const p of PLACES) {
-      if (!discovered(p)) continue;
-      const x = cx + (p.x + 0.5) * PX * zoom, y = cy + (p.y + 0.5) * PX * zoom;
-      const d = Math.hypot(x - mx, y - my);
-      if (d < bd) { bd = d; best = p; }
-    }
-    return best;
-  };
-  view.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY, ox, oy, moved: false }; view.setPointerCapture(e.pointerId); });
-  view.addEventListener('pointermove', (e) => {
-    if (drag) {
-      const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-      if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
-      ox = drag.ox + dx; oy = drag.oy + dy;
-      draw();
-    } else {
-      const h = placeAt(e.clientX, e.clientY);
-      if (h !== hover) { hover = h; draw(); }
-      if (h) {
-        const r = wrap.getBoundingClientRect();
-        tip.hidden = false;
-        tip.style.left = e.clientX - r.left + 'px';
-        tip.style.top = e.clientY - r.top + 'px';
-        tip.textContent = h.name + (travelFrom ? ' · travel' : '');
-      } else tip.hidden = true;
-    }
-  });
-  view.addEventListener('pointerup', (e) => {
-    const d = drag;
-    drag = null;
-    if (d && !d.moved && travelFrom) {
-      const p = placeAt(e.clientX, e.clientY);
-      if (p) { onClose?.(); fastTravel(p); }
-    }
-  });
-  view.addEventListener('wheel', (e) => { zoom = Math.max(0.3, Math.min(1.8, zoom * (e.deltaY < 0 ? 1.15 : 0.87))); draw(); }, { passive: true });
-  window.addEventListener('resize', draw, { once: true });
-  return wrap;
+  }
+  // Grid lines
+  c.strokeStyle = 'rgba(0,0,0,0.12)';
+  c.lineWidth = 1;
+  for (let x = 0; x <= WORLD_W; x += 4) {
+    c.beginPath();
+    c.moveTo(x * tile, 0);
+    c.lineTo(x * tile, cv.height);
+    c.stroke();
+  }
+  for (let y = 0; y <= WORLD_H; y += 4) {
+    c.beginPath();
+    c.moveTo(0, y * tile);
+    c.lineTo(cv.width, y * tile);
+    c.stroke();
+  }
+  terrainImg = cv;
 }
 
-export function canFastTravel(): string | null {
-  if (flag('no_travel')) return 'Not now. You have somewhere to be.';
-  if (G.map.id !== 'overworld') return 'You must be out on the roads to travel.';
-  if (here().some((a) => a.hostile && !a.dead && Math.hypot(a.x - G.player.x, a.y - G.player.y) < 300)) return 'Not with enemies nearby.';
-  if (overweight()) return 'You are carrying too much to travel.';
-  return null;
+function draw(now: number) {
+  const c = canvas.getContext('2d')!;
+  c.fillStyle = '#050805';
+  c.fillRect(0, 0, canvas.width, canvas.height);
+  if (!terrainImg) buildTerrainImage();
+  c.drawImage(terrainImg!, ox, oy);
+  // Fog of war
+  for (let y = 0; y < WORLD_H; y++) {
+    for (let x = 0; x < WORLD_W; x++) {
+      if (isExplored(x, y)) continue;
+      const nearby = isExplored(x - 1, y) || isExplored(x + 1, y) || isExplored(x, y - 1) || isExplored(x, y + 1);
+      c.fillStyle = nearby ? 'rgba(6,8,6,0.82)' : 'rgba(6,8,6,0.97)';
+      c.fillRect(ox + x * tile - 0.5, oy + y * tile - 0.5, tile + 1, tile + 1);
+    }
+  }
+  // Locations
+  c.textAlign = 'center';
+  for (const id of G.state.discovered) {
+    const l = LOCATIONS[id];
+    if (!l) continue;
+    const x = ox + (l.x + 0.5) * tile;
+    const y = oy + (l.y + 0.5) * tile;
+    const rad = tile * (0.35 + (l.size ?? 1) * 0.25);
+    c.strokeStyle = '#4cff5c';
+    c.lineWidth = 2;
+    c.fillStyle = 'rgba(76,255,92,0.18)';
+    c.beginPath();
+    c.arc(x, y, rad, 0, 7);
+    c.fill();
+    c.stroke();
+    c.font = `${Math.max(11, tile * 0.5)}px "Share Tech Mono", monospace`;
+    c.fillStyle = '#000';
+    c.fillText(l.name, x + 1, y + rad + tile * 0.55 + 1);
+    c.fillStyle = '#c8ffb8';
+    c.fillText(l.name, x, y + rad + tile * 0.55);
+  }
+  // Target line
+  if (target) {
+    c.strokeStyle = 'rgba(255,80,50,0.8)';
+    c.setLineDash([4, 4]);
+    c.lineWidth = 2;
+    c.beginPath();
+    c.moveTo(ox + pos.x * tile, oy + pos.y * tile);
+    c.lineTo(ox + target.x * tile, oy + target.y * tile);
+    c.stroke();
+    c.setLineDash([]);
+    c.strokeStyle = '#ff5030';
+    c.beginPath();
+    c.arc(ox + target.x * tile, oy + target.y * tile, tile * 0.25, 0, 7);
+    c.stroke();
+  }
+  // Player marker
+  const px = ox + pos.x * tile;
+  const py = oy + pos.y * tile;
+  const pulse = 0.6 + Math.sin(now / 200) * 0.4;
+  c.fillStyle = `rgba(255,60,40,${pulse})`;
+  c.beginPath();
+  c.arc(px, py, tile * 0.28, 0, 7);
+  c.fill();
+  c.strokeStyle = '#ffd24a';
+  c.lineWidth = 2;
+  c.beginPath();
+  c.arc(px, py, tile * 0.42, 0, 7);
+  c.stroke();
 }
 
-export function openTravel(fromPlace: string) {
-  const reason = canFastTravel();
-  if (reason) { notify(reason, 'bad'); return; }
-  openScreen('travel', (close) => {
-    const b = el('div', { cls: 'vellum book' });
-    const tabs = el('div', { cls: 'tabs' });
-    tabs.append(el('button', { cls: 'tab on', html: 'Travel' }));
-    const x = el('button', { cls: 'close', html: '✕' });
-    x.addEventListener('click', close);
-    tabs.append(x);
-    const page = el('div', { cls: 'page' });
-    page.style.padding = '8px';
-    page.append(mapPanel(fromPlace, close));
-    b.append(tabs, page);
-    return b;
-  });
+function loop(now: number) {
+  if (!root) return;
+  const dt = Math.min(0.1, (now - lastT) / 1000);
+  lastT = now;
+  if (target && !G.modal && !pausedForEncounter) step(dt);
+  draw(now);
+  clockEl.innerHTML = `${fmtDate(G.state.time)}<br>${fmtTime(G.state.time)}` + (!G.state.flags.coreReturned ? `<br><span style="font-size:15px;color:${waterDaysLeft() < 10 ? '#ff4a36' : 'var(--amber)'}">Water: ${waterDaysLeft()} days</span>` : '');
+  raf = requestAnimationFrame(loop);
 }
 
-export async function fastTravel(p: Place) {
-  const reason = canFastTravel();
-  if (reason) { notify(reason, 'bad'); return; }
-  const dist = Math.hypot(p.x - G.player.x / TILE, p.y - G.player.y / TILE);
-  if (dist < 8) { notify('You are already there.', 'info'); return; }
-  const hours = Math.max(0.3, dist / 45);
-  S.minutes += hours * 60;
-  applyNeeds(hours);
-  // ambushes on the road
-  const chance = (isNight() ? 0.28 : 0.12) * Math.min(1, dist / 80);
-  const ambush = (flag('act') || 0) >= 1 && Math.random() < chance;
-  if (ambush) {
-    const t = rand.range(0.35, 0.65);
-    const mx = G.player.x / TILE + (p.x - G.player.x / TILE) * t, my = G.player.y / TILE + (p.y - G.player.y / TILE) * t;
-    await travel('overworld', { x: mx * TILE, y: my * TILE }, undefined, { fade: 0.6 });
-    emit('ambush', mx, my);
+function step(dt: number) {
+  if (!target) return;
+  const dx = target.x - pos.x;
+  const dy = target.y - pos.y;
+  const d = Math.hypot(dx, dy);
+  const speed = 3.2; // tiles per real second
+  const move = Math.min(d, speed * dt);
+  const tx = Math.floor(pos.x);
+  const ty = Math.floor(pos.y);
+  const ter = terrainAt(tx, ty);
+  let nx = pos.x + (dx / (d || 1)) * move;
+  let ny = pos.y + (dy / (d || 1)) * move;
+  if (terrainAt(Math.floor(nx), Math.floor(ny)) === 'water') {
+    target = null;
+    msg('You cannot cross the water.');
     return;
   }
-  await travel('overworld', p.spawn, undefined, { fade: 0.6, hold: 250 });
-  notify(`You arrive at <b>${esc(p.name)}</b> after ${hours < 1 ? 'less than an hour' : Math.round(hours) + ' hours'} on the road.`, 'info');
+  pos.x = nx;
+  pos.y = ny;
+  // Time passes in proportion to distance and terrain.
+  advanceTime(Math.round(move * travelHours(ter) * 60));
+  if (G.state.ended || G.screen === 'end') {
+    target = null;
+    return;
+  }
+  const ntx = Math.floor(pos.x);
+  const nty = Math.floor(pos.y);
+  G.state.world = { x: ntx, y: nty };
+  if (ntx !== tx || nty !== ty) {
+    reveal(ntx, nty, 1);
+    updateInfo();
+    // Encounter roll once per tile.
+    const t2 = terrainAt(ntx, nty);
+    const nearTown = Object.values(LOCATIONS).some((l) => Math.abs(l.x - ntx) <= 1 && Math.abs(l.y - nty) <= 1);
+    if (!nearTown && chance(encounterChance(t2))) {
+      const enc = pickEncounter(t2);
+      if (enc) {
+        encounter(t2, enc);
+        return;
+      }
+    }
+  }
+  if (d <= move + 0.001) {
+    const loc = target.loc;
+    target = null;
+    if (loc) arrive(loc);
+  }
 }
 
-export { placeById, markerPositions };
+function encounter(ter: Terrain, enc: ReturnType<typeof pickEncounter>) {
+  if (!enc) return;
+  pausedForEncounter = true;
+  sfx('encounter');
+  const w = el('div', 'panel win');
+  w.style.width = 'min(420px, 100vw)';
+  w.appendChild(el('h2', '', 'Encounter'));
+  const spotted = chance(skill(player(), 'outdoorsman'));
+  const text = spotted
+    ? `You spot ${enc.text} before they notice you.`
+    : `You stumble upon ${enc.text}!`;
+  w.appendChild(el('div', 'screen', `<div style="padding:10px">${esc(text)}</div>`));
+  const row = el('div', 'row');
+  row.style.justifyContent = 'center';
+  const go = () => {
+    closeModal('encounter');
+    pausedForEncounter = false;
+    target = null;
+    closeWorldMap();
+    startEncounterMap(ter, enc);
+  };
+  row.appendChild(button(spotted ? 'Approach' : 'Continue', go));
+  if (spotted) {
+    row.appendChild(button('Avoid', () => {
+      closeModal('encounter');
+      pausedForEncounter = false;
+      msg('You slip past unseen.');
+    }));
+  }
+  w.appendChild(row);
+  openModal('encounter', w, { noBackClose: true });
+}
+
+function arrive(locId: string) {
+  const l = LOCATIONS[locId];
+  if (!l) return;
+  closeWorldMap();
+  import('../game/travel').then((t) => t.enterMap(l.map, l.entrance ?? 'default'));
+}
+
+function enterHere() {
+  const x = Math.floor(pos.x);
+  const y = Math.floor(pos.y);
+  const loc = Object.values(LOCATIONS).find((l) => G.state.discovered.includes(l.id) && Math.abs(l.x - x) <= (l.size ?? 1) - 1 + 0 && Math.abs(l.y - y) <= (l.size ?? 1) - 1 + 0) ??
+    Object.values(LOCATIONS).find((l) => G.state.discovered.includes(l.id) && l.x === x && l.y === y);
+  if (loc) return arrive(loc.id);
+  closeWorldMap();
+  startEncounterMap(terrainAt(x, y), null);
+}
+
+function setTarget(x: number, y: number, loc?: string) {
+  target = { x, y, loc };
+  sfx('click');
+}
+
+function onClick(e: PointerEvent) {
+  if (G.modal) return;
+  const r = canvas.getBoundingClientRect();
+  const dpr = canvas.width / r.width;
+  const mx = ((e.clientX - r.left) * dpr - ox) / tile;
+  const my = ((e.clientY - r.top) * dpr - oy) / tile;
+  if (mx < 0 || my < 0 || mx >= WORLD_W || my >= WORLD_H) return;
+  // Clicking a known location targets it.
+  for (const id of G.state.discovered) {
+    const l = LOCATIONS[id];
+    if (l && Math.hypot(l.x + 0.5 - mx, l.y + 0.5 - my) < 0.5 + (l.size ?? 1) * 0.3) {
+      setTarget(l.x + 0.5, l.y + 0.5, l.id);
+      return;
+    }
+  }
+  setTarget(mx, my);
+}
+
+function updateInfo() {
+  if (!infoEl) return;
+  const x = Math.floor(pos.x);
+  const y = Math.floor(pos.y);
+  const ter = terrainAt(x, y);
+  const names: Record<Terrain, string> = { desert: 'Open desert', scrub: 'Scrubland', mountain: 'Broken hills', ruins: 'Ruined city', water: 'Water', crater: 'Glowing craters' };
+  infoEl.innerHTML = `${names[ter]}<br><small>Click the map to travel. Click a location to go there.</small>`;
+}

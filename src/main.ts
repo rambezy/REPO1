@@ -1,93 +1,111 @@
-// Entry point: sets up the canvas, input, systems and the title screen.
+// Entry point: boot, main loop, and game start.
 
 import './styles.css';
-import { G } from './G';
-import { input, buildTouchControls } from './engine/input';
-import { startLoop } from './engine/loop';
-import { registerCoreSystems } from './engine/systems';
-import { initNotify } from './ui/notify';
-import { boot } from './game';
-import { attachDebug } from './debug';
+import { G, player } from './game/G';
+import { initRenderer, render, resize } from './render/renderer';
+import { initInput, updateKeyScroll } from './ui/input';
+import { initHud, showHud, refreshHud } from './ui/hud';
+import { showMainMenu, loadSettings, playIntro } from './ui/menus';
+import { updateMovement, followParty, setArriveHook } from './game/movement';
+import { updateIdle, checkAwareness } from './game/ai';
+import { startCombat } from './game/combat';
+import { advanceTime } from './game/time';
+import { takeExit, enterMap } from './game/travel';
+import { msg, clearLog } from './game/log';
+import './content/index';
 
-let lowRes = false;
+let started = false;
+let last = performance.now();
+let timeAcc = 0;
+let awareAcc = 0;
 
-/** Drops to one device pixel per CSS pixel if a high-density screen can't keep up. */
-/**
- * Watches the frame rate while playing and, on a machine that can't keep up,
- * steps down one rung at a time: device resolution first, then swaying
- * trees, ground cover and mist, then sun shadows.
- */
-function watchFrameRate() {
-  const rungs: (() => boolean)[] = [
-    () => {
-      if (lowRes || (window.devicePixelRatio || 1) <= 1) return false;
-      lowRes = true;
-      resize();
-      return true;
-    },
-    () => { for (const k of ['sway', 'foliage', 'mist']) G.skip.add(k); return true; },
-    () => { G.skip.add('shadows'); return true; },
-  ];
-  let rung = 0;
-  const times: number[] = [];
-  let last = performance.now();
-  const tick = (now: number) => {
-    if (G.mode === 'play') times.push(now - last);
-    last = now;
-    if (times.length >= 150) {
-      const sorted = [...times].sort((a, b) => a - b);
-      const median = sorted[times.length >> 1];
-      times.length = 0;
-      if (median > 26) {
-        while (rung < rungs.length && !rungs[rung++]());
+function frame(now: number) {
+  const dt = Math.min(0.1, (now - last) / 1000);
+  last = now;
+  G.now = now;
+  if (G.screen === 'play' && G.map) {
+    updateKeyScroll(dt);
+    updateMovement(now);
+    if (!G.modal) {
+      updateIdle(now);
+      followParty();
+      // Game clock: 10 game seconds per real second while exploring.
+      if (!G.combat) {
+        timeAcc += dt * 10;
+        if (timeAcc >= 60) {
+          timeAcc -= 60;
+          advanceTime(1);
+        }
+      }
+      awareAcc += dt;
+      if (awareAcc > 0.25) {
+        awareAcc = 0;
+        const spotter = checkAwareness();
+        if (spotter) startCombat(spotter);
       }
     }
-    if (rung < rungs.length) requestAnimationFrame(tick);
-  };
-  requestAnimationFrame(tick);
+    render(now);
+  }
+  requestAnimationFrame(frame);
 }
 
-function resize() {
-  const w = window.innerWidth, h = window.innerHeight;
-  // The world is drawn at full device resolution; `scale` is how many CSS
-  // pixels one world unit covers, chosen so every screen frames about the
-  // same stretch of land.
-  let scale = Math.min(w / 420, h / 240);
-  if (w < 700 || h < 480) scale = Math.max(2, Math.min(w / 210, h / 210));
-  scale = Math.max(1.5, scale);
-  const dpr = lowRes ? 1 : Math.min(2, window.devicePixelRatio || 1);
-  G.scale = scale;
-  G.dpr = dpr;
-  G.viewW = w / scale;
-  G.viewH = h / scale;
-  const c = G.canvas;
-  c.width = Math.round(w * dpr);
-  c.height = Math.round(h * dpr);
-  c.style.width = w + 'px';
-  c.style.height = h + 'px';
-  G.ctx.imageSmoothingEnabled = true;
-  // art is painted at 4 texels per unit: plain bilinear holds up down to 2 px
-  // per unit and costs a fraction of mipmapped or bicubic sampling
-  G.ctx.imageSmoothingQuality = scale * dpr >= 2 ? 'low' : 'medium';
-  input.setScale(scale);
-}
+setArriveHook((a) => {
+  const m = G.map;
+  if (!m) return;
+  if (a.uid === 'player' && !G.combat) {
+    const ex = m.exitAt.get(m.idx(a.q, a.r));
+    if (ex) {
+      a._path = undefined;
+      setTimeout(() => takeExit(ex), 0);
+    }
+  }
+});
 
-function start() {
-  const canvas = document.getElementById('game') as HTMLCanvasElement;
-  const ui = document.getElementById('ui') as HTMLElement;
-  G.canvas = canvas;
-  G.ctx = canvas.getContext('2d', { alpha: false })!;
+/** Show the in-game UI (after new game or load). */
+export function startPlaying() {
+  if (!started) {
+    initHud();
+    started = true;
+  }
+  showHud(true);
   resize();
-  window.addEventListener('resize', resize);
-  input.attach(canvas);
-  initNotify(ui);
-  buildTouchControls(ui);
-  registerCoreSystems();
-  boot(ui);
-  if (import.meta.env.DEV || location.hash.includes('debug')) attachDebug();
-  startLoop();
-  // scripted play-tests run in a slow headless browser: keep full quality there
-  if (!location.hash.includes('debug')) watchFrameRate();
+  refreshHud();
 }
 
-start();
+export function startNewGame() {
+  clearLog();
+  startPlaying();
+  const { flags } = G.state;
+  flags._run = false;
+  playIntro(() => {
+    enterMap('shelter29', 'start');
+    msg(`Welcome to the Ember Basin, ${player().name}.`);
+    msg('Click to move. Right-click cycles the cursor between walk, use, look and attack.');
+  });
+}
+
+function boot() {
+  loadSettings();
+  const canvas = document.getElementById('game') as HTMLCanvasElement;
+  initRenderer(canvas);
+  initInput(canvas);
+  showMainMenu();
+  requestAnimationFrame(frame);
+  (window as any).G = G;
+  // Debug hooks used by the automated play tests.
+  (window as any).DF = {
+    enterMap,
+    msg,
+    travel: () => import('./game/travel'),
+    interact: () => import('./game/interact'),
+    combat: () => import('./game/combat'),
+    dialogue: () => import('./ui/dialogue'),
+    save: () => import('./game/save'),
+    world: () => import('./ui/worldmap'),
+    progress: () => import('./game/progress'),
+    script: () => import('./game/script'),
+    log: () => import('./game/log'),
+  };
+}
+
+boot();

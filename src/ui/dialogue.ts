@@ -1,233 +1,217 @@
-// The dialogue box: portrait with talking/blinking animation, typewriter
-// text, and choices navigable by keyboard, mouse, touch or gamepad.
+// Conversation window with a talking-head portrait and numbered replies.
 
-import { UI, el } from './ui';
-import { input } from '../engine/input';
-import { getPortrait, Expr, PORTRAIT_SIZE } from '../gfx/portraits';
-import { Look } from '../gfx/characters';
+import { G, player } from '../game/G';
+import { el, esc } from '../core/util';
+import { DIALOGUES } from '../content/registry';
+import type { Actor, DialogueDef, DialogueOption, Ctx } from '../game/types';
+import { ctx, setSpeaker } from '../game/script';
+import { button, closeModal, openModal, topModal } from './common';
+import { drawPortrait } from '../render/portrait';
+import { lookOf } from '../game/actors';
+import { stat, skill } from '../game/character';
+import { chance } from '../core/rng';
+import { msg, emit } from '../game/log';
+import { SKILL_INFO, STAT_INFO } from '../data/stats';
 import { sfx } from '../audio/sfx';
-import { G } from '../G';
+import { startCombat, aggro } from '../game/combat';
 
-export interface Speaker { key: string; name: string; title?: string; look?: Look; expr: Expr }
+let win: HTMLElement | null = null;
+let def: DialogueDef | null = null;
+let speaker: Actor | undefined;
+let portraitCanvas: HTMLCanvasElement;
+let anim = 0;
+let talkUntil = 0;
+let keyHandler: ((e: KeyboardEvent) => void) | null = null;
 
-export interface ChoiceOpt {
-  id: string;
-  text: string;
-  tag?: string;
-  tagState?: 'ok' | 'fail' | 'neutral';
-  used?: boolean;
-  locked?: boolean;
-}
-
-let box: HTMLElement | null = null;
-let portraitCanvas: HTMLCanvasElement | null = null;
-let whoEl: HTMLElement, textEl: HTMLElement, choicesEl: HTMLElement, moreEl: HTMLElement;
-let current: Speaker | null = null;
-let typing = false;
-let fullHTML = '';
-let shown = 0;
-let plain = '';
-let blinkT = 2;
-let talkFrame = false;
-let talkT = 0;
-export const dlgSettings = { speed: 55 }; // characters per second
-
-function ensureBox() {
-  if (box) return;
-  box = el('div', { id: 'dialogue', cls: 'iron-panel' });
-  const pWrap = el('div', { cls: 'portrait' });
-  portraitCanvas = el('canvas');
-  portraitCanvas.width = PORTRAIT_SIZE;
-  portraitCanvas.height = PORTRAIT_SIZE;
-  pWrap.appendChild(portraitCanvas);
-  const body = el('div', { cls: 'body' });
-  whoEl = el('div', { cls: 'who' });
-  textEl = el('div', { cls: 'text' });
-  choicesEl = el('div', { cls: 'choices' });
-  moreEl = el('div', { cls: 'more', html: '▼' });
-  body.append(whoEl, textEl, choicesEl);
-  box.append(pWrap, body, moreEl);
-  box.addEventListener('click', () => { if (!choicesEl.childElementCount) advancePressed = true; });
-  UI.root.appendChild(box);
-  document.body.classList.add('dialogue-open');
-}
-
-export function hideDialogue() {
-  if (box) { box.remove(); box = null; }
-  current = null;
-  document.body.classList.remove('dialogue-open');
-}
-export const dialogueVisible = () => !!box;
-/** True while a line or a choice is waiting on the player. */
-export const dialogueBusy = () => !!pendingLine || !!pendingChoice;
-
-let advancePressed = false;
-
-function drawPortrait() {
-  if (!portraitCanvas || !current || !current.look) return;
-  const ctx = portraitCanvas.getContext('2d')!;
-  const blink = blinkT < 0.12 && current.expr !== 'laugh' && current.expr !== 'sleep';
-  const img = getPortrait(current.key, current.look, current.expr, typing && talkFrame, blink);
-  ctx.clearRect(0, 0, PORTRAIT_SIZE, PORTRAIT_SIZE);
-  ctx.drawImage(img, 0, 0);
-}
-
-/** Per-frame animation (typewriter, mouth, blink). */
-export function updateDialogue(dt: number) {
-  if (!box) return;
-  blinkT -= dt;
-  if (blinkT < 0) blinkT = 2 + Math.random() * 3;
-  if (typing) {
-    talkT += dt;
-    if (talkT > 0.11) { talkT = 0; talkFrame = !talkFrame; }
-    const before = shown;
-    shown = Math.min(plain.length, shown + dt * dlgSettings.speed * (input.down('confirm') ? 3 : 1));
-    if (Math.floor(shown) !== Math.floor(before)) renderPartial();
-    if (shown >= plain.length) { typing = false; talkFrame = false; renderPartial(); }
-  }
-  drawPortrait();
-  moreEl.style.visibility = !typing && !choicesEl.childElementCount ? 'visible' : 'hidden';
-}
-
-function renderPartial() {
-  // Reveal HTML progressively by counting visible characters.
-  let count = Math.floor(shown);
-  let out = '';
-  let i = 0;
-  while (i < fullHTML.length && count > 0) {
-    if (fullHTML[i] === '<') {
-      const j = fullHTML.indexOf('>', i);
-      out += fullHTML.slice(i, j + 1);
-      i = j + 1;
-      continue;
-    }
-    if (fullHTML[i] === '&') {
-      const j = fullHTML.indexOf(';', i);
-      out += fullHTML.slice(i, j + 1);
-      i = j + 1;
-      count--;
-      continue;
-    }
-    out += fullHTML[i++];
-    count--;
-  }
-  // close any open tags crudely
-  const opens = (out.match(/<(em|span)[^>]*>/g) || []).length;
-  const closes = (out.match(/<\/(em|span)>/g) || []).length;
-  for (let k = 0; k < opens - closes; k++) out += out.lastIndexOf('<em') > out.lastIndexOf('<span') ? '</em>' : '</span>';
-  textEl.innerHTML = out;
-}
-
-function setSpeaker(sp: Speaker | null, narration: boolean) {
-  ensureBox();
-  current = sp;
-  box!.classList.toggle('narration', narration || !sp || !sp.look);
-  whoEl.innerHTML = sp && !narration ? `<span>${sp.name}</span>${sp.title ? `<small>${sp.title}</small>` : ''}` : '';
-  whoEl.style.display = sp && !narration ? '' : 'none';
-}
-
-export function formatText(t: string): string {
-  return t
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-    .replace(/\[\[([^\]]+)\]\]/g, '<span class="hl">$1</span>');
-}
-
-interface PendingLine { resolve: () => void }
-interface PendingChoice { opts: ChoiceOpt[]; sel: number; buttons: HTMLButtonElement[]; resolve: (id: string) => void; done: boolean }
-let pendingLine: PendingLine | null = null;
-let pendingChoice: PendingChoice | null = null;
-
-/** Shows a line and resolves when the player advances. */
-export function showLine(sp: Speaker | null, text: string, narration = false): Promise<void> {
-  setSpeaker(sp, narration);
-  choicesEl.innerHTML = '';
-  fullHTML = formatText(text);
-  plain = fullHTML.replace(/<[^>]+>/g, '').replace(/&[a-z]+;/g, '_');
-  shown = 0;
-  typing = true;
-  textEl.innerHTML = '';
-  advancePressed = false;
-  input.consumeAll();
-  return new Promise((resolve) => { pendingLine = { resolve }; });
-}
-
-/** Shows choices under the current text and resolves with the chosen id. */
-export function showChoices(opts: ChoiceOpt[], sp?: Speaker | null, prompt?: string): Promise<string> {
-  if (sp !== undefined || prompt !== undefined) {
-    setSpeaker(sp ?? current, !sp && !current);
-    if (prompt !== undefined) { fullHTML = formatText(prompt); plain = fullHTML.replace(/<[^>]+>/g, ''); }
-  } else ensureBox();
-  typing = false;
-  shown = plain.length;
-  renderPartial();
-  choicesEl.innerHTML = '';
-  let sel = opts.findIndex((o) => !o.locked && !o.used);
-  if (sel < 0) sel = Math.max(0, opts.findIndex((o) => !o.locked));
-  const pc: PendingChoice = { opts, sel, buttons: [], resolve: () => {}, done: false };
-  opts.forEach((o, i) => {
-    const b = el('button', { cls: 'choice' + (o.used ? ' used' : '') + (o.locked ? ' locked' : '') });
-    b.innerHTML = `<span class="num">${i + 1}</span>${o.tag ? `<span class="tag ${o.tagState || ''}">${o.tag}</span>` : ''}${formatText(o.text)}`;
-    b.addEventListener('click', (e) => { e.stopPropagation(); pickChoice(i); });
-    b.addEventListener('mouseenter', () => { pc.sel = i; highlightChoices(); });
-    choicesEl.appendChild(b);
-    pc.buttons.push(b);
-  });
-  input.consumeAll();
-  return new Promise((resolve) => {
-    pc.resolve = resolve;
-    pendingChoice = pc;
-    highlightChoices();
-  });
-}
-
-function highlightChoices() {
-  if (!pendingChoice) return;
-  pendingChoice.buttons.forEach((b, i) => b.classList.toggle('sel', i === pendingChoice!.sel));
-}
-
-function pickChoice(i: number) {
-  const pc = pendingChoice;
-  if (!pc || pc.done) return;
-  if (pc.opts[i]?.locked) { sfx('fail'); return; }
-  pc.done = true;
-  pendingChoice = null;
-  sfx('ui');
-  choicesEl.innerHTML = '';
-  input.consumeAll();
-  pc.resolve(pc.opts[i].id);
-}
-
-/** Input handling for the dialogue box; runs every frame from the main loop. */
-export function dialogueInput() {
-  if (!box) {
-    if (pendingLine) { const r = pendingLine.resolve; pendingLine = null; r(); }
-    if (pendingChoice) { const pc = pendingChoice; pendingChoice = null; pc.resolve(pc.opts[0]?.id ?? ''); }
+export function openDialogue(id: string, a?: Actor) {
+  const d = DIALOGUES[id];
+  if (!d) {
+    msg(`[missing dialogue ${id}]`);
     return;
   }
-  if (pendingChoice) {
-    const pc = pendingChoice;
-    if (input.pressed('up')) { pc.sel = (pc.sel - 1 + pc.opts.length) % pc.opts.length; highlightChoices(); sfx('ui', undefined, undefined, 0.4); }
-    if (input.pressed('down')) { pc.sel = (pc.sel + 1) % pc.opts.length; highlightChoices(); sfx('ui', undefined, undefined, 0.4); }
-    for (const ch of input.typedChars) {
-      const n = parseInt(ch, 10);
-      if (n >= 1 && n <= pc.opts.length) { pickChoice(n - 1); return; }
+  if (topModal() === 'dialogue') closeDialogue();
+  def = d;
+  speaker = a;
+  setSpeaker(a);
+  win = el('div', 'panel win dlg');
+  openModal('dialogue', win, { noBackClose: true, onClose: onClosed });
+  const c = ctx();
+  const start = typeof d.start === 'function' ? d.start(c) : d.start;
+  show(start);
+  const loop = () => {
+    if (!win) return;
+    paintPortrait();
+    anim = requestAnimationFrame(loop);
+  };
+  anim = requestAnimationFrame(loop);
+  keyHandler = (e: KeyboardEvent) => {
+    const n = parseInt(e.key, 10);
+    if (n >= 1 && n <= 9) {
+      const opt = win?.querySelectorAll<HTMLElement>('.opt')[n - 1];
+      opt?.click();
     }
-    if (input.pressed('confirm') || input.pressed('interact')) pickChoice(pc.sel);
-    return;
-  }
-  if (pendingLine) {
-    const pressed = advancePressed || input.pressed('confirm') || input.pressed('interact') || input.pressed('attack');
-    if (pressed || autoAdvance) {
-      advancePressed = false;
-      input.consume('confirm'); input.consume('interact'); input.consume('attack');
-      if (typing && !autoAdvance) { shown = plain.length; typing = false; renderPartial(); }
-      else { const r = pendingLine.resolve; pendingLine = null; sfx('page', undefined, undefined, 0.4); r(); }
-    }
-  }
+  };
+  window.addEventListener('keydown', keyHandler);
 }
 
-/** Test hook: automatically advance all lines. */
-export let autoAdvance = false;
-export function setAutoAdvance(v: boolean) { autoAdvance = v; }
-export { G };
+function onClosed() {
+  cancelAnimationFrame(anim);
+  if (keyHandler) window.removeEventListener('keydown', keyHandler);
+  keyHandler = null;
+  win = null;
+  def = null;
+  setSpeaker(undefined);
+  emit('hud');
+}
+
+export function closeDialogue() {
+  if (topModal() === 'dialogue') closeModal('dialogue');
+}
+
+function paintPortrait() {
+  if (!portraitCanvas || !def) return;
+  const c = portraitCanvas.getContext('2d')!;
+  const base = speaker ? lookOf(speaker) : { body: 'human' as const };
+  const look = { ...base, ...(def.portrait ?? {}) } as any;
+  drawPortrait(c, portraitCanvas.width, portraitCanvas.height, look, def.id + (speaker?.uid ?? ''), performance.now() / 1000, performance.now() < talkUntil);
+}
+
+function visible(o: DialogueOption, c: Ctx): boolean {
+  const int = stat(player(), 'INT');
+  if (o.lowInt && int > 3) return false;
+  if (!o.lowInt && int <= 3 && o.normalInt !== false && !o.end && !o.any) {
+    // Low intelligence characters only see options marked lowInt, plus exits.
+    return false;
+  }
+  if (o.stat && stat(player(), o.stat.key) < o.stat.min) return false;
+  if (o.if && !o.if(c)) return false;
+  return true;
+}
+
+function show(nodeId: string) {
+  if (!win || !def) return;
+  if (nodeId === 'end' || nodeId === '__end') {
+    closeDialogue();
+    return;
+  }
+  const node = def.nodes[nodeId];
+  if (!node) {
+    msg(`[missing node ${nodeId}]`);
+    closeDialogue();
+    return;
+  }
+  const c = ctx();
+  node.onEnter?.(c);
+  if (!win) return; // onEnter may have closed the dialogue
+  const text = typeof node.text === 'function' ? node.text(c) : node.text;
+  talkUntil = performance.now() + Math.min(4000, 400 + text.length * 25);
+  win.innerHTML = '';
+  const top = el('div', 'top');
+  const pw = el('div', 'portrait screen');
+  portraitCanvas = el('canvas') as HTMLCanvasElement;
+  portraitCanvas.width = 200;
+  portraitCanvas.height = 200;
+  pw.appendChild(portraitCanvas);
+  const who = def.name ?? speaker?.name ?? '';
+  const reply = el('div', 'reply screen', `<span class="who">${esc(who)}</span>${fmt(text)}`);
+  top.append(pw, reply);
+  win.appendChild(top);
+  const opts = el('div', 'opts screen');
+  let n = 0;
+  let list = node.options.filter((o) => visible(o, c));
+  if (!list.length) {
+    // Always provide a way out.
+    list = [{ text: stat(player(), 'INT') <= 3 ? 'Uh... bye.' : '[Leave]', end: true }];
+  }
+  for (const o of list) {
+    n++;
+    let t = typeof o.text === 'function' ? o.text(c) : o.text;
+    if (o.skill && !t.startsWith('[')) t = `[${SKILL_INFO[o.skill.key].name}] ${t}`;
+    if (o.stat && !t.startsWith('[')) t = `[${STAT_INFO[o.stat.key].name}] ${t}`;
+    const row = el('div', 'opt', `<span class="n">${n}.</span><span>${esc(t)}</span>`);
+    row.onclick = () => choose(o);
+    opts.appendChild(row);
+  }
+  win.appendChild(opts);
+  const bottom = el('div', 'bottom');
+  if (speaker?.barter) bottom.appendChild(button('Barter', () => {
+    const s = speaker!;
+    closeDialogue();
+    import('./barter').then((b) => b.openBarter(s));
+  }, 'small'));
+  else bottom.appendChild(el('span'));
+  bottom.appendChild(el('span', '', `<small style="color:#a89868">Press 1-${n} to choose</small>`));
+  win.appendChild(bottom);
+}
+
+function fmt(s: string): string {
+  return esc(s).replace(/\*(.+?)\*/g, '<i>$1</i>').replace(/\n/g, '<br>');
+}
+
+function choose(o: DialogueOption) {
+  sfx('click');
+  const c = ctx();
+  let next = o.to;
+  if (o.skill) {
+    const pct = Math.max(5, Math.min(95, skill(player(), o.skill.key) - o.skill.diff));
+    const ok = chance(pct);
+    if (!ok) next = o.fail ?? next;
+    else if (!(G.state.flags['skillxp:' + (def?.id ?? '') + ':' + o.skill.key + ':' + o.to])) {
+      G.state.flags['skillxp:' + (def?.id ?? '') + ':' + o.skill.key + ':' + o.to] = true;
+      import('../game/progress').then((p) => p.giveXp(Math.max(25, o.skill!.diff * 2)));
+    }
+    if (!ok && !o.fail) {
+      msg('Your attempt fails.');
+    }
+  }
+  o.do?.(c);
+  if (!win) return; // an action closed the dialogue (e.g. travel or combat)
+  if (o.combat) {
+    const s = speaker;
+    closeDialogue();
+    if (s) {
+      aggro(s);
+      s.hostile = true;
+      startCombat(s);
+    }
+    return;
+  }
+  if (o.barter) {
+    const s = speaker;
+    closeDialogue();
+    if (s) import('./barter').then((b) => b.openBarter(s));
+    return;
+  }
+  if (o.end || !next) {
+    closeDialogue();
+    return;
+  }
+  show(next);
+}
+
+/** Minimal orders menu for companions without their own dialogue. */
+export function openCompanionMenu(a: Actor) {
+  const id = '__companion';
+  DIALOGUES[id] = {
+    id,
+    start: 'main',
+    nodes: {
+      main: {
+        text: (c) => `${a.name} looks at you. "What do you need?"`,
+        options: [
+          { text: 'Let me see what you\'re carrying.', any: true, do: () => tradeWith(a), end: true },
+          { text: 'Wait here.', any: true, do: () => ((a as any)._wait = true), end: true },
+          { text: 'Follow me.', any: true, do: () => ((a as any)._wait = false), end: true },
+          { text: 'Part ways (leave the party).', any: true, do: () => { import('../game/party').then((p) => p.dismiss(a)); }, end: true },
+          { text: 'Never mind.', end: true },
+        ],
+      },
+    },
+  };
+  openDialogue(id, a);
+}
+
+function tradeWith(a: Actor) {
+  // Companions share freely: open a loot screen of their pack (no steal checks).
+  setTimeout(() => import('./loot').then((l) => l.openLoot({ kind: 'body', actor: a })), 60);
+}

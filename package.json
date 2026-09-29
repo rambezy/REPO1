@@ -1,21 +1,18 @@
 {
-  "name": "of-bread-and-iron",
+  "name": "dustfall",
   "private": true,
   "version": "0.1.0",
-  "description": "Of Bread and Iron \u2014 a top-down medieval RPG of family, grief and hope.",
+  "description": "Dustfall: a turn-based, isometric post-atomic role-playing game.",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
-    "lint:content": "tsx tools/validate-content.ts",
-    "test:smoke": "node tools/smoke-test.mjs",
-    "test:story": "node tools/drive.mjs tools/scen/prologue.mjs && node tools/drive.mjs tools/scen/raid.mjs && node tools/drive.mjs tools/scen/act1.mjs && node tools/drive.mjs tools/scen/act2.mjs && node tools/drive.mjs tools/scen/act3.mjs && node tools/drive.mjs tools/scen/trade.mjs && node tools/drive.mjs tools/scen/combat.mjs"
+    "test:smoke": "node tools/smoke.mjs"
   },
   "devDependencies": {
     "playwright": "1.56.1",
-    "tsx": "^4.20.0",
     "typescript": "5.9.3",
     "vite": "7.3.6",
     "vite-plugin-singlefile": "2.3.2"
