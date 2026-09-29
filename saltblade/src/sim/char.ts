@@ -38,6 +38,8 @@ export type Order =
   | { k: 'free'; id: number }
   | { k: 'shoot'; id: number }
   | { k: 'shop'; id: number }
+  | { k: 'salvage'; id: number } // strip a downed machine for parts
+  | { k: 'reprogram'; id: number } // give a downed machine new orders
   | { k: 'hold' };
 
 export type JobKind = 'mine' | 'build' | 'operate' | 'haul' | 'farm' | 'research' | 'craft' | 'turret' | 'repair' | 'medic' | 'guard' | 'cook' | 'watch';

@@ -15,6 +15,11 @@ const RELICS: [string, number, number, number][] = [
   ['iron_plates', 2, 2, 5], ['steel_bars', 1, 1, 3], ['old_codex', 0.5, 1, 1], ['repair_kit', 1, 1, 1], ['surgical_kit', 0.6, 1, 1], ['gasmask', 0.4, 1, 1],
 ];
 const OLD_GEAR: [string, number][] = [['moonfang', 0.3], ['sunderer', 0.3], ['warden_pike', 0.4], ['heater', 1], ['longsliver', 1], ['visor_helm', 0.3], ['hollow_shell', 0.2], ['siege_xbow', 0.4], ['hunter_bow', 0.6], ['ringsabre', 0.5]];
+/** What a foundry's stores hold: cells, servos, parts, and now and then a beam gun. */
+const MACHINE_LOOT: [string, number, number, number][] = [
+  ['energy_cell', 4, 3, 10], ['servo_motor', 3, 1, 2], ['elec_parts', 3, 1, 3], ['machine_parts', 3, 1, 3], ['maker_optic', 1, 1, 1],
+  ['repair_kit', 1, 1, 1], ['iron_plates', 2, 2, 4], ['laser_pistol', 0.3, 1, 1], ['laser_rifle', 0.12, 1, 1],
+];
 const CAMP_LOOT: [string, number, number, number][] = [['dried_meat', 3, 2, 6], ['grog', 2, 1, 4], ['bandages', 2, 1, 4], ['hide', 1, 1, 3], ['iron_plates', 1, 1, 3], ['dreamleaf', 1, 1, 4], ['shackles', 1, 1, 2], ['first_aid', 1, 1, 2], ['bolts', 1, 10, 30]];
 
 function fill(g: Grid, table: [string, number, number, number][], n: number, rng: RNG) {
@@ -102,6 +107,15 @@ export function buildSite(W: World, T: Terrain, site: Site, rng: RNG) {
     case 'warden_post': {
       placeBuilding(W, T, null, BUILDINGS.ruin_small, undefined, site.name, site.x, site.z, rng.range(0, 6.28), '', site.id, 'ruin', rng);
       add('decor', 'pillar', site.x + 6, site.z, 0);
+      break;
+    }
+    case 'foundry': {
+      // a factory hall among the hulks of half-built machines, lit by pillars that still hum
+      placeBuilding(W, T, null, BUILDINGS.ruin_big, undefined, site.name, site.x, site.z, rng.range(0, 6.28), '', site.id, 'ruin', rng);
+      for (let i = 0; i < rng.int(1, 2); i++) { const [x, z] = around(site.r); placeBuilding(W, T, null, BUILDINGS.ruin_small, undefined, site.name, x, z, rng.range(0, 6.28), '', site.id, 'ruin', rng); }
+      for (let i = 0; i < rng.int(5, 9); i++) { const [x, z] = around(site.r * 1.1); add('decor', 'wreckage', x, z, rng.range(0, 6.28), { data: { s: rng.range(1.2, 2.6) } }); }
+      for (let i = 0; i < rng.int(2, 3); i++) { const [x, z] = around(site.r * 0.8); add('decor', 'pillar', x, z, 0); }
+      for (let i = 0; i < rng.int(2, 4); i++) { const [x, z] = around(site.r * 0.7); const c = add('crate', 'crate_old', x, z, rng.range(0, 6), { inv: new Grid(6, 6) }); fill(c.inv!, MACHINE_LOOT, rng.int(2, 4), rng); }
       break;
     }
   }

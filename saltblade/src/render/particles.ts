@@ -9,7 +9,7 @@ const MAX = 1400;
 interface Pool {
   pts: THREE.Points;
   pos: Float32Array; vel: Float32Array; col: Float32Array; size: Float32Array; alpha: Float32Array;
-  life: Float32Array; age: Float32Array; drag: Float32Array; grav: Float32Array; grow: Float32Array;
+  life: Float32Array; age: Float32Array; drag: Float32Array; grav: Float32Array; grow: Float32Array; size0: Float32Array;
   base: Float32Array; // starting colour, faded towards the end
   n: number; next: number;
 }
@@ -45,7 +45,7 @@ function pool(additive: boolean): Pool {
   const mk = (n: number) => new Float32Array(MAX * n);
   const p: Pool = {
     pts: null as unknown as THREE.Points,
-    pos: mk(3), vel: mk(3), col: mk(3), size: mk(1), alpha: mk(1), life: mk(1), age: mk(1), drag: mk(1), grav: mk(1), grow: mk(1), base: mk(3),
+    pos: mk(3), vel: mk(3), col: mk(3), size: mk(1), alpha: mk(1), life: mk(1), age: mk(1), drag: mk(1), grav: mk(1), grow: mk(1), size0: mk(1), base: mk(3),
     n: 0, next: 0,
   };
   g.setAttribute('position', new THREE.BufferAttribute(p.pos, 3).setUsage(THREE.DynamicDrawUsage));
@@ -95,7 +95,7 @@ export class Particles {
     p.vel[i * 3] = vx; p.vel[i * 3 + 1] = vy; p.vel[i * 3 + 2] = vz;
     p.base[i * 3] = r; p.base[i * 3 + 1] = g; p.base[i * 3 + 2] = b;
     p.col[i * 3] = r; p.col[i * 3 + 1] = g; p.col[i * 3 + 2] = b;
-    p.size[i] = size; p.alpha[i] = 1; p.life[i] = life; p.age[i] = 0; p.drag[i] = drag; p.grav[i] = grav; p.grow[i] = grow;
+    p.size[i] = size; p.size0[i] = size; p.alpha[i] = 1; p.life[i] = life; p.age[i] = 0; p.drag[i] = drag; p.grav[i] = grav; p.grow[i] = grow;
   }
 
   /** A burst of one kind at a point; `dir` biases where it flies (a hit's direction). */
@@ -123,7 +123,7 @@ export class Particles {
           this.spawn(this.soft, x, y, z, (R() - 0.5) * 0.4, 0.8 + R() * 0.6, (R() - 0.5) * 0.4, 0.75, 0.76, 0.78, 0.3 + R() * 0.2, 1.2 + R(), 0.5, -0.2, 0.8);
           break;
         case 'dust':
-          this.spawn(this.soft, x + Math.cos(a) * u * 0.5, y + 0.1, z + Math.sin(a) * u * 0.5, Math.cos(a) * (0.6 + R()), 0.3 + R() * 0.5, Math.sin(a) * (0.6 + R()), 0.62, 0.54, 0.42, 0.45 + R() * 0.35, 0.9 + R() * 0.8, 1.2, 0.2, 1.1);
+          this.spawn(this.soft, x + Math.cos(a) * u * 0.4, y + 0.08, z + Math.sin(a) * u * 0.4, Math.cos(a) * (0.5 + R()), 0.25 + R() * 0.4, Math.sin(a) * (0.5 + R()), 0.5, 0.44, 0.34, 0.22 + R() * 0.2, 0.7 + R() * 0.6, 1.4, 0.2, 0.9);
           break;
         case 'blood':
           this.spawn(this.soft, x, y, z, Math.cos(a) * (1 + R()) + dx * 2, 0.5 + R() * 2, Math.sin(a) * (1 + R()) + dz * 2, 0.32, 0.02, 0.02, 0.08 + R() * 0.06, 0.4 + R() * 0.3, 0.8, 9.8);
@@ -163,6 +163,8 @@ export class Particles {
   }
 
   update(dt: number) {
+    // a slow frame slows the effects rather than skipping them
+    dt = Math.min(dt, 1 / 30);
     for (const p of [this.glow, this.soft]) {
       let live = 0;
       for (let i = 0; i < p.n; i++) {
@@ -177,13 +179,13 @@ export class Particles {
         p.pos[i * 3] += p.vel[i * 3] * dt;
         p.pos[i * 3 + 1] += p.vel[i * 3 + 1] * dt;
         p.pos[i * 3 + 2] += p.vel[i * 3 + 2] * dt;
-        p.size[i] *= 1 + p.grow[i] * dt;
+        p.size[i] = p.size0[i] * (1 + p.grow[i] * p.age[i]);
         // sparks cool from white-hot to red as they die; smoke thins out
         const cool = p === this.glow ? 1 - t * 0.7 : 1;
         p.col[i * 3] = p.base[i * 3] * cool;
         p.col[i * 3 + 1] = p.base[i * 3 + 1] * cool * cool;
         p.col[i * 3 + 2] = p.base[i * 3 + 2] * cool * cool * cool;
-        p.alpha[i] = p === this.glow ? 1 - t * t : Math.min(1, t * 6) * (1 - t) * 0.85;
+        p.alpha[i] = p === this.glow ? 1 - t * t : Math.min(1, t * 6) * (1 - t) * 0.6;
       }
       const g = p.pts.geometry;
       for (const k of ['position', 'aColor', 'aSize', 'aAlpha']) g.getAttribute(k).needsUpdate = true;
@@ -192,6 +194,7 @@ export class Particles {
     }
     for (const b of this.beams) {
       if (b.age >= b.life) { b.mesh.visible = false; continue; }
+      if (b.age === 0) { b.age = 1e-4; continue; } // every beam is seen at full strength for a frame at least
       b.age += dt;
       const f = Math.max(0, 1 - b.age / b.life);
       (b.mesh.material as THREE.MeshBasicMaterial).opacity = f;

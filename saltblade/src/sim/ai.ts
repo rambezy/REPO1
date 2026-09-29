@@ -17,6 +17,7 @@ import { runRoutine } from './routine';
 import { runJobs } from './jobs';
 import { wantsToTalk } from './encounters';
 import { leaveFurniture, leaveBed } from './use';
+import { machineSay } from './machines';
 
 export const SIGHT_DAY = 42;
 export const SIGHT_NIGHT = 24;
@@ -161,6 +162,8 @@ function playerAI(c: Char, dt: number, think: boolean) {
       }
     }
     B.enemy = enemy ? enemy.id : 0;
+    if (enemy && enemy.id !== B.foe) machineSay(c, 'engage'); // your own machines speak too
+    B.foe = enemy ? enemy.id : B.foe;
   }
   const order = c.order;
   if (order && order.k === 'attack') {
@@ -179,7 +182,7 @@ function playerAI(c: Char, dt: number, think: boolean) {
   if (!B.enemy && c.drawn && S.time - c.lastHitT > 6) c.drawn = false;
   // off watch: down from the tower before anything else
   if (c.mem.using && !c.jobs.some((j) => j.obj === c.mem.using) && onTower(c)) leaveFurniture(c);
-  if (order) { runOrder(c, dt); return; }
+  if (c.order) { runOrder(c, dt); return; } // (not `order`: an attack on someone now gone was just dropped)
   if (c.jobs.length && runJobs(c, dt, think)) return;
   // idle: eat when hungry, patch yourself up
   if (think) idleUpkeep(c);
@@ -267,6 +270,10 @@ function npcAI(c: Char, dt: number, think: boolean) {
       });
     }
     B.enemy = target ? target.id : 0;
+    // machines announce themselves when they pick a fight, and mutter on patrol
+    if (target && target.id !== B.foe) machineSay(c, 'engage');
+    else if (!target && S.rng.chance(0.006)) machineSay(c, 'idle');
+    B.foe = target ? target.id : B.foe;
     if (!target && B.flee) {
       const fr = S.W.char(B.flee);
       if (!fr || !fr.up || dist(c, fr) > 45) B.flee = 0;

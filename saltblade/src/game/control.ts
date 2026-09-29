@@ -14,6 +14,7 @@ import { ANIMAL } from '../content/animals';
 import { FACTION } from '../content/factions';
 import { ITEM } from '../content/items';
 import { buyHouse, houseOf } from '../sim/property';
+import { canSalvage, canReprogram, hackNeed } from '../sim/salvage';
 
 const ray = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
@@ -183,6 +184,9 @@ export function charActions(t: Char): MenuItem[] {
     }
     if (t.status !== 'dead') out.push({ label: t.robot ? 'Repair' : 'First aid', run: one({ k: 'aid', id: t.id }) });
     if (t.status === 'ko' && !mine && !t.animal) out.push({ label: 'Finish them', run: () => { lead.brain.finish = t.id; issue(lead, { k: 'attack', id: t.id }); }, danger: true });
+    // the old machines: strip them, or rewrite them
+    if (canSalvage(t)) out.push({ label: 'Salvage for parts', run: one({ k: 'salvage', id: t.id }), hint: 'Strip the machine for servos, cells and parts. Robotics finds the rare ones.' });
+    if (canReprogram(t)) { const [lvl, n] = hackNeed(t)!; out.push({ label: `Reprogram (Robotics ${lvl}, ${n} electrical)`, run: one({ k: 'reprogram', id: t.id }), hint: 'Rewrite its orders so it serves you. Fail, and it wakes with its old ones.' }); }
   }
   if (mine && t.status === 'up') {
     out.push({ label: 'Follow', run: () => who.filter((c) => c !== t).forEach((c) => issue(c, { k: 'follow', id: t.id })) });

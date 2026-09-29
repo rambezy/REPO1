@@ -177,7 +177,7 @@ export type POIKind =
   | 'ruin' | 'ruin_tower' | 'ruin_dome' | 'ruin_lab' | 'camp_reavers' | 'camp_starvelings' | 'camp_scorched' | 'camp_mawkin'
   | 'nest_dunehound' | 'nest_skitter' | 'nest_hookbeak' | 'nest_brineclaw' | 'nest_rustspider' | 'nest_mauler' | 'nest_bloodfly'
   | 'wreck' | 'shack' | 'homestead' | 'skeleton' | 'monolith' | 'caravan' | 'battlefield' | 'warden_post' | 'hermit' | 'shrine'
-  | 'mist_camp' | 'blackcomb_nest' | 'bat_roost' | 'glass_ruin';
+  | 'mist_camp' | 'blackcomb_nest' | 'bat_roost' | 'glass_ruin' | 'foundry';
 
 export interface LandmarkDef {
   key: string;

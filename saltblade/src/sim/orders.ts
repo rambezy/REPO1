@@ -14,6 +14,7 @@ import { knockOut } from './health';
 import { angleTo, wrapAngle } from '../core/math';
 import { useObject, placeInto } from './use';
 import { reachOf } from './structures';
+import { canSalvage, canReprogram, workSalvage, workReprogram } from './salvage';
 
 const REACH = 1.6;
 
@@ -25,7 +26,8 @@ function walkTo(c: Char, x: number, z: number, r = REACH): boolean {
 }
 
 export function runOrder(c: Char, dt: number) {
-  const o = c.order!;
+  const o = c.order;
+  if (!o) return;
   switch (o.k) {
     case 'move':
       if (!c.hasGoal && near(c, o.x, o.z, 1.5)) { c.order = null; return; }
@@ -236,6 +238,15 @@ export function runOrder(c: Char, dt: number) {
         S.fx.say(t, S.rng.pick(['What the—!', 'Get off me!', 'Sneaking coward!']));
         if (t.faction !== 'player') crime(c, 'assault', t.faction, 200, false);
       }
+      return;
+    }
+    case 'salvage':
+    case 'reprogram': {
+      const t = S.W.char(o.id);
+      if (!t || !(o.k === 'salvage' ? canSalvage(t) : canReprogram(t))) { c.order = null; c.act = null; return; }
+      if (!walkTo(c, t.x, t.z, 1.6)) return;
+      c.dir = angleTo(c.x, c.z, t.x, t.z);
+      if (o.k === 'salvage' ? workSalvage(c, t, dt) : workReprogram(c, t, dt)) { c.order = null; c.act = null; }
       return;
     }
     case 'mine':

@@ -262,6 +262,12 @@ export function populateSite(W: World, site: Site) {
     case 'mist_camp': people('mistcrawlers', 'bandit', rng.int(5, 10), [22, 40], 'Mistcrawlers'); break;
     case 'blackcomb_nest': people('blackcomb', 'bandit', rng.int(4, 8), [20, 34], 'Blackcomb Drones'); break;
     case 'warden_post': people('wardens', 'construct', rng.int(2, 4), [36, 52], 'Warden Constructs'); break;
+    case 'foundry':
+      // Sentinels on guard, drones about their work, and sometimes a warbot fresh off the line
+      people('machines', 'construct', rng.int(2, 4), [22, 36], 'Old Machines');
+      beasts('sawdrone', rng.int(2, 3));
+      if (rng.chance(0.3 + danger * 0.05)) beasts('warbot', 1);
+      break;
     case 'nest_dunehound': beasts('dunehound', rng.int(4, 8)); break;
     case 'nest_skitter': beasts('skitter', rng.int(4, 9)); break;
     case 'nest_hookbeak': beasts('hookbeak', rng.int(1, 3)); break;
@@ -294,9 +300,22 @@ export function populateSite(W: World, site: Site) {
     case 'ruin_lab':
     case 'glass_ruin':
     case 'wreck':
-      if (lm?.boss || k === 'ruin_lab') people('wardens', 'construct', rng.int(3, 6), [45, 65], 'Warden Constructs');
-      else if (rng.chance(0.35 + danger * 0.08)) {
-        if (reg.key === 'rust' || reg.key === 'glass' || k === 'wreck') beasts('rustspider', rng.int(2, 4));
+      if (lm?.boss || k === 'ruin_lab') {
+        people('wardens', 'construct', rng.int(3, 6), [45, 65], 'Warden Constructs');
+        // the Warden Prime the old stories speak of: a war machine that keeps the vault door
+        if (lm?.boss === 'warden_prime') {
+          const wp = W.char(beasts('warbot', 1).members[0]);
+          if (wp) {
+            wp.name = 'Warden Prime'; wp.title = 'Keeper of the Door';
+            for (let i = 0; i < wp.sk.length; i++) wp.sk[i] *= 1.35;
+            for (let l = 0; l < 7; l++) { wp.body.max[l] *= 1.3; wp.body.hp[l] = wp.body.max[l]; }
+            wp.inv.add('relic_core', 1);
+            wp.inv.add('maker_optic', 2);
+          }
+        }
+      } else if (rng.chance(0.35 + danger * 0.08)) {
+        if ((reg.key === 'rust' || reg.key === 'glass') && rng.chance(0.4)) { people('machines', 'construct', rng.int(1, 3), [20, 32], 'Old Machines'); beasts('sawdrone', rng.int(1, 2)); }
+        else if (reg.key === 'rust' || reg.key === 'glass' || k === 'wreck') beasts('rustspider', rng.int(2, 4));
         else if (rng.chance(0.5)) people(rng.pick(['reavers', 'starvelings']), 'bandit', rng.int(3, 6));
         else beasts(rng.pick(reg.fauna.map((f) => f[0]).filter((f) => ANIMAL[f]).concat(['dunehound'])), rng.int(2, 5));
       }

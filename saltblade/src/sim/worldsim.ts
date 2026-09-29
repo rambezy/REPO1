@@ -44,6 +44,7 @@ const SPECS: Spec[] = [
   { key: 'pilgrims', faction: 'ember', kind: 'wanderers', role: 'resident', n: [2, 5], weight: 1, regions: ['ember', 'flats'] },
   { key: 'wanderer', faction: 'drifters', kind: 'wanderers', role: 'wanderer', n: [1, 3], weight: 2, regions: ['flats', 'salt', 'vale', 'highlands', 'bonesea', 'mire', 'coast'] },
   { key: 'wardens', faction: 'wardens', kind: 'raid', role: 'construct', n: [2, 4], weight: 1.5, regions: ['rust', 'glass'] },
+  { key: 'sentinels', faction: 'machines', kind: 'raid', role: 'construct', n: [2, 3], weight: 1.6, regions: ['rust', 'glass', 'ash', 'bonesea'] },
 ];
 
 /** Beasts per region come from the region's fauna table. */

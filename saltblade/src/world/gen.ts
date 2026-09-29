@@ -528,6 +528,26 @@ export async function generateWorld(seed: number, progress: Progress = () => {})
       T.ores.push({ id: oreId++, kind, x: ox, z: oz, y: T.heightAt(ox, oz), rot: rng.range(0, 6.283), size: rng.range(0.8, 1.3) });
     }
   }
+  // 8. the Makers' foundries: some ruins of the Rustwastes, the Glasslands and the Ash still make
+  // machines. Chosen by each site's own seed, so nothing else about the land moves.
+  const FOUNDRY_P: Record<string, number> = { rust: 0.45, glass: 0.35, ash: 0.15 };
+  const FOUNDRY_NAMES = ['Old Foundry', 'Robot Works', 'Assembly Hall', 'The Rust Mill', 'Silent Factory', 'Maker Foundry', 'Sentinel Depot'];
+  const OLD: POIKind[] = ['ruin', 'wreck', 'ruin_tower', 'ruin_dome', 'glass_ruin'];
+  const rolls: [Site, number, RNG][] = [];
+  for (const st of T.sites) {
+    const p = FOUNDRY_P[REGIONS[st.region].key] ?? 0;
+    if (!p || !OLD.includes(st.kind as POIKind)) continue;
+    const frng = new RNG(hash3(st.seed, 4242, 7));
+    rolls.push([st, frng.next() / p, frng]);
+  }
+  // the lucky rolls, and never fewer than three in all: the waste always has somewhere machines come from
+  rolls.sort((a, b) => a[1] - b[1]);
+  rolls.forEach(([st, roll, frng], i) => {
+    if (roll >= 1 && i >= 3) return;
+    st.kind = 'foundry';
+    st.key = `foundry_${st.id}`;
+    st.name = frng.pick(FOUNDRY_NAMES);
+  });
   T.indexSites();
   progress('Done', 1);
   return T;

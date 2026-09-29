@@ -57,6 +57,7 @@ export function setupHints() {
   });
   on('ui:talk', () => hint('talk', 'Talking', 'People you talk to remember how you treat them. Recruits drink in bars; some join for free, some want paying.'));
   on('ui:trade', () => hint('trade', 'Trading', 'Drag items between your pack and the shop. Prices depend on the trader and your standing with their faction.'));
+  on('fx:ko', (c: any) => { if (c.robot && c.faction !== 'player') hint('machines', 'Old machines', 'A downed machine can be <b>salvaged</b> for servos, cells and parts, or, with enough <b>Robotics</b> and some Electrical Components, <b>reprogrammed</b> to serve you. Right-click it.'); });
   on('fx:ko', (c: any) => { if (c.faction === 'player') hint('ko', 'Knocked out', `${c.name} is down. People wake when their wounds allow. Another of yours can <b>pick them up</b> (right-click) and carry them to safety, or treat them with <b>First aid</b>.`); });
   on('ui:build', () => hint('build', 'Building', 'Place a construction site, then right-click it with someone selected to <b>Build</b>. Materials come from nearby storage or your packs. You cannot build inside towns, except furniture in a house of your own.'));
 }

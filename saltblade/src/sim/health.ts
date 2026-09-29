@@ -8,6 +8,7 @@ import { S } from './ctx';
 import { train } from './train';
 import type { Grid, Item } from './inventory';
 import { bedRest } from './use';
+import { machineSay } from './machines';
 
 export function koThreshold(c: Char, limb: number) {
   const t = c.skill('toughness');
@@ -40,6 +41,7 @@ export function knockOut(c: Char, why = '') {
   c.stats.downed++;
   if (c.carrying) dropCarried(c);
   S.fx.ko(c);
+  machineSay(c, 'down');
   if (c.faction === 'player') S.W.say(`${c.name} is down${why ? ' (' + why + ')' : ''}.`, 'bad', S.clock.t);
 }
 
