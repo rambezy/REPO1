@@ -393,6 +393,8 @@ body.has-touch.menu-open #touch, body.has-touch.dialogue-open #touch .t-buttons,
 .t-small { font-size: 12px; padding: 6px 8px; min-width: 52px; min-height: 34px; border-radius: 4px; border: 1px solid rgba(239, 230, 210, 0.35); background: rgba(22, 17, 13, 0.6); color: var(--linen); touch-action: none; }
 .t-small.on { background: rgba(224, 118, 43, 0.55); }
 body.has-touch .hud-minimap { width: 96px; height: 96px; bottom: auto; top: calc(64px + var(--safe-t)); right: calc(72px + var(--safe-r)); }
+/* hints sit below the minimap and clear of the button column on touch screens */
+body.has-touch .notes { top: calc(172px + var(--safe-t)); max-width: min(380px, calc(100vw - 104px - var(--safe-l) - var(--safe-r))); }
 body.has-touch .hud-quick { display: none; }
 body.has-touch .hud-bars { bottom: calc(190px + var(--safe-b)); }
 body.has-touch .hud-prompt { bottom: calc(230px + var(--safe-b)); }

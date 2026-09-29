@@ -20,6 +20,14 @@ export function fadeTo(to: number, dur = 0.35, color = '#000'): Promise<void> {
   });
 }
 
+/** Stops a fade in progress where it is (the caller sets G.fade as it needs). */
+export function cancelFade() {
+  if (!fade) return;
+  const r = fade.resolve;
+  fade = null;
+  r();
+}
+
 export function updateFade(dt: number) {
   if (!fade) return;
   fade.t += dt;

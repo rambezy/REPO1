@@ -7,6 +7,7 @@ import { addActor, enterMap, clearMaps, actors, getMap } from './world/world';
 import { S, setState, newState, GameState } from './state';
 import { refreshEquipment, addItem, equip } from './systems/inventory';
 import { snapCamera } from './engine/renderer';
+import { fadeTo, cancelFade } from './systems/transition';
 import { addSystem } from './engine/loop';
 import { initUI, UI } from './ui/ui';
 import { buildHUD, updateHUD, drawObjectiveOverlay } from './ui/hud';
@@ -118,10 +119,21 @@ export function toTitle() {
   G.mode = 'title';
   playMusic('title', 1.5);
   showTitle({ newGame, load: loadGame });
+  // the village behind the title fades in once its ground is painted
+  G.fade = 1;
+  G.fadeColor = '#0b0807';
+  const t0 = performance.now();
+  const reveal = () => {
+    if (G.mode !== 'title') return;
+    if (chunks.ready(G.map, G.cam.x, G.cam.y, G.cam.x + G.viewW, G.cam.y + G.viewH) || performance.now() - t0 > 5000) void fadeTo(0, 1.2, '#0b0807');
+    else setTimeout(reveal, 80);
+  };
+  setTimeout(reveal, 80);
 }
 
 export function newGame(name: string, difficulty: 'story' | 'normal' | 'hard') {
   hideTitle();
+  cancelFade();
   setState(newState(name));
   S.difficulty = difficulty;
   resetWorld();
@@ -141,6 +153,7 @@ export function newGame(name: string, difficulty: 'story' | 'normal' | 'hard') {
 export function loadGame(st: GameState) {
   hideDialogue();
   hideTitle();
+  cancelFade();
   if (UI.screen) UI.screen.close();
   setState(st);
   resetWorld();
