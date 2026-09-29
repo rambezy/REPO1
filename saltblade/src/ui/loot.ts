@@ -58,7 +58,7 @@ export function openLoot(looterId: number, target: { char?: number; obj?: number
       if (!stealing || t.status !== 'up') {
         const eq = h('div', { class: 'lootslots' });
         for (const slot of EQUIP_SLOTS) {
-          if (!t.eq[slot]) continue;
+          if (!t.eq[slot] || ITEM[t.eq[slot]!.id].builtin) continue;
           const sv = new SlotView(slot as EquipSlot, {
             label: slot,
             get: () => t.eq[slot],
@@ -105,7 +105,7 @@ export function openLoot(looterId: number, target: { char?: number; obj?: number
       }
       if (t && t.status === 'dead') for (const slot of EQUIP_SLOTS) {
         const it = t.eq[slot];
-        if (it && (c.inv.put(it) || c.eq.back?.inv?.put(it))) { t.eq[slot] = null; t.dirty = true; }
+        if (it && !ITEM[it.id].builtin && (c.inv.put(it) || c.eq.back?.inv?.put(it))) { t.eq[slot] = null; t.dirty = true; }
       }
       render();
     };

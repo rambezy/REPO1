@@ -120,6 +120,14 @@ export const FACTIONS: FactionDef[] = [
     ranks: ['Construct', 'Warden Prime'],
   },
   {
+    key: 'machines', name: 'Old Machines', short: 'Machines', color: 0xb89a4a, attitude: 'machine',
+    desc: 'Security robots, service drones and war machines of the Old Makers, still carrying out orders a thousand years stale. HALT, CITIZEN. They patrol the Rustwastes and the Glasslands and guard the foundries where more of them are still being made.',
+    races: [['sentinel', 1]],
+    lawful: false, laws: {}, playerRel: -100, finishes: false, captures: 'none', hidden: true,
+    uniform: { shirt: [0x6a5a3a], armour: [0x5a4a2a], cloth: [0x3a3226], hat: ['none'] },
+    ranks: ['Sentinel', 'Overseer'],
+  },
+  {
     key: 'reavers', name: 'Dust Reavers', short: 'Reavers', color: 0xa05a3a, attitude: 'bandit',
     desc: 'Bandits of the flats who take what they want from anyone too weak to stop them. Pay the toll, or bleed.',
     races: [['duneborn', 4], ['valefolk', 3], ['karuk', 1]],
@@ -186,7 +194,9 @@ export const RELATIONS: [string, string, number][] = [
 ];
 
 /** Factions hostile to everything that is not themselves. */
-export const HOSTILE_ALL = ['wardens', 'mawkin', 'mistcrawlers', 'blackcomb', 'starvelings'];
+export const HOSTILE_ALL = ['wardens', 'machines', 'mawkin', 'mistcrawlers', 'blackcomb', 'starvelings'];
+/** The Makers' machines: they never fight one another. */
+export const MACHINE_KIN = ['wardens', 'machines'];
 /** Bandit factions: hostile to lawful factions, mildly to each other. */
 export const BANDITS = ['reavers', 'starvelings', 'scorched', 'mawkin'];
 

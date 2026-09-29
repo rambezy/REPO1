@@ -201,6 +201,33 @@ export function buildWeapon(v: WeaponVis): THREE.BufferGeometry {
       }
       break;
     }
+    case 'laser': {
+      // a Maker beam gun: a slab receiver, a finned barrel shroud, a glowing cell in its flank,
+      // a grip below, and on the rifle a skeleton stock; it points along +Z like the crossbow
+      const { u, v: vv } = frame(Z, Y);
+      const rifle = L > 0.5;
+      const body = rgb(v.handle), dark = rgb(v.blade);
+      const slab = (z0: number, z1: number, y: number, hw: number, hh: number, p: Paint, e = 4.5) =>
+        loft(b, [z0, z1].map((z) => ({ c: V(0, y, z), u, v: vv, rx: hw, rf: hh, rb: hh, e, w: W, paint: p })), 8, { capStart: true, capEnd: true });
+      const recv = rifle ? 0.34 : 0.16;
+      slab(-0.04, recv, 0.06, 0.024, 0.034, P(body, 'metal'));
+      slab(recv * 0.2, recv * 0.85, 0.1, 0.018, 0.008, P(dark, 'metal')); // the top rail
+      // the barrel, ringed with cooling fins
+      const z1 = rifle ? L : L * 0.95;
+      const rings = rifle ? 9 : 4;
+      loft(b, range(recv, z1, rings * 2).map((z, i) => ({ c: V(0, 0.062, z), u, v: vv, rx: i % 2 ? 0.02 : 0.015, rf: i % 2 ? 0.02 : 0.015, rb: i % 2 ? 0.02 : 0.015, w: W, paint: P(i % 2 ? dark : shade(dark, 1.4), 'metal') })), 10, { capStart: true, capEnd: true });
+      // the emitter at the muzzle, and the cell in its flank
+      loft(b, [z1, z1 + 0.006].map((z) => ({ c: V(0, 0.062, z), u, v: vv, rx: 0.011, rf: 0.011, rb: 0.011, w: W, paint: P([0.6, 2.2, 3.6], 'glow') })), 10, { capStart: true, capEnd: true });
+      loft(b, [recv * 0.35, recv * 0.7].map((z) => ({ c: V(0.028, 0.052, z), u, v: vv, rx: 0.008, rf: 0.012, rb: 0.012, e: 3, w: W, paint: P([0.4, 1.6, 2.4], 'glow') })), 8, { capStart: true, capEnd: true });
+      // the grip, raked back
+      loft(b, [V(0, 0.03, recv * 0.25), V(0, -0.07, recv * 0.12)].map((c) => ({ c, u, v: vv, rx: 0.014, rf: 0.02, rb: 0.02, e: 3, w: W, paint: P(shade(body, 0.6), 'leather') })), 8, { capStart: true, capEnd: true });
+      if (rifle) {
+        // a skeleton stock
+        for (const y of [0.075, 0.025]) loft(b, [V(0, y, -0.04), V(0, y - 0.02, -0.26)].map((c) => ({ c, u, v: vv, rx: 0.008, rf: 0.008, rb: 0.008, w: W, paint: P(dark, 'metal') })), 6, { capEnd: true });
+        slab(-0.29, -0.25, 0.03, 0.016, 0.05, P(dark, 'metal'), 3);
+      }
+      break;
+    }
     default:
       break;
   }

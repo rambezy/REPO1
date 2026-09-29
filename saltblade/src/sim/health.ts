@@ -102,7 +102,7 @@ export function tickHealth(c: Char, dt: number) {
     if (bleeding < 0.001 && c.hunger > 40 && b.blood < b.bloodMax) b.blood = Math.min(b.bloodMax, b.blood + 5 * gameH);
   }
   // healing
-  const heal = (race?.heal ?? 1) * (c.animal ? 1 : 1);
+  const heal = b.robotic ? 0 : (race?.heal ?? 1); // machines mend only by repair
   if (heal > 0 && c.hunger > 30) {
     // a proper bed heals faster than a bedroll; a seat is a little better than standing about
     const bed = c.bed ? bedRest(S.W.objs.get(c.bed)) : c.sleeping ? 1.6 : c.mem.sit && c.mem.using ? 1.5 : 1;
@@ -131,7 +131,7 @@ export function tickHealth(c: Char, dt: number) {
   }
   // a limp right arm drops its weapon's use; a lost arm drops it entirely
   if (c.eq.weapon && !b.has(LI.rarm) && !b.has(LI.larm) && !b.prost[LI.rarm] && !b.prost[LI.larm]) {
-    c.inv.add(c.eq.weapon.id, 1, c.eq.weapon.q);
+    if (!ITEM[c.eq.weapon.id].builtin) c.inv.add(c.eq.weapon.id, 1, c.eq.weapon.q); // a machine's fist goes with its arm
     c.eq.weapon = null;
     c.dirty = true;
   }

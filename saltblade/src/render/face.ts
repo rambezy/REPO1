@@ -26,7 +26,7 @@ export interface Face {
   scars: [number, number, number, number][];
 }
 
-export type HeadKind = 'human' | 'karuk' | 'thrum' | 'hollow' | 'construct' | 'pale';
+export type HeadKind = 'human' | 'karuk' | 'thrum' | 'hollow' | 'construct' | 'sentinel' | 'pale';
 
 /** Eye and mouth positions in unit-head terms, which the sculpt needs before it knows the head's size. */
 export interface FaceShape { ex: number; ey: number; my: number }
@@ -38,7 +38,7 @@ export function faceShape(look: Look): FaceShape {
 
 /** The painted face of a person with a head of radii Rx (across) and Ry (up). Null for faces without skin (Hollow, Thrum). */
 export function faceOf(look: Look, kind: HeadKind, Rx: number, Ry: number): Face | null {
-  if (kind === 'hollow' || kind === 'construct' || kind === 'thrum') return null;
+  if (kind === 'hollow' || kind === 'construct' || kind === 'sentinel' || kind === 'thrum') return null;
   const fem = look.female;
   const sh = faceShape(look);
   const r = prng(look.face * 4099 + look.skin * 13 + look.hairStyle * 5 + look.beard * 17 + (fem ? 7 : 0) + 3);

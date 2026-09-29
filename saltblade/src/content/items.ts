@@ -36,6 +36,8 @@ export interface RangedStats {
   reload: number; // seconds
   accuracy: number;
   ammo: string;
+  /** a Maker energy weapon: fires a laser, burns an energy cell per shot (or nothing, if built in) */
+  energy?: boolean;
 }
 
 export interface ArmourStats {
@@ -71,7 +73,9 @@ export interface ItemDef {
   drink?: { mood: number };
   med?: { points: number; quality: number; splint?: boolean; robot?: boolean };
   pack?: { w: number; h: number; lighten: number; combat: number };
-  limb?: { part: 'arm' | 'leg'; quality: number; bonus: Partial<Record<Skill, number>> };
+  limb?: { part: 'arm' | 'leg'; quality: number; bonus: Partial<Record<Skill, number>>; look?: ProstLook };
+  /** part of a machine (a Sentinel's emitter and fists): used, never taken */
+  builtin?: boolean;
   book?: string; // lore text key
   research?: number; // artifact research tier value
   blueprint?: string; // research key unlocked
@@ -80,6 +84,9 @@ export interface ItemDef {
   icon?: string; // icon shape key
   color?: number;
 }
+
+/** How a prosthetic limb looks: rusted scrap, clean steel, Warden gunmetal, or pulled off a machine. */
+export type ProstLook = 'scrap' | 'steel' | 'warden' | 'sentinel' | 'drone' | 'walker';
 
 export const GRADES = [
   { name: 'Scrap', dmg: 0.55, arm: 0.55, val: 0.3, col: '#8a8070' },
@@ -184,6 +191,29 @@ for (const [id, name, cut, blunt, range, reload, acc, value, weight, desc] of X)
   });
 }
 def({ id: 'bolts', name: 'Crossbow Bolts', cat: 'ammo', w: 1, h: 2, weight: 0.05, value: 4, stack: 60, desc: 'Iron-tipped bolts.', icon: 'bolts' });
+
+// ---------------------------------------------------------------- Maker energy weapons, and what machines are made of
+def({ id: 'energy_cell', name: 'Energy Cell', cat: 'ammo', w: 1, h: 1, weight: 0.2, value: 30, stack: 40, desc: 'A Maker power cell that still holds its charge after a thousand years. A beam weapon burns one a shot.', icon: 'cell', color: 0x6ae0ff });
+const LX: [string, string, number, number, number, number, number, number, number, number, string][] = [
+  // id, name, cut, range, reload, accuracy, value, weight, w, h, desc
+  ['laser_pistol', 'Beam Pistol', 20, 38, 1.4, 0.86, 7000, 1.6, 2, 2, 'A Maker sidearm that throws a line of light. It goes through leather like paper and leaves a smell you will not forget. Burns an energy cell a shot.'],
+  ['laser_rifle', 'Beam Rifle', 34, 64, 2.4, 0.93, 16000, 4.5, 4, 2, 'A long Maker energy rifle, the weapon Sentinels were built around. Every shot costs an energy cell and cooks whatever it touches, armour or not.'],
+];
+for (const [id, name, cut, range, reload, acc, value, weight, w, h, desc] of LX) def({
+  id, name, cat: 'ranged', w, h, weight, value, stack: 1, desc, graded: true,
+  ranged: { skill: 'crossbows', cut, blunt: 0, range, reload, accuracy: acc, ammo: 'energy_cell', energy: true },
+  wvis: { kind: 'laser', length: id === 'laser_rifle' ? 0.82 : 0.34, blade: 0x3a3e44, handle: 0x8a9098 },
+  icon: 'laser',
+});
+// built into the machines: fired and swung, never looted
+def({ id: 'sentinel_emitter', name: 'Sentinel Emitter', cat: 'ranged', w: 2, h: 2, weight: 0, value: 0, stack: 1, builtin: true, desc: 'The beam emitter in a Sentinel\'s forearm.',
+  ranged: { skill: 'crossbows', cut: 22, blunt: 0, range: 44, reload: 2.8, accuracy: 0.74, ammo: '', energy: true } });
+def({ id: 'shock_fist', name: 'Shock Fist', cat: 'weapon', w: 2, h: 2, weight: 0, value: 0, stack: 1, builtin: true, desc: 'A Sentinel\'s steel fist, with a spark behind every blow.',
+  weapon: { kind: 'unarmed', skill: 'unarmed', cut: 0, blunt: 30, reach: 1.2, speed: 0.85, weight: 0, bleed: 1, pierce: 0.2, vsAnimal: 1, vsRobot: 0.7, vsHuman: 1, def: 2, knock: 0.25 } });
+// salvage
+def({ id: 'servo_motor', name: 'Servo Motor', cat: 'robotics', w: 1, h: 1, weight: 1.2, value: 380, stack: 10, desc: 'A Maker motor pulled from a machine that no longer needs it. Prosthetic limbs are built around them.', icon: 'trade', color: 0x8a9098 });
+def({ id: 'maker_optic', name: 'Targeting Optic', cat: 'robotics', w: 1, h: 1, weight: 0.3, value: 1100, stack: 10, desc: 'A machine\'s eye: a stack of lenses that still focuses on anything that moves. Tinkers and scholars pay well for them.', icon: 'trade', color: 0xd83a1a });
+def({ id: 'power_core', name: 'Fusion Core', cat: 'robotics', w: 2, h: 2, weight: 6, value: 3200, stack: 1, desc: 'The heart of a Warbot, warm to the touch a thousand years after it was made. Enough power in it to run a town, if anyone still knew how.', icon: 'trade', color: 0xffa020 });
 
 // ---------------------------------------------------------------- body armour and clothing
 type ADef = [id: string, name: string, cat: ItemCat, value: number, weight: number, desc: string, a: Partial<ArmourStats>, v: Vis, w?: number, h?: number];
@@ -386,8 +416,13 @@ const L: [string, string, 'arm' | 'leg', number, number, number, Partial<Record<
   ['standard_leg', 'Standard Leg', 'leg', 1, 6000, 7, { athletics: 4 }, 'A reliable Hollow-made leg.'],
   ['warden_arm', 'Warden Arm', 'arm', 1.4, 16000, 6, { dexterity: 8, strength: 14 }, 'A military arm from a Warden construct. Terrifyingly strong.'],
   ['warden_leg', 'Warden Leg', 'leg', 1.4, 16000, 7, { athletics: 16, dodge: 5 }, 'A military leg, fast and sure.'],
+  // salvaged off the old machines
+  ['sentinel_arm', 'Sentinel Arm', 'arm', 1.2, 9000, 9, { strength: 10, unarmed: 12, dexterity: -4 }, 'A Sentinel\'s arm, rewired for a person. Heavy, yellow, and it hits like a door.'],
+  ['drone_arm', 'Drone Manipulator', 'arm', 1.1, 7500, 4, { dexterity: 10, lockpicking: 8, strength: -2 }, 'A saw drone\'s claw arm on a new shoulder. Quick, precise, and a little unsettling to shake hands with.'],
+  ['strider_leg', 'Strider Leg', 'leg', 1.3, 11000, 10, { athletics: 8, toughness: 6, strength: 4 }, 'One piston leg off a Warbot, cut down to a person\'s height. It does not tire and it does not bend the wrong way.'],
 ];
-for (const [id, name, part, quality, value, weight, bonus, desc] of L) def({ id, name, cat: 'robotics', w: part === 'arm' ? 2 : 2, h: part === 'arm' ? 3 : 4, weight, value, stack: 1, desc, limb: { part, quality, bonus }, icon: part });
+const LOOK: Record<string, ProstLook> = { scrap_arm: 'scrap', scrap_leg: 'scrap', standard_arm: 'steel', standard_leg: 'steel', warden_arm: 'warden', warden_leg: 'warden', sentinel_arm: 'sentinel', drone_arm: 'drone', strider_leg: 'walker' };
+for (const [id, name, part, quality, value, weight, bonus, desc] of L) def({ id, name, cat: 'robotics', w: part === 'arm' ? 2 : 2, h: part === 'arm' ? 3 : 4, weight, value, stack: 1, desc, limb: { part, quality, bonus, look: LOOK[id] }, icon: part });
 
 // books of the waste (see content/lore)
 for (const b of BOOKS) def({ id: 'book_' + b.key, name: b.title, cat: 'book', w: 2, h: 2, weight: 0.6, value: b.value, stack: 1, desc: `${b.kind[0].toUpperCase() + b.kind.slice(1)}${b.author && b.author !== 'Unknown' ? ' by ' + b.author : ''}. Right-click to read.`, icon: 'book', book: b.key });

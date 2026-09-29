@@ -1,7 +1,7 @@
 // Beasts of the waste: predators, grazers, scavengers and machines.
 import type { WeaponStats } from './items';
 
-export type Shape = 'hound' | 'shellback' | 'hookbeak' | 'skitter' | 'crab' | 'bat' | 'bovine' | 'goat' | 'spider' | 'turtle' | 'fly' | 'stalker';
+export type Shape = 'hound' | 'shellback' | 'hookbeak' | 'skitter' | 'crab' | 'bat' | 'bovine' | 'goat' | 'spider' | 'turtle' | 'fly' | 'stalker' | 'drone' | 'walker';
 
 export interface AnimalDef {
   key: string;
@@ -26,6 +26,8 @@ export interface AnimalDef {
   robot?: boolean;
   tame?: boolean;
   bleedMul?: number;
+  /** a beam weapon it fires at range (machines) */
+  laser?: { cut: number; range: number; reload: number; acc: number; heavy?: boolean; muzzle?: number };
 }
 
 const bite = (cut: number, blunt: number, reach: number, speed: number, extra: Partial<WeaponStats> = {}): WeaponStats => ({
@@ -95,6 +97,22 @@ export const ANIMALS: AnimalDef[] = [
     hp: 1.4, armour: [0.5, 0.2], attack: bite(22, 10, 1.4, 1.05), walk: 2, run: 6.2, power: 60, diet: 'machine', aggro: 55, pack: [2, 5],
     loot: [['machine_parts', 0, 1], ['elec_parts', 0, 1], ['iron_plates', 1, 2]], skills: { melee_atk: 24, melee_def: 18, toughness: 20, strength: 18, dexterity: 16, dodge: 6 },
     colors: [0x5a5e62, 0x8a6a4a, 0xff3a1a], robot: true, eatsDowned: true,
+  },
+  {
+    key: 'sawdrone', name: 'Saw Drone', plural: 'Saw Drones', shape: 'drone', size: 1,
+    desc: 'A hovering Maker service drone with three arms: a buzz saw, a claw and a cutting torch. It was built to prune orchards. It still does. Now the orchard is you.',
+    hp: 0.9, armour: [0.35, 0.15], attack: bite(24, 4, 1.5, 1.3, { bleed: 1.5, vsRobot: 0.8, pierce: 0.15 }), walk: 2.4, run: 6.8, power: 40, diet: 'machine', aggro: 45, pack: [1, 3],
+    laser: { cut: 10, range: 14, reload: 3.5, acc: 0.7, muzzle: 0.8 },
+    loot: [['elec_parts', 0, 1], ['iron_plates', 0, 1]], skills: { melee_atk: 26, melee_def: 16, toughness: 14, strength: 12, dexterity: 30, dodge: 18 },
+    colors: [0x9aa0a6, 0x3a3e44, 0x6ae0ff], robot: true,
+  },
+  {
+    key: 'warbot', name: 'Warbot', plural: 'Warbots', shape: 'walker', size: 1.35,
+    desc: 'An Old Maker war machine on four piston legs, with twin beam cannons where its shoulders should be. Most of them are rust. The rest are the reason nobody lives in the Rustwastes.',
+    hp: 3.6, armour: [0.55, 0.35], attack: bite(8, 46, 2.3, 0.65, { knock: 0.5, vsRobot: 1, pierce: 0.3 }), walk: 1.6, run: 3.4, power: 160, diet: 'machine', aggro: 72, pack: [1, 1],
+    laser: { cut: 40, range: 72, reload: 3.4, acc: 0.8, heavy: true, muzzle: 1.4 },
+    loot: [['machine_parts', 2, 4], ['elec_parts', 1, 3], ['energy_cell', 4, 12], ['power_core', 0, 1]], skills: { melee_atk: 48, melee_def: 30, toughness: 55, strength: 60, dexterity: 18, dodge: 2 },
+    colors: [0x5e5a44, 0x2e3034, 0xff3a1a], robot: true,
   },
   {
     key: 'mauler', name: 'Swamp Mauler', plural: 'Swamp Maulers', shape: 'turtle', size: 1.5,

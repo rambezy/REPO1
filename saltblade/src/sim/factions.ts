@@ -1,6 +1,6 @@
 // Faction relations at runtime. Relations drift with deeds: trading and
 // helping raise them, attacking and stealing lower them.
-import { FACTIONS, FACTION, RELATIONS, HOSTILE_ALL, BANDITS, HOSTILE_AT } from '../content/factions';
+import { FACTIONS, FACTION, RELATIONS, HOSTILE_ALL, BANDITS, HOSTILE_AT, MACHINE_KIN } from '../content/factions';
 import { clamp } from '../core/math';
 
 export class Relations {
@@ -13,6 +13,7 @@ export class Relations {
       if (f.key !== 'player') this.set(f.key, f.key, 100);
     }
     for (const h of HOSTILE_ALL) for (const f of FACTIONS) if (f.key !== h && f.key !== 'fauna') this.set(h, f.key, h === 'starvelings' ? -70 : -100);
+    for (const a of MACHINE_KIN) for (const b of MACHINE_KIN) if (a !== b) this.set(a, b, 60);
     for (const b of BANDITS) for (const f of FACTIONS) {
       if (f.key === b || f.key === 'fauna' || f.key === 'player') continue;
       if (BANDITS.includes(f.key)) { if (this.get(b, f.key) === 0) this.set(b, f.key, -20); continue; }

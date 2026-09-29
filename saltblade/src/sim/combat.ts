@@ -6,7 +6,7 @@ import { LI, HIT_WEIGHTS } from './body';
 import { ANIMAL } from '../content/animals';
 import { RACE, isHuman } from '../content/races';
 import { ITEM, GRADES } from '../content/items';
-import { FACTION } from '../content/factions';
+import { FACTION, MACHINE_KIN } from '../content/factions';
 import { S } from './ctx';
 import { train, versus } from './train';
 import { severLimb, isKOCondition, knockOut } from './health';
@@ -33,10 +33,12 @@ export function hostile(a: Char, b: Char): boolean {
   if (a.animal && a.faction !== 'player') {
     const d = ANIMAL[a.animal];
     if (b.animal) return false;
+    if (d.diet === 'machine' && MACHINE_KIN.includes(b.faction)) return false; // the Makers' machines keep to their own
     return d.diet === 'predator' || d.diet === 'machine' || d.diet === 'scavenger' ? true : !!a.mem.provoked;
   }
   if (b.animal && b.faction !== 'player') {
     const d = ANIMAL[b.animal];
+    if (d.diet === 'machine' && MACHINE_KIN.includes(a.faction)) return false;
     return d.diet === 'predator' || d.diet === 'machine' || (d.diet === 'scavenger' && !!b.mem.provoked) || !!b.mem.provoked;
   }
   if (a.animal || b.animal) return W.rel.hostile(a.faction, b.faction) || (!!a.mem.enemies && a.mem.enemies.includes(b.id));
@@ -184,8 +186,9 @@ export function resolveBlow(a: Char, d: Char, variant: number, kick = false) {
     blunt *= 0.58 + wskill * 0.006 + a.skill('strength') * (heavy ? 0.006 : 0.003);
   }
   // who is being hit
-  if (d.animal) { cut *= w.vsAnimal; blunt *= w.vsAnimal; }
-  else if (d.robot) { cut *= w.vsRobot; blunt *= w.vsRobot; }
+  // steel beasts count as machines, not animals
+  if (d.robot) { cut *= w.vsRobot; blunt *= w.vsRobot; }
+  else if (d.animal) { cut *= w.vsAnimal; blunt *= w.vsAnimal; }
   else { cut *= w.vsHuman; blunt *= w.vsHuman; }
   if (downed && !a.animal) { cut *= 1.2; blunt *= 1.2; }
   applyDamage(d, limb, cut, blunt, a, w.bleed, true, w.pierce);
@@ -270,8 +273,12 @@ function onKnockedOut(d: Char, by: Char) {
 }
 
 // ---------------------------------------------------------------- crossbows
+/** Ammunition for the ranged weapon in hand: bolts, energy cells, or nothing at all for a machine's own emitter. */
 export function hasBolts(c: Char) {
-  return c.inv.count('bolts') > 0 || (c.eq.back?.inv?.count('bolts') ?? 0) > 0;
+  const r = c.eq.ranged ? ITEM[c.eq.ranged.id].ranged : null;
+  if (r && !r.ammo) return true;
+  const ammo = r?.ammo ?? 'bolts';
+  return c.inv.count(ammo) > 0 || (c.eq.back?.inv?.count(ammo) ?? 0) > 0;
 }
 
 export function canShoot(c: Char) {
@@ -289,7 +296,7 @@ export function shoot(c: Char, t: Char, from?: [number, number]): boolean {
   const d = dist(c, t);
   if (d > r.range) return false;
   if (!S.nav.clearLine(from?.[0] ?? c.x, from?.[1] ?? c.z, t.x, t.z)) return false;
-  (c.inv.take('bolts', 1) || c.eq.back?.inv?.take('bolts', 1));
+  if (r.ammo) (c.inv.take(r.ammo, 1) || c.eq.back?.inv?.take(r.ammo, 1));
   c.dir = angleTo(c.x, c.z, t.x, t.z);
   c.act = 'shoot'; c.actT = 0; c.actDur = 0.4;
   const g = GRADES[c.eq.ranged!.q].dmg;
@@ -297,17 +304,39 @@ export function shoot(c: Char, t: Char, from?: [number, number]): boolean {
   const moving = t.speed > 1 ? 0.8 : 1;
   const p = clamp(r.accuracy * (0.45 + skill) * (1 - (d / r.range) * 0.5) * moving * (t.status === 'up' ? 1 : 1.3), 0.05, 0.95);
   const hit = S.rng.chance(p);
-  S.fx.shot(c, t.x, t.z, hit);
-  S.fx.sound('twang', c.x, c.z);
+  S.fx.shot(c, t.x, t.z, hit, r.energy ? 'laser' : 'bolt');
+  S.fx.sound(r.energy ? 'laser' : 'twang', c.x, c.z);
   train(c, 'precision', 0.6, d / 30);
   train(c, 'perception', 0.3, 1);
   c.reload = r.reload * (1.45 - c.skill('crossbows') * 0.0065) * (c.skill('strength') < 20 ? 1.2 : 1);
   if (hit) {
     const k = 0.7 + c.skill('crossbows') * 0.004;
-    applyDamage(t, pickLimb(t, 0, c), r.cut * g * k, r.blunt * g * k, c, 1.1, true, 0.15);
+    // a beam burns through armour and sears the wound it makes
+    applyDamage(t, pickLimb(t, 0, c), r.cut * g * k, r.blunt * g * k, c, r.energy ? 0.4 : 1.1, true, r.energy ? 0.35 : 0.15);
     t.lastHitBy = c.id;
     t.lastHitT = S.time;
     if (t.animal) t.mem.provoked = true;
+  }
+  return true;
+}
+
+/** A machine beast's beam: no ammunition, only a recharge. True if it fired. */
+export function beastLaser(c: Char, t: Char): boolean {
+  const L = c.animal ? ANIMAL[c.animal].laser : undefined;
+  if (!L || c.reload > 0) return false;
+  const d = dist(c, t);
+  if (d > L.range || !S.nav.clearLine(c.x, c.z, t.x, t.z)) return false;
+  c.dir = angleTo(c.x, c.z, t.x, t.z);
+  const moving = t.speed > 1 ? 0.8 : 1;
+  const p = clamp(L.acc * (0.55 + c.skill('dexterity') * 0.004) * (1 - (d / L.range) * 0.45) * moving * (t.status === 'up' ? 1 : 1.3), 0.05, 0.95);
+  const hit = S.rng.chance(p);
+  S.fx.shot(c, t.x, t.z, hit, L.heavy ? 'heavy' : 'laser');
+  S.fx.sound('laser', c.x, c.z, L.heavy ? 1 : 0.7);
+  c.reload = L.reload * S.rng.range(0.9, 1.15);
+  if (hit) {
+    applyDamage(t, pickLimb(t, 0, c), L.cut, 0, c, 0.4, true, 0.35);
+    t.lastHitBy = c.id;
+    t.lastHitT = S.time;
   }
   return true;
 }
@@ -316,6 +345,7 @@ export function tickReload(c: Char, dt: number) {
   if (c.reload > 0) {
     const before = c.reload;
     c.reload = Math.max(0, c.reload - dt);
+    if (c.animal) return; // a beast's beam recharging: nothing to wind, nothing to learn
     if (before > 0.3 && c.reload <= 0.3) { c.act = 'reload'; c.actT = 0; c.actDur = 0.5; }
     if (c.reload === 0) train(c, 'crossbows', 0.4, 1);
   }

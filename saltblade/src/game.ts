@@ -48,6 +48,7 @@ import { setupAudio, tickAudio } from './game/audiohook';
 import { Weather, WEATHER_NAME } from './sim/weather';
 import { WeatherFx } from './render/weatherFx';
 import { Decals } from './render/decals';
+import { Particles } from './render/particles';
 
 function loadingScreen() {
   const el = document.createElement('div');
@@ -104,6 +105,7 @@ export async function boot() {
   G.R.scene.add(G.weatherFx.group);
   G.decals = new Decals();
   G.R.scene.add(G.decals.mesh);
+  G.particles = new Particles(G.R.scene);
   on('world:reset', () => G.decals.clear());
   G.charViews = new CharViews();
   G.R.scene.add(G.charViews.group, G.charViews.rings);
@@ -219,6 +221,11 @@ function step(dt: number) {
   G.props.update(G.R.camera.position);
   lap('props');
   windUniform.value = G.realTime;
+  // sparks and smoke move in real time, slowed with the game
+  G.particles.setScreen(G.R.height, G.R.camera.fov);
+  G.particles.update(dt * (G.speed ? 1 : 0.02));
+  // wrecked machines smoulder
+  for (const c of G.W.active) if (c.view && c.status !== 'up' && (c.robot || c.body.robotic) && Math.random() < dt * 1.5) G.particles.burst(Math.random() < 0.7 ? 'smoke' : 'sparks', c.x, c.y + 0.4, c.z, Math.random() < 0.7 ? 1 : 3);
   // the picture's edges pulse red when the one you have selected is badly hurt
   const watched = G.W.char([...sel][0]);
   const hurtT = watched && watched.alive && watched.faction === 'player' && !watched.robot ? Math.max(0, Math.min(1, (0.45 - watched.body.total()) / 0.3)) : 0;

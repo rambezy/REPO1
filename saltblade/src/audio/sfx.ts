@@ -199,6 +199,56 @@ const W: Record<string, [number, number, Fx]> = {
     tone(o, t + d, 'sine', 120, 60, 0.001, 0.08, 0.6);
     return d + 0.4;
   }],
+  // ---- the old machines
+  laser: [0.55, 0.22, (o, t) => {
+    // a hard zap: a falling whistle, a buzzing saw under it, a crackle of static
+    tone(o, t, 'sine', rnd(2300, 2900), rnd(280, 420), 0.001, 0.24, 0.8);
+    tone(o, t, 'sawtooth', rnd(800, 1000), rnd(160, 220), 0.001, 0.2, 0.22);
+    hiss(o, t, 'highpass', 5200, 2600, 0.001, 0.12, 0.45);
+    return 0.32;
+  }],
+  sizzle: [0.5, 0.18, (o, t) => {
+    // a beam striking home: burning static and a dull thump
+    hiss(o, t, 'bandpass', rnd(2600, 3400), 1100, 0.002, rnd(0.3, 0.45), 1.3, 2);
+    tone(o, t, 'sine', 190, 60, 0.001, 0.12, 0.5);
+    for (let i = 0; i < 5; i++) click(o, t + rnd(0.02, 0.3), rnd(3000, 6000), rnd(0.1, 0.25));
+    return 0.5;
+  }],
+  robothit: [0.5, 0.2, (o, t) => {
+    // steel plate struck: a ringing clang and a spray of sparks
+    metal(o, t, rnd(520, 820), [1, 2.43, 3.91, 5.3], rnd(0.3, 0.45), 0.75);
+    tone(o, t, 'sine', 140, 70, 0.001, 0.08, 0.5);
+    for (let i = 0; i < 6; i++) click(o, t + rnd(0.01, 0.22), rnd(3500, 7000), rnd(0.1, 0.3));
+    return 0.55;
+  }],
+  beep: [0.4, 0.15, (o, t) => {
+    // a machine's chirps
+    let at = t;
+    for (let i = 0, n = irnd(2, 4); i < n; i++, at += rnd(0.07, 0.12)) { const f = pick([880, 1175, 1320, 1568, 1760]); tone(o, at, 'square', f, f, 0.002, 0.055, 0.14); }
+    return at - t + 0.1;
+  }],
+  robovoice: [0.55, 0.18, (o, t) => {
+    // clipped machine speech: a monotone buzz of syllables, a chirp at the end
+    const f = rnd(100, 124);
+    const vs = [VOW.ah, VOW.eh, VOW.oh, VOW.oo, VOW.uh];
+    let at = t;
+    for (let i = 0, n = irnd(4, 7); i < n; i++) {
+      const d = rnd(0.07, 0.12);
+      vox(o, at, d, f, f, pick(vs), pick(vs), 0.5, 0.75, 0);
+      at += d + rnd(0.015, 0.04);
+    }
+    const c = pick([1320, 1568]);
+    tone(o, at, 'square', c, c, 0.002, 0.06, 0.12);
+    return at - t + 0.1;
+  }],
+  powerdown: [0.55, 0.3, (o, t) => {
+    // a machine going dark: a sagging whine, a last crackle
+    tone(o, t, 'sawtooth', rnd(520, 640), 38, 0.01, 1.1, 0.3);
+    tone(o, t, 'sine', rnd(900, 1100), 60, 0.01, 0.9, 0.25);
+    hiss(o, t + 0.2, 'bandpass', 2400, 700, 0.01, 0.6, 0.4, 2);
+    for (let i = 0; i < 4; i++) click(o, t + rnd(0.05, 0.9), rnd(2500, 5000), rnd(0.1, 0.3));
+    return 1.3;
+  }],
   bell: [0.5, 0.45, (o, t) => {
     const f = rnd(190, 240);
     for (let k = 0, at = t; k < 2; k++, at += rnd(1.6, 2)) {

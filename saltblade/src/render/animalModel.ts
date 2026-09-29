@@ -20,6 +20,8 @@ interface Spec {
   tailLen: number; tailR: number;
   shell?: boolean; pincers?: boolean; wings?: boolean; beak?: boolean; horns?: 'curved' | 'back' | null; mandibles?: boolean;
   eyes: number; plates?: boolean; crystals?: boolean; robot?: boolean; hover?: number; ears?: boolean; spikes?: boolean;
+  /** Maker machines with bodies of their own (see droneGeometry, walkerGeometry) */
+  drone?: boolean; walker?: boolean;
 }
 
 const SPECS: Record<Shape, Spec> = {
@@ -35,6 +37,10 @@ const SPECS: Record<Shape, Spec> = {
   turtle: { len: 1.6, hipH: 0.62, chestH: 0.62, bodyW: 1.1, bodyR: 0.42, pairs: 2, legLen: 0.55, legR: 0.14, spread: 0.3, neckLen: 0.55, neckAng: 0.15, neckR: 0.15, headLen: 0.5, headR: 0.17, tailLen: 0.5, tailR: 0.1, shell: true, spikes: true, eyes: 2 },
   fly: { len: 0.6, hipH: 0.95, chestH: 1.0, bodyW: 0.28, bodyR: 0.16, pairs: 3, legLen: 0.4, legR: 0.02, spread: 0.2, neckLen: 0.05, neckAng: 0, neckR: 0.08, headLen: 0.2, headR: 0.12, tailLen: 0.45, tailR: 0.14, wings: true, eyes: 2, hover: 0.95 },
   stalker: { len: 1.4, hipH: 0.9, chestH: 1.0, bodyW: 0.4, bodyR: 0.26, pairs: 2, legLen: 0.95, legR: 0.07, spread: 0.1, neckLen: 0.6, neckAng: 0.5, neckR: 0.11, headLen: 0.5, headR: 0.13, tailLen: 1.1, tailR: 0.07, crystals: true, eyes: 2 },
+  // a hovering sphere with an eye on a stalk and three arms (two a pair, the third where a tail would be)
+  drone: { len: 0.5, hipH: 1.25, chestH: 1.25, bodyW: 0.62, bodyR: 0.3, pairs: 1, legLen: 0.6, legR: 0.028, spread: 0.1, neckLen: 0.3, neckAng: 1.3, neckR: 0.024, headLen: 0.14, headR: 0.08, tailLen: 0.5, tailR: 0.028, robot: true, eyes: 1, hover: 1.0, drone: true },
+  // a war machine: a boxy hull on four piston legs, cannons on its shoulders
+  walker: { len: 1.5, hipH: 1.15, chestH: 1.2, bodyW: 1.05, bodyR: 0.46, pairs: 2, legLen: 1.05, legR: 0.13, spread: 0.24, neckLen: 0.12, neckAng: 0.2, neckR: 0.16, headLen: 0.44, headR: 0.2, tailLen: 0, tailR: 0, robot: true, eyes: 1, walker: true },
 };
 
 export interface AnimalRig {
@@ -83,6 +89,20 @@ export function buildAnimal(def: AnimalDef, look: Look): AnimalRig {
     PARENTS[u + 1] = u;
   }
   for (let k = 0; k < 16; k += 2) { if (PARENTS[LEG0 + k] === 0) PARENTS[LEG0 + k] = A.body; PARENTS[LEG0 + k + 1] = LEG0 + k; }
+  if (sp.drone) {
+    // arms from the sphere's flanks, the eye stalk from its crown, the torch arm from underneath at the back
+    const R = sp.bodyR * s * 1.25, bc = new THREE.Vector3(0, sp.hipH * s, 0);
+    for (let side = 0; side < 2; side++) {
+      const u = LEG0 + side * 2, sx = side === 0 ? 1 : -1;
+      J[u] = bc.clone().add(new THREE.Vector3(sx * R * 0.82, -R * 0.2, R * 0.28));
+      J[u + 1] = J[u].clone().add(new THREE.Vector3(sx * 0.1 * s, -0.26 * s, 0.14 * s));
+      PARENTS[u] = A.chest;
+    }
+    J[A.neck] = bc.clone().add(new THREE.Vector3(0, R * 0.92, -R * 0.05));
+    J[A.head] = J[A.neck].clone().add(new THREE.Vector3(0, 0.26 * s, 0.06 * s));
+    J[A.jaw] = J[A.head].clone();
+    J[A.tail] = bc.clone().add(new THREE.Vector3(0, -R * 0.55, -R * 0.55));
+  }
 
   const bones: THREE.Bone[] = [];
   for (let i = 0; i < NB; i++) {
@@ -106,7 +126,7 @@ const P = (c: RGB, s: Surf): Paint => ({ c, s });
 /** What the hide is like, for the material. */
 const HIDE: Record<Shape, Surf> = {
   hound: 'leather', shellback: 'leather', hookbeak: 'hair', skitter: 'chitin', crab: 'chitin', bat: 'leather',
-  bovine: 'hair', goat: 'hair', spider: 'metal', turtle: 'leather', fly: 'chitin', stalker: 'leather',
+  bovine: 'hair', goat: 'hair', spider: 'metal', turtle: 'leather', fly: 'chitin', stalker: 'leather', drone: 'metal', walker: 'metal',
 };
 const INSECT = (sh: Shape) => sh === 'skitter' || sh === 'crab' || sh === 'spider' || sh === 'fly';
 
@@ -148,6 +168,8 @@ function sheet(b: SkinBuilder, rows: THREE.Vector3[][], pnt: (i: number, j: numb
 const bezier = (a: THREE.Vector3, c: THREE.Vector3, d: THREE.Vector3, t: number) => a.clone().multiplyScalar((1 - t) * (1 - t)).addScaledVector(c, 2 * (1 - t) * t).addScaledVector(d, t * t);
 
 function beastGeometry(def: AnimalDef, sp: Spec, J: THREE.Vector3[], s: number, PARENTS: number[]): THREE.BufferGeometry {
+  if (sp.drone) return droneGeometry(def, sp, J, s);
+  if (sp.walker) return walkerGeometry(def, sp, J, s, PARENTS);
   const b = new SkinBuilder();
   const sh = def.shape;
   const C = rgb(def.colors[0]), ACC = rgb(def.colors[1]), EYE = rgb(def.colors[2]);
@@ -420,6 +442,128 @@ function beastGeometry(def: AnimalDef, sp: Spec, J: THREE.Vector3[], s: number, 
   return b.build();
 }
 
+// ------------------------------------------------------------------ the Makers' machines
+
+/** A saw drone: a chrome sphere with a glowing thruster, an eye on a stalk and three tool arms. */
+function droneGeometry(def: AnimalDef, sp: Spec, J: THREE.Vector3[], s: number): THREE.BufferGeometry {
+  const b = new SkinBuilder();
+  const C = rgb(def.colors[0]), DARK = rgb(def.colors[1]), EYE = rgb(def.colors[2]);
+  const JET: RGB = [0.35, 1.0, 1.7], FLAME: RGB = [0.9, 2.2, 4];
+  const R = sp.bodyR * s * 1.25, bc = V(0, sp.hipH * s, 0);
+  const hull: Weights = [[A.body, 0.5], [A.chest, 0.5]];
+  // the hull: a sphere banded at the equator, seamed into panels, the crown a little taller
+  blob(b, bc, 28, 20, (d, out) => {
+    out.copy(d).multiplyScalar(R).add(bc);
+    if (d.y > 0) out.y += R * 0.1 * d.y;
+    const band = Math.abs(d.y) < 0.11, rivet = Math.abs(d.y) < 0.16 && Math.abs(d.y) > 0.13;
+    const seam = Math.abs(Math.sin(Math.atan2(d.x, d.z) * 3)) < 0.05 && Math.abs(d.y) > 0.15;
+    return P(band ? DARK : rivet ? shade(C, 0.6) : seam ? shade(C, 0.72) : shade(C, 0.9 + 0.12 * d.y), 'metal');
+  }, hull);
+  // the thruster underneath: a skirt, and the blue jet inside it
+  lathe(b, bc.clone().add(V(0, -R * 1.18, 0)), [[R * 0.5, 0], [R * 0.56, R * 0.12], [R * 0.44, R * 0.34], [R * 0.2, R * 0.4]], 16, (i) => P(i === 0 ? shade(DARK, 0.7) : DARK, 'metal'), hull);
+  blob(b, bc.clone().add(V(0, -R * 1.16, 0)), 12, 6, (d, out) => { out.set(d.x * R * 0.42, Math.min(0, d.y) * R * 0.12, d.z * R * 0.42).add(bc).add(V(0, -R * 1.16, 0)); return P(JET, 'glow'); }, hull);
+  // the eye on its stalk
+  const N0 = J[A.neck], H = J[A.head];
+  tube(b, [N0.clone().add(V(0, -R * 0.1, 0)), N0, N0.clone().lerp(H, 0.5), H], () => [0.022 * s, 0.022 * s, 0.022 * s], (i) => (i < 2 ? [[A.chest, 1]] : i === 2 ? [[A.neck, 1]] : [[A.head, 1]]), () => P(DARK, 'metal'), 8, { up: FWD });
+  const hc = H.clone().add(V(0, 0.02 * s, 0.02 * s));
+  blob(b, hc, 14, 10, (d, out) => { out.set(d.x * 0.075 * s, d.y * 0.06 * s, d.z * 0.09 * s).add(hc); return P(d.z > 0.55 ? shade(DARK, 0.5) : C, 'metal'); }, [[A.head, 1]]);
+  const ec = hc.clone().add(V(0, 0, 0.075 * s));
+  blob(b, ec, 10, 8, (d, out) => { out.copy(d).multiplyScalar(0.038 * s).add(ec); return P(EYE, 'glow'); }, [[A.head, 1]]);
+  // two arms: the left ends in a buzz saw, the right in a three-fingered claw
+  for (let side = 0; side < 2; side++) {
+    const u = LEG0 + side * 2, sx = side === 0 ? 1 : -1;
+    const sh = J[u], el = J[u + 1], hand = el.clone().add(V(sx * 0.02 * s, -0.02 * s, 0.26 * s));
+    const r = sp.legR * s;
+    tube(b, [sh.clone().add(V(-sx * R * 0.2, 0, 0)), sh, sh.clone().lerp(el, 0.5), el], () => [r, r, r], (i) => (i < 2 ? [[A.chest, 0.4], [u, 0.6]] : [[u, 1]]), () => P(C, 'metal'), 8, { up: FWD });
+    blob(b, sh, 10, 7, (d, out) => { out.copy(d).multiplyScalar(r * 2.2).add(sh); return P(DARK, 'metal'); }, [[u, 1]]);
+    blob(b, el, 8, 6, (d, out) => { out.copy(d).multiplyScalar(r * 1.7).add(el); return P(DARK, 'metal'); }, [[u, 0.5], [u + 1, 0.5]]);
+    tube(b, [el, el.clone().lerp(hand, 0.5), hand], () => [r * 0.85, r * 0.85, r * 0.85], () => [[u + 1, 1]], () => P(C, 'metal'), 8, { up: UP });
+    if (side === 0) {
+      // the saw: a toothed disc standing across the arm's end
+      const axis = V(1, 0, 0), sr = 0.13 * s;
+      lathe(b, hand.clone().add(V(-0.008 * s, 0, 0.05 * s)), [[0, 0], [sr * 0.2, 0], [sr, 0.004 * s], [sr, 0.012 * s], [sr * 0.2, 0.016 * s], [0, 0.016 * s]], 24,
+        (_i, a) => P(Math.floor((a / (Math.PI * 2)) * 24) % 2 ? shade(C, 1.15) : shade(C, 0.8), 'metal'), [[u + 1, 1]], { up: axis, front: FWD });
+    } else {
+      for (let f = 0; f < 3; f++) {
+        const a = (f / 3) * Math.PI * 2;
+        const f0 = hand.clone().add(V(Math.cos(a) * 0.02 * s, Math.sin(a) * 0.02 * s, 0));
+        const f1 = f0.clone().add(V(Math.cos(a) * 0.035 * s, Math.sin(a) * 0.035 * s, 0.07 * s));
+        const f2 = f1.clone().add(V(-Math.cos(a) * 0.02 * s, -Math.sin(a) * 0.02 * s, 0.05 * s));
+        tube(b, [f0, f1, f2], (i) => { const q = r * (0.55 - i * 0.15); return [q, q, q]; }, () => [[u + 1, 1]], () => P(DARK, 'metal'), 6, { up: UP, capEnd: true });
+      }
+    }
+  }
+  // the third arm, underneath at the back: a cutting torch, its nozzle burning blue
+  const T0 = J[A.tail], T1 = T0.clone().add(V(0, -0.12 * s, -0.08 * s)), T2 = T1.clone().add(V(0, -0.06 * s, 0.2 * s));
+  tube(b, [T0.clone().add(V(0, R * 0.2, R * 0.2)), T0, T1, T2], () => [0.025 * s, 0.025 * s, 0.025 * s], (i) => (i < 2 ? [[A.body, 0.5], [A.tail, 0.5]] : [[A.tail, 1]]), () => P(C, 'metal'), 8, { up: FWD });
+  tube(b, [T2, T2.clone().add(V(0, 0, 0.06 * s))], () => [0.032 * s, 0.032 * s, 0.032 * s], () => [[A.tail, 1]], () => P(DARK, 'metal'), 8, { up: UP, capStart: true });
+  const tip = T2.clone().add(V(0, 0, 0.075 * s));
+  blob(b, tip, 8, 6, (d, out) => { out.set(d.x * 0.016 * s, d.y * 0.016 * s, d.z * 0.03 * s).add(tip); return P(FLAME, 'glow'); }, [[A.tail, 1]]);
+  return b.build();
+}
+
+/** A warbot: a boxy war hull on four piston legs, beam cannons on its shoulders and a sensor head. */
+function walkerGeometry(def: AnimalDef, sp: Spec, J: THREE.Vector3[], s: number, PARENTS: number[]): THREE.BufferGeometry {
+  const b = new SkinBuilder();
+  const C = rgb(def.colors[0]), DARK = rgb(def.colors[1]), EYE = rgb(def.colors[2]);
+  const HAZ: RGB = [0.85, 0.66, 0.12], CORE: RGB = [3.2, 1.3, 0.25];
+  const L = sp.len * s, BW = sp.bodyW * s, BR = sp.bodyR * s;
+  const z0 = J[A.body].z - L * 0.18, z1 = J[A.chest].z + L * 0.2;
+  // the hull: a squared-off box, panelled, hazard-striped on the brow
+  const ts = [0, 0.06, 0.2, 0.45, 0.7, 0.9, 1];
+  const pts = ts.map((t) => V(0, lerp(J[A.body].y, J[A.chest].y, t) + BR * 0.1, lerp(z0, z1, t)));
+  tube(b, pts, (i) => { const k = [0.7, 0.95, 1, 1, 1, 0.96, 0.75][i]; return [BW * 0.52 * k, BR * k, BR * 0.9 * k]; },
+    (i) => { const k = smoothstep(0.35, 0.65, ts[i]); return [[A.body, 1 - k], [A.chest, k]]; },
+    (i, a) => {
+      const up = Math.sin(a);
+      if (ts[i] > 0.85 && up > 0.3) return P(Math.floor((Math.cos(a) + 1) * 6) % 2 ? HAZ : DARK, 'metal');
+      if (Math.abs(ts[i] - 0.45) < 0.03 || Math.abs(ts[i] - 0.7) < 0.03) return P(shade(DARK, 0.9), 'metal');
+      return P(shade(C, 0.85 + 0.2 * up), 'metal');
+    }, 20, { e: 4.5, capStart: pts[0].clone().add(V(0, 0, -BR * 0.1)), capEnd: pts[pts.length - 1].clone().add(V(0, 0, BR * 0.08)) });
+  // the sensor head: a low armoured box with a red visor slit
+  const H = J[A.head], hc = H.clone().add(V(0, 0, sp.headLen * s * 0.3));
+  const hw = sp.headR * s, hl = sp.headLen * s;
+  blob(b, hc, 18, 12, (d, out) => {
+    const pe = (v: number) => Math.sign(v) * Math.pow(Math.abs(v), 0.55);
+    out.set(pe(d.x) * hw * 1.2, pe(d.y) * hw * 0.62, pe(d.z) * hl * 0.5).add(hc);
+    return P(Math.abs(d.y) > 0.85 ? shade(DARK, 1.2) : C, 'metal');
+  }, [[A.head, 1]]);
+  const vc = hc.clone().add(V(0, hw * 0.05, hl * 0.47));
+  tube(b, [vc.clone().add(V(hw * 0.95, 0, 0)), vc, vc.clone().add(V(-hw * 0.95, 0, 0))], () => [0.022 * s, 0.03 * s, 0.03 * s], () => [[A.head, 1]], () => P(EYE, 'glow'), 8, { up: UP, capStart: true, capEnd: true });
+  tube(b, [J[A.chest].clone().add(V(0, BR * 0.2, BR * 0.2)), J[A.neck], H], () => [sp.neckR * s, sp.neckR * s, sp.neckR * s], (i) => (i === 0 ? [[A.chest, 1]] : i === 1 ? [[A.neck, 1]] : [[A.head, 1]]), () => P(DARK, 'metal'), 10, { up: FWD });
+  // beam cannons on the shoulders: a pod, a barrel, the emitter glowing at the muzzle
+  for (const sx of [1, -1]) {
+    const pc = V(sx * BW * 0.6, J[A.chest].y + BR * 0.55, J[A.chest].z - L * 0.05);
+    tube(b, [pc.clone().add(V(0, 0, -L * 0.16)), pc, pc.clone().add(V(0, 0, L * 0.16))], () => [0.13 * s, 0.13 * s, 0.13 * s], () => [[A.chest, 1]], (_i, a) => P(Math.abs(Math.sin(a)) > 0.9 ? DARK : shade(C, 0.9), 'metal'), 10, { e: 3.5, capStart: true, capEnd: true, up: UP });
+    const m0 = pc.clone().add(V(0, 0, L * 0.16)), m1 = m0.clone().add(V(0, 0, L * 0.32));
+    tube(b, [m0, m0.clone().lerp(m1, 0.5), m1], (i) => { const q = (i === 2 ? 0.05 : 0.04) * s; return [q, q, q]; }, () => [[A.chest, 1]], () => P(DARK, 'metal'), 10, { up: UP });
+    const mz = m1.clone().add(V(0, 0, 0.012 * s));
+    blob(b, mz, 10, 6, (d, out) => { out.set(d.x * 0.038 * s, d.y * 0.038 * s, Math.max(-0.2, d.z) * 0.01 * s).add(mz); return P(EYE, 'glow'); }, [[A.chest, 1]]);
+  }
+  // a power core on its back, venting orange
+  const cc = V(0, J[A.body].y + BR * 0.95, J[A.body].z);
+  lathe(b, cc, [[0.2 * s, 0], [0.22 * s, 0.05 * s], [0.22 * s, 0.26 * s], [0.12 * s, 0.32 * s], [0, 0.33 * s]], 14, (i) => P(i === 1 || i === 2 ? DARK : shade(C, 0.8), 'metal'), [[A.body, 1]]);
+  for (let v = 0; v < 6; v++) {
+    const a = (v / 6) * Math.PI * 2, vc2 = cc.clone().add(V(Math.cos(a) * 0.223 * s, 0.15 * s, Math.sin(a) * 0.223 * s));
+    blob(b, vc2, 6, 5, (d, out) => { out.set(d.x * 0.012 * s, d.y * 0.06 * s, d.z * 0.012 * s).add(vc2); return P(CORE, 'glow'); }, [[A.body, 1]]);
+  }
+  // four piston legs: an armoured thigh, a ball knee, a ram down the shin, a broad pad of a foot
+  for (let k = 0; k < sp.pairs; k++) for (let side = 0; side < 2; side++) {
+    const u = LEG0 + (k * 2 + side) * 2, sx = side === 0 ? 1 : -1;
+    const hip = J[u], knee = J[u + 1], par = PARENTS[u];
+    const foot = V(hip.x + sx * sp.spread * s, 0.06 * s, hip.z);
+    const lr = sp.legR * s;
+    tube(b, [hip.clone().add(V(-sx * lr, BR * 0.3, 0)), hip, hip.clone().lerp(knee, 0.5), knee], (i) => { const q = lr * [1.5, 1.35, 1.2, 1][i]; return [q, q * 1.1, q * 1.1]; },
+      (i) => (i === 0 ? [[par, 0.6], [u, 0.4]] : [[u, 1]]), (_i, a) => P(Math.abs(Math.cos(a)) > 0.92 ? DARK : C, 'metal'), 10, { e: 3, up: FWD });
+    blob(b, knee, 10, 8, (d, out) => { out.copy(d).multiplyScalar(lr * 1.25).add(knee); return P(DARK, 'metal'); }, [[u, 0.5], [u + 1, 0.5]]);
+    tube(b, [knee, knee.clone().lerp(foot, 0.5), foot.clone().add(V(0, lr * 0.6, 0))], () => [lr * 0.7, lr * 0.7, lr * 0.7], () => [[u + 1, 1]], () => P(shade(C, 0.8), 'metal'), 10, { up: FWD });
+    const r0 = knee.clone().add(V(0, -lr * 0.3, -lr * 1.1)), r1 = foot.clone().add(V(0, lr * 1.4, -lr * 0.9));
+    tube(b, [r0, r0.clone().lerp(r1, 0.5), r1], (i) => { const q = lr * (i === 0 ? 0.32 : 0.24); return [q, q, q]; }, () => [[u + 1, 1]], (i) => P(i === 1 ? rgb(0xc8c8c8) : DARK, 'metal'), 8, { up: FWD, capStart: true, capEnd: true });
+    blob(b, foot.clone().add(V(0, lr * 0.25, lr * 0.3)), 12, 8, (d, out) => { out.set(d.x * lr * 1.6, Math.max(-0.4, d.y) * lr * 0.45, d.z * lr * 2.2).add(foot).add(V(0, lr * 0.25, lr * 0.3)); return P(d.y < 0 ? shade(DARK, 0.7) : DARK, 'metal'); }, [[u + 1, 1]]);
+  }
+  return b.build();
+}
+
 /** A faceted crystal or spike standing out along `dir`. */
 function crystal(b: SkinBuilder, at: THREE.Vector3, dir: THREE.Vector3, r: number, h: number, w: Weights, c: RGB = [0.1, 0.3, 0.28], surf: Surf = 'glow') {
   const { u, v } = frame(dir, Math.abs(dir.y) > 0.9 ? FWD : UP);
@@ -500,5 +644,21 @@ export class AnimalAnimator {
     b[A.head].rotation.set(headX, headY * 0.5, 0);
     b[A.jaw].rotation.set(jawX, 0, 0);
     b[A.tail].rotation.set(0.2, Math.sin(this.t * (moving ? 6 : 1.5)) * 0.3, 0);
+    if (sp.drone && !down) {
+      // it bobs on its jet and leans into its flight, its eye looks about, and the saw arm slashes
+      b[A.root].position.y = Math.sin(this.t * 2.3) * 0.05;
+      b[A.root].rotation.x = moving ? 0.16 : 0;
+      b[A.neck].rotation.set(0, Math.sin(this.t * 0.6) * 0.6, 0);
+      b[A.head].rotation.set(Math.sin(this.t * 1.3) * 0.15, 0, 0);
+      b[A.tail].rotation.set(0.1 + Math.sin(this.t * 0.9) * 0.15, 0, 0);
+      if (a.attacking) {
+        const t = a.atkT;
+        const wind = t < 0.45 ? t / 0.45 : 1 - Math.min(1, (t - 0.45) / 0.15);
+        const strike = t >= 0.45 && t < 0.7 ? Math.sin(((t - 0.45) / 0.25) * Math.PI) : 0;
+        b[LEG0].rotation.set(-1.2 * wind + 1.5 * strike, 0, -0.35 * wind);
+        b[LEG0 + 1].rotation.set(0.9 * wind, 0, 0);
+      }
+    }
+    if (sp.walker && a.attacking) b[A.chest].rotation.x = 0.25 * Math.sin(Math.min(1, a.atkT / 0.7) * Math.PI); // a stamp
   }
 }

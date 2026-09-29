@@ -4,7 +4,7 @@
 // every step.
 import { Char } from './char';
 import { S } from './ctx';
-import { hostile, dist, reach, startAttack, tickAttack, canShoot, shoot, rangedStats, strengthOf } from './combat';
+import { hostile, dist, reach, startAttack, tickAttack, canShoot, shoot, rangedStats, strengthOf, beastLaser } from './combat';
 import { goTo, stop, near } from './move';
 import { ANIMAL } from '../content/animals';
 import { FACTION } from '../content/factions';
@@ -90,7 +90,12 @@ export function fight(c: Char, t: Char, dt: number) {
   if (c.knockT > 0 || c.stagger > 0) return;
   const d = dist(c, t);
   if (c.atk) return;
-  // crossbows at range
+  // machines with beams fire at range: a warbot stands and fires, a drone burns and closes in
+  const beam = c.animal ? ANIMAL[c.animal].laser : undefined;
+  if (beam && d > reach(c) + 1.5 && d < beam.range * 0.95) {
+    if (beastLaser(c, t) || beam.heavy) { stop(c); c.dir = angleTo(c.x, c.z, t.x, t.z); return; }
+  }
+  // crossbows (and beam guns) at range
   if (!c.animal && canShoot(c) && d > 5 && d < (rangedStats(c)?.range ?? 0) * 0.95) {
     stop(c);
     c.dir = angleTo(c.x, c.z, t.x, t.z);

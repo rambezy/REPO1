@@ -12,7 +12,7 @@ import { B, Rig, LOST_LARM, LOST_RARM, LOST_LLEG, LOST_RLEG } from './charModel'
 import { SkinBuilder, Sec, Paint, RGB, Weights, Surf, loft, lathe, blob, frame, rgb, mix, shade, prng, gauss, smoothstep, lerp } from './skin';
 import { faceOf, faceShape } from './face';
 
-type Kind = 'human' | 'karuk' | 'thrum' | 'hollow' | 'construct' | 'pale';
+type Kind = 'human' | 'karuk' | 'thrum' | 'hollow' | 'construct' | 'sentinel' | 'pale';
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const UP = V(0, 1, 0), FRONT = V(0, 0, 1);
 const HP = Math.PI / 2, TAU = Math.PI * 2;
@@ -84,11 +84,12 @@ export function buildHuman(look: Look, vis: Vis, lost: number, rig: Rig, prost =
   const b = new SkinBuilder();
   const J = rig.joints;
   const s = rig.s, w = rig.w;
-  const robot = kind === 'hollow' || kind === 'construct';
+  const robot = kind === 'hollow' || kind === 'construct' || kind === 'sentinel';
+  const sentinel = kind === 'sentinel';
   const bug = kind === 'thrum';
   const fem = look.female && !bug && !robot;
   const thin = bug ? 0.74 : kind === 'pale' ? 0.84 : robot ? 0.95 : 1;
-  const thick = kind === 'karuk' ? 1.16 : kind === 'construct' ? 1.28 : 1;
+  const thick = kind === 'karuk' ? 1.16 : kind === 'construct' ? 1.28 : sentinel ? 1.34 : 1;
   const muscle = kind === 'karuk' ? 1.6 : fem ? 0.5 : bug ? 0.3 : 1;
   const rnd = prng(look.face * 7919 + look.skin * 3 + look.hair + look.hairStyle * 131 + (look.female ? 17 : 0));
   const N = detail ? { torso: 22, limb: 14, lon: 40, lat: 30, small: 10, hand: 10, sub: 2 } : { torso: 11, limb: 7, lon: 14, lat: 10, small: 6, hand: 6, sub: 1 };
@@ -125,6 +126,14 @@ export function buildHuman(look: Look, vis: Vis, lost: number, rig: Rig, prost =
     return p;
   };
   const torsoPaint = (y: number, a: number): Paint => {
+    if (sentinel) {
+      // yellow plate: a hazard-striped chest band, a slatted grille below it, dark seams
+      const front = ad(a, HP) < 1.05;
+      if (front && y > 1.22 && y < 1.3) return P(Math.floor((a + y * 2) * 9) % 2 ? rgb(0x1e1e1c) : rgb(0xd8b020), 'metal');
+      if (front && y > 1.02 && y < 1.18) return P(Math.floor(y * 90) % 2 ? shade(SKIN, 0.35) : shade(SKIN, 0.6), 'metal');
+      if (Math.abs(((y * 8) % 1) - 0.5) < 0.03) return P(shade(SKIN, 0.5), 'metal');
+      return P(SKIN, 'metal');
+    }
     if (robot) {
       const band = Math.abs(((y * 11) % 1) - 0.5) < 0.04;
       const plate = y > 1.16 && y < 1.44 && ad(a, HP) < 0.9;
@@ -178,13 +187,13 @@ export function buildHuman(look: Look, vis: Vis, lost: number, rig: Rig, prost =
   // ================= neck and head =================
   const neck = J[B.neck], head = J[B.head];
   const hw = kind === 'karuk' ? 1.1 : kind === 'pale' ? 0.95 : 1;
-  const Rx = (bug ? 0.072 : robot ? 0.086 : 0.078) * hw * (fem ? 0.95 : 1) * (kind === 'construct' ? 1.25 : 1);
-  const Ry = (bug ? 0.098 : robot ? 0.11 : 0.113) * (fem ? 0.96 : 1) * (kind === 'construct' ? 1.2 : 1);
-  const Rz = (bug ? 0.118 : robot ? 0.096 : 0.098) * hw * (fem ? 0.96 : 1) * (kind === 'construct' ? 1.2 : 1);
+  const Rx = (bug ? 0.072 : robot ? 0.086 : 0.078) * hw * (fem ? 0.95 : 1) * (kind === 'construct' ? 1.25 : sentinel ? 1.5 : 1);
+  const Ry = (bug ? 0.098 : robot ? 0.11 : 0.113) * (fem ? 0.96 : 1) * (kind === 'construct' ? 1.2 : sentinel ? 1.3 : 1);
+  const Rz = (bug ? 0.118 : robot ? 0.096 : 0.098) * hw * (fem ? 0.96 : 1) * (kind === 'construct' ? 1.2 : sentinel ? 1.5 : 1);
   const hy = head.y + 0.085 * s;
   const hz = bug ? 0.022 : 0;
   {
-    const nr = (kind === 'karuk' ? 0.07 : robot ? 0.046 : bug ? 0.04 : fem ? 0.048 : 0.057) * (kind === 'construct' ? 1.3 : 1);
+    const nr = (kind === 'karuk' ? 0.07 : robot ? 0.046 : bug ? 0.04 : fem ? 0.048 : 0.057) * (kind === 'construct' ? 1.3 : sentinel ? 1.6 : 1);
     const y0 = 1.44 * s, y1 = head.y + 0.03 * s;
     const ys = [0, 0.25, 0.5, 0.75, 1].map((k) => lerp(y0, y1, k));
     loft(b, ys.map((y, i) => {
@@ -239,6 +248,8 @@ export function buildHuman(look: Look, vis: Vis, lost: number, rig: Rig, prost =
       if (gloves && t >= 1.814) return P(gloveC!, 'leather');
       if (chainEnd > 0 && t <= chainEnd) return P(rgb(A!.color2 ?? A!.color), 'metal');
       if (sleeveEnd > 0 && t <= sleeveEnd) return P(clothT!, 'cloth');
+      if (sentinel && !isL && t > 1.8 && t < 1.88) return P([2.8, 0.55, 0.25], 'glow'); // the emitter
+      if (sentinel && t > 1.12 && t < 1.8) return P(Math.abs(((t * 9) % 1) - 0.5) < 0.08 ? shade(SKIN, 0.45) : shade(SKIN, 0.9), 'metal');
       if (robot) return P(Math.abs(t - 1) < 0.06 || Math.abs(t - 0.02) < 0.05 ? shade(SKIN, 0.55) : SKIN, 'metal');
       if (bug) return P(Math.abs(t - 1) < 0.08 || t > 1.85 ? shade(SKIN, 0.7) : SKIN, 'chitin');
       void a;
@@ -604,7 +615,8 @@ function buildHead(b: SkinBuilder, h: HeadCtx) {
   const { look, vis, kind, hat, s, hy, hz, Rx, Ry, Rz, fem, rnd, N, SKIN, hairC } = h;
   const W: Weights = [[B.head, 1]];
   const C = V(0, hy, hz);
-  const robot = kind === 'hollow' || kind === 'construct';
+  const robot = kind === 'hollow' || kind === 'construct' || kind === 'sentinel';
+  const sentinel = kind === 'sentinel';
   const bug = kind === 'thrum';
   // face shape, different for everyone
   const noseL = (kind === 'karuk' ? 0.034 : 0.026) + rnd() * 0.012;
@@ -629,6 +641,12 @@ function buildHead(b: SkinBuilder, h: HeadCtx) {
   const shape = (d: THREE.Vector3, out: THREE.Vector3) => {
     const ax = Math.abs(d.x), sx = Math.sign(d.x) || 1;
     let x = d.x * Rx, y = d.y * Ry, z = d.z * Rz;
+    if (sentinel) {
+      // a glass dome over a drum
+      if (d.y > 0) return out.set(d.x * Rx, d.y * Ry * 1.1, d.z * Rz).add(C);
+      const r = Math.hypot(d.x, d.z) || 1, k = 1 / r;
+      return out.set(d.x * k * Rx * 0.98, d.y * Ry * 0.75, d.z * k * Rz * 0.98).add(C);
+    }
     if (robot) {
       // a rounded box
       const pe = (v: number) => Math.sign(v) * Math.pow(Math.abs(v), 0.72);
@@ -677,6 +695,17 @@ function buildHead(b: SkinBuilder, h: HeadCtx) {
     let col: RGB = SKIN;
     let surf: Surf = robot ? 'metal' : bug ? 'chitin' : 'skin';
     let lift = 0;
+    if (sentinel) {
+      // under the glass, three lenses in a triangle; the drum below it has a speaker grille
+      if (d.y > 0.06) {
+        const lens = (gauss(d.x - 0.32, 0.1) + gauss(d.x + 0.32, 0.1)) * gauss(d.y - 0.3, 0.08) + gauss(d.x, 0.1) * gauss(d.y - 0.62, 0.08);
+        if (lens > 0.5 && d.z > 0.35) return P([2.6, 0.5, 0.22], 'glow');
+        return P(d.y > 0.9 ? rgb(0x4a5a60) : rgb(0x223034), 'eye');
+      }
+      if (d.y > -0.08) return P(rgb(0x2a2a28), 'metal'); // the rim
+      if (d.z > 0.55 && d.y < -0.25 && Math.floor(-d.y * 30) % 2) return P(rgb(0x1a1a18), 'metal');
+      return P(SKIN, 'metal');
+    }
     if (robot) {
       const visor = d.y > -0.05 && d.y < 0.22 && d.z > 0.45;
       const eye = kind === 'construct' ? gauss(d.x, 0.1) * gauss(d.y - 0.09, 0.05) > 0.5 : (gauss(ax - 0.35, 0.07) * gauss(d.y - 0.09, 0.05)) > 0.5;
@@ -815,7 +844,7 @@ function buildHead(b: SkinBuilder, h: HeadCtx) {
   if (beard === 3) hangingHair(b, V(0, hy - Ry * 0.8, hz + Rz * 0.62), V(0, hy - Ry * 1.55, hz + Rz * 0.72), 0.04, 0.012, hairC, N.small, [0, 0, 1]);
 
   // hats and helmets
-  if (hat) buildHat(b, hat.style, rgb(hat.color), hat.color2 !== undefined ? rgb(hat.color2) : shade(rgb(hat.color), 0.75), C, Rx, Ry, Rz, h.hw * (kind === 'construct' ? 1.2 : 1), N.small + 6);
+  if (hat && !sentinel) buildHat(b, hat.style, rgb(hat.color), hat.color2 !== undefined ? rgb(hat.color2) : shade(rgb(hat.color), 0.75), C, Rx, Ry, Rz, h.hw * (kind === 'construct' ? 1.2 : 1), N.small + 6);
 }
 
 const BONE_C = rgb(0xd8ccb0);

@@ -29,6 +29,8 @@ export function personName(race: string, female: boolean, rng: RNG): string {
       return rng.chance(0.4) ? `Unit ${rng.int(2, 99)}` : rng.pick(HOLLOW);
     case 'construct':
       return `Warden ${String.fromCharCode(65 + rng.int(0, 25))}-${rng.int(1, 40)}`;
+    case 'sentinel':
+      return `Sentinel ${rng.pick(['S', 'K', 'P', 'M', 'R'])}${rng.int(10, 99)}-${String.fromCharCode(65 + rng.int(0, 25))}`;
     case 'pale':
       return 'Mistcrawler';
   }

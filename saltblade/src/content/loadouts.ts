@@ -57,6 +57,8 @@ export const LOADOUTS: Record<string, Loadout> = {
   scorched: { weapon: ['dune_sabre', 'drift_blade', 'heater', 'hand_xbow_none', 'leafcutter', 'leafcutter'], grade: [1, 3], body: ['long_coat', 'leather_jerkin'], shirt: ['dark_shirt'], head: ['', 'bandana', 'hood'], legs: ['dark_pants', 'leather_leggings'], feet: ['swamp_boots', 'leather_boots', 'soft_boots'], back: ['', '', '', 'smuggler_pack'], items: [['dreamleaf', 0, 3], ['mire_dye', 0, 1]], money: [30, 300], level: [20, 36] },
   mawkin: { weapon: ['bone_maul', 'spear', 'cleaver', 'bone_chopper', 'jaw_club', 'gutting_hook', 'rib_knife'], grade: [0, 2], body: ['bone_vest', ''], legs: ['loincloth', 'rag_pants', 'hide_trousers'], head: ['skullcap', '', 'bone_mask'], items: [['raw_meat', 0, 2]], money: [0, 20], level: [16, 34] },
   mistcrawlers: { level: [22, 40] },
+  machines: { weapon: ['shock_fist'], ranged: ['sentinel_emitter'], grade: [2, 2], items: [['energy_cell', 0, 4]], level: [22, 36] },
+  machines_boss: { weapon: ['shock_fist'], ranged: ['sentinel_emitter'], grade: [3, 3], items: [['energy_cell', 4, 10], ['maker_optic', 0, 1]], level: [40, 52] },
   wardens: { weapon: ['warden_pike', 'warden_pike', 'foundry_hammer', 'foundry_hammer', 'sunderer', 'sunderer', 'warden_cleaver', 'starfall_hammer'], grade: [3, 5], level: [40, 60] },
   unchained: { weapon: ['dune_sabre', 'drift_blade', 'spear', 'taskmaster_sabre'], grade: [1, 3], body: ['leather_jerkin', 'padded_vest'], shirt: ['drifter_shirt', 'rag_shirt', 'sack_shirt'], head: ['bandana', ''], legs: ['cargo_pants'], feet: ['leather_boots', 'sandals'], money: [0, 60], level: [18, 32] },
   prisoner: { shirt: ['rag_shirt', 'sack_shirt'], legs: ['rag_pants'], money: [0, 0], level: [6, 24] },

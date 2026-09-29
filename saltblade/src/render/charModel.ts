@@ -23,7 +23,7 @@ export interface Rig {
   w: number; // width scale
 }
 
-type Kind = 'human' | 'karuk' | 'thrum' | 'hollow' | 'construct' | 'pale';
+type Kind = 'human' | 'karuk' | 'thrum' | 'hollow' | 'construct' | 'sentinel' | 'pale';
 
 function kindOf(look: Look): Kind {
   return (RACE[look.race]?.race ?? 'human') as Kind;

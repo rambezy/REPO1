@@ -3,7 +3,7 @@
 
 export interface RaceDef {
   key: string;
-  race: 'human' | 'karuk' | 'thrum' | 'hollow' | 'construct' | 'pale';
+  race: 'human' | 'karuk' | 'thrum' | 'hollow' | 'construct' | 'sentinel' | 'pale';
   name: string;
   desc: string;
   hp: number; // limb HP multiplier
@@ -22,6 +22,8 @@ export interface RaceDef {
   boots: boolean;
   robotic: boolean;
   playable: boolean;
+  /** natural plating against cut and blunt, like armour worn everywhere */
+  armour?: [number, number];
 }
 
 export const RACES: RaceDef[] = [
@@ -78,6 +80,12 @@ export const RACES: RaceDef[] = [
     desc: 'A guardian machine of the Old Makers.',
     hp: 1.6, speed: 0.9, bleed: 0, hunger: 0, heal: 0, xp: {}, start: {},
     skin: [0x5a6670, 0x4e5a64], hair: [0x2a3036], eyes: 0xff5a3a, height: [2.0, 2.3], bulk: [1.2, 1.4], helmets: false, boots: false, robotic: true, playable: false,
+  },
+  {
+    key: 'sentinel', race: 'sentinel', name: 'Sentinel',
+    desc: 'An Old Maker security machine: a tall shell of yellow plate with a glass dome for a head and a beam emitter in its forearm, still enforcing the laws of a city a thousand years dead.',
+    hp: 1.35, speed: 0.8, bleed: 0, hunger: 0, heal: 0, xp: {}, start: {}, armour: [0.4, 0.22],
+    skin: [0xb89a4a, 0xa88c40, 0xc0a458], hair: [0x2a2a2a], eyes: 0xff4a20, height: [2.05, 2.2], bulk: [1.18, 1.3], helmets: false, boots: false, robotic: true, playable: false,
   },
   {
     key: 'pale', race: 'pale', name: 'Mistcrawler',

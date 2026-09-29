@@ -73,6 +73,29 @@ function draw(g: CanvasRenderingContext2D, d: ItemDef, W: number, H: number) {
       g.beginPath(); g.moveTo(-W * 0.4, -H * 0.1); g.lineTo(0, H * 0.05); g.lineTo(W * 0.4, -H * 0.1); g.stroke();
       break;
     }
+    case 'laser': {
+      // a sleek gun, barrel to the right, a blue gleam at the muzzle
+      const long = d.w > 2;
+      g.fillStyle = '#8a9098'; g.strokeStyle = 'rgba(10,10,14,0.8)'; g.lineWidth = 3;
+      g.beginPath(); g.roundRect(W * 0.1, H * 0.34, W * (long ? 0.46 : 0.5), H * 0.24, 6); g.fill(); g.stroke();
+      g.fillStyle = '#3a3e44';
+      g.fillRect(W * (long ? 0.54 : 0.58), H * 0.4, W * (long ? 0.36 : 0.3), H * 0.12);
+      for (let i = 0; i < (long ? 6 : 3); i++) g.fillRect(W * (long ? 0.56 : 0.6) + i * W * 0.055, H * 0.37, W * 0.025, H * 0.18);
+      g.fillStyle = '#5a5048'; g.beginPath(); g.moveTo(W * 0.2, H * 0.56); g.lineTo(W * 0.32, H * 0.56); g.lineTo(W * 0.27, H * 0.86); g.lineTo(W * 0.16, H * 0.86); g.closePath(); g.fill(); g.stroke();
+      g.fillStyle = '#7ad8ff'; g.shadowColor = '#7ad8ff'; g.shadowBlur = 10;
+      g.beginPath(); g.arc(W * 0.92, H * 0.46, m * 0.06, 0, Math.PI * 2); g.fill();
+      g.fillRect(W * 0.2, H * 0.4, W * 0.12, H * 0.07);
+      break;
+    }
+    case 'cell': {
+      // a stubby canister with a glowing window
+      g.fillStyle = '#6a7078'; g.strokeStyle = 'rgba(10,10,14,0.8)'; g.lineWidth = 3;
+      g.beginPath(); g.roundRect(W * 0.26, H * 0.18, W * 0.48, H * 0.7, 8); g.fill(); g.stroke();
+      g.fillStyle = '#3a3e44'; g.fillRect(W * 0.38, H * 0.08, W * 0.24, H * 0.12);
+      g.fillStyle = '#7ae0ff'; g.shadowColor = '#7ae0ff'; g.shadowBlur = 12;
+      g.fillRect(W * 0.36, H * 0.34, W * 0.28, H * 0.38);
+      break;
+    }
     case 'bolts':
       g.strokeStyle = '#8a7a60'; g.lineWidth = m * 0.08;
       for (let i = 0; i < 3; i++) { g.beginPath(); g.moveTo(W * (0.3 + i * 0.2), H * 0.85); g.lineTo(W * (0.3 + i * 0.2), H * 0.2); g.stroke(); }

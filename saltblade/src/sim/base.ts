@@ -463,7 +463,7 @@ JOB_HANDLERS.turret = (c, job, o, dt, think) => {
       const d = dist(c, e);
       const p = Math.max(0.1, Math.min(0.9, 0.35 + c.skill('turrets') * 0.008 - d / 200));
       const hit = rng.chance(p);
-      S.fx.shot(c, e.x, e.z, hit);
+      S.fx.shot(c, e.x, e.z, hit, 'harpoon');
       S.fx.sound('twang', o.x, o.z);
       if (hit) applyDamage(e, rng.pick([1, 2, 1, 3, 4, 5, 6]), 55, 25, c, 1.4, true, 0.4);
       o.data.reload = 5.5 - c.skill('turrets') * 0.03;

@@ -34,7 +34,7 @@ export interface Vis {
   shackles?: boolean;
 }
 
-export type WeaponKind = 'katana' | 'sabre' | 'hacker' | 'heavy' | 'blunt' | 'polearm' | 'crossbow' | 'dagger' | 'unarmed' | 'pick' | 'claw';
+export type WeaponKind = 'katana' | 'sabre' | 'hacker' | 'heavy' | 'blunt' | 'polearm' | 'crossbow' | 'laser' | 'dagger' | 'unarmed' | 'pick' | 'claw';
 
 export interface WeaponVis {
   kind: WeaponKind;

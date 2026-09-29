@@ -141,7 +141,8 @@ export class Char {
   get alive() { return this.status !== 'dead'; }
   get awake() { return this.status === 'up' && !this.sleeping; }
   get raceDef() { return RACE[this.look.race]; }
-  get robot() { return !!this.raceDef?.robotic; }
+  /** a machine: a Hollow, a Warden, a Sentinel, or a beast of steel (a rustspider, a drone) */
+  get robot() { return !!this.raceDef?.robotic || !!this.body?.robotic; }
 
   base(s: Skill) { return this.sk[SK[s]]; }
   /** Effective skill with gear, limbs, hunger and injuries. */
@@ -192,6 +193,10 @@ export class Char {
       const an = ANIMAL[this.animal];
       cut = 1 - (1 - cut) * (1 - an.armour[0]);
       blunt = 1 - (1 - blunt) * (1 - an.armour[1]);
+    } else if (this.raceDef?.armour) {
+      // a machine's own plating
+      cut = 1 - (1 - cut) * (1 - this.raceDef.armour[0]);
+      blunt = 1 - (1 - blunt) * (1 - this.raceDef.armour[1]);
     }
     return [Math.min(0.9, cut), Math.min(0.9, blunt)];
   }
