@@ -67,9 +67,10 @@ export function openWindow(key: string, title: string, opts: { w?: number; x?: n
       el.style.left = Math.max(0, Math.min(window.innerWidth - 60, ox + ev.clientX - sx)) + 'px';
       el.style.top = Math.max(0, Math.min(window.innerHeight - 30, oy + ev.clientY - sy)) + 'px';
     };
-    const up = () => { window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up); winPos[key] = [el.offsetLeft, el.offsetTop]; };
-    window.addEventListener('mousemove', mv);
-    window.addEventListener('mouseup', up);
+    const up = () => { window.removeEventListener('mousemove', mv, true); window.removeEventListener('mouseup', up, true); winPos[key] = [el.offsetLeft, el.offsetTop]; };
+    // capture: the button comes up over this window, which shields its events from bubbling
+    window.addEventListener('mousemove', mv, true);
+    window.addEventListener('mouseup', up, true);
   });
   const w: Win = {
     el, body, title: t, key,

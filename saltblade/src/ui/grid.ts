@@ -192,15 +192,17 @@ function startDrag(it: Item, src: Source, ev: MouseEvent, from: HTMLElement) {
   };
   mv(ev);
   const up = (e: MouseEvent) => {
-    window.removeEventListener('mousemove', mv);
-    window.removeEventListener('mouseup', up);
+    window.removeEventListener('mousemove', mv, true);
+    window.removeEventListener('mouseup', up, true);
     ghost.remove();
     const dg = drag!;
     drag = null;
     finishDrop(dg, e.clientX - ox + CELL_PX / 2, e.clientY - oy + CELL_PX / 2, e.clientX, e.clientY);
   };
-  window.addEventListener('mousemove', mv);
-  window.addEventListener('mouseup', up);
+  // in the capture phase: windows stop mouse events on their way up (see shield), and the drop is
+  // usually over a window, so a listener waiting for the event to bubble up would never hear it
+  window.addEventListener('mousemove', mv, true);
+  window.addEventListener('mouseup', up, true);
 }
 
 function removeFromSource(src: Source, it: Item) {

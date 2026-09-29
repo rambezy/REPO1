@@ -77,6 +77,8 @@ class Input {
       this.handlers.move?.(e.clientX, e.clientY);
     });
     document.addEventListener('mouseleave', () => { this.mouseInWindow = false; });
+    // capture: a drag that began on the view may end over a window or the HUD, which shield their
+    // mouse events; the button must still count as up, and a selection box still close
     window.addEventListener('mouseup', (e) => {
       this.mods(e);
       const was = this.buttons[e.button];
@@ -99,7 +101,7 @@ class Input {
         if (this.rdragging) { this.rdragging = false; this.handlers.rdrag?.(x0, y0, e.clientX, e.clientY, true, e); }
         else if (e.target === canvas) this.handlers.rclick?.(e.clientX, e.clientY, e);
       }
-    });
+    }, true);
     canvas.addEventListener('wheel', (e) => { this.wheel += Math.sign(e.deltaY) * Math.min(3, Math.abs(e.deltaY) / 60 + 0.5); e.preventDefault(); }, { passive: false });
     this.attachTouch(canvas);
   }

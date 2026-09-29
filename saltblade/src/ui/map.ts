@@ -259,9 +259,10 @@ export function openMap() {
     }
   };
   const onUp = () => { drag = null; };
-  window.addEventListener('mousemove', onMove);
-  window.addEventListener('mouseup', onUp);
-  w.onClose = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+  // capture: the map sits in a window, which shields its mouse events from bubbling
+  window.addEventListener('mousemove', onMove, true);
+  window.addEventListener('mouseup', onUp, true);
+  w.onClose = () => { window.removeEventListener('mousemove', onMove, true); window.removeEventListener('mouseup', onUp, true); };
   cv.addEventListener('click', (e) => {
     if (moved) return;
     const r = cv.getBoundingClientRect();
