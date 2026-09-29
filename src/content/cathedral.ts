@@ -30,8 +30,8 @@ defineProtos([
   {
     id: 'ctAshgrave', name: 'Ashgrave', desc: 'Ashgrave, the Shepherd\'s lieutenant: a Grafted taller than the rest, with a polished collar',
     look: { body: 'grafted', skin: '#6f7a66', outfit: '#5a2a2a', outfit2: '#b09040', scale: 1.5 },
-    stats: S(10, 6, 9, 5, 7, 6, 5), hp: 150, xp: 800, dt: { normal: 4 }, dr: { normal: 25, laser: 15 },
-    skills: { melee: 95, bigGuns: 80, unarmed: 90 }, equip: ['sledge'], inv: [{ id: 'superHypo', n: 2 }], team: 'choir', hostile: false,
+    stats: S(10, 6, 9, 5, 7, 6, 5), hp: 180, xp: 800, dt: { normal: 4 }, dr: { normal: 25, laser: 15 },
+    skills: { melee: 95, bigGuns: 80, unarmed: 90 }, equip: ['sledge'], inv: [{ id: 'hypo', n: 4 }], team: 'choir', hostile: false,
   },
 ]);
 
@@ -125,6 +125,15 @@ function turnAshgrave(c: Ctx) {
   const a = c.npc('ct_ashgrave');
   if (a) recruit(a);
   c.set('ct_alarm');
+  // The Doorwards hear two masters at once, and freeze.
+  let n = 0;
+  for (const x of G.map?.actors ?? []) {
+    if (!x.dead && x.team === 'choir' && isGrafted(x) && x !== a) {
+      calmGrafted(x);
+      n++;
+    }
+  }
+  if (n) c.msg('The Grafted Doorwards look from their lieutenant to the throne and back, and do nothing at all.');
   c.hostile('ct_shepherd');
 }
 
@@ -171,17 +180,17 @@ const CT_ROWS = [
   "K.........\".\".#...======%kkkkkkkkkkkkkkkkkkkkk#,,,,D#K",
   "K.\"....\"....o\"#...==....%=====================#,,,,D#K",
   "K.............#..\"==....%=====================#,,,,,#K",
-  "K..........\"..#...==....%=====================#######K",
-  "K.\"......\"T...##########%=====================%.\".\".#K",
-  "K..\".\"...\"\".o.##kkkkkkk#%=====================%.....#K",
-  "K.......o.\"..\"##kkkkkkk#%=====================%\"....#K",
-  "K..........T\".##kkkkkkk#%=====================%..\"\".#K",
-  "K.\"o........\".##kkkkkkk+#%%%%%%%%%%#%%%%%%%%%%#.....#K",
-  "K.............##kkkkkkk#...\"...\"......\".....#########K",
-  "Ko.........\"..##kkkkkkk#..........\".........#,,,,,,##K",
-  "K.............##kkkkkkk#........\".........\".#,,,,,M##K",
-  "K.............##########.......\"...\"\".......+,,m,,M##K",
-  "K\"...\"........#...........\"...............\".#,,,,,M##K",
+  "K..........\"..#...==..==%=====================#######K",
+  "K.\"......\"T...########==%=====================%.\".\".#K",
+  "K..\".\"...\"\".o.##kkkkk#==%=====================%.....#K",
+  "K.......o.\"..\"##kkkkk#==%=====================%\"....#K",
+  "K..........T\".##kkkkk#==%=====================%..\"\".#K",
+  "K.\"o........\".##kkkkk+==#%%%%%%%%%%#%%%%%%%%%%#.....#K",
+  "K.............##kkkkk#==...\"...\"......\".....#########K",
+  "Ko.........\"..##kkkkk#==..........\".........#,,,,,,##K",
+  "K.............##kkkkk#==........\".........\".#,,,,,M##K",
+  "K.............########==.......\"...\"\".......+,,m,,M##K",
+  "K\"...\"........#.......==..\"...............\".#,,,,,M##K",
   "K...\"\"......\".#.....\"...\".....\"...\".\".......#,,,,,,##K",
   "K.............#....\"\"........\".............\"#########K",
   "K.\"...........#######################################K",
@@ -251,9 +260,9 @@ const CT_OBJS: ObjSpawn[] = [
   { kind: "rug", at: [35, 9], tint: "#5a3a4a" },
   { kind: "desk", at: [17, 30], name: "Cantor's desk", inv: [{ id: "clarity", n: 1 }, { id: "scrip", n: 150 }] },
   { kind: "bookcase", at: [16, 33], name: "hymnals" },
-  { kind: "bed", at: [21, 29], tint: "#8a3a4a" },
-  { kind: "cabinet", at: [21, 35], name: "Cantor's cabinet", locked: 55, inv: [{ id: "laserRifle" }, { id: "cell", n: 40 }, { id: "superHypo", n: 1 }] },
-  { kind: "altar", at: [19, 32], name: "small altar" },
+  { kind: "bed", at: [20, 29], tint: "#8a3a4a" },
+  { kind: "cabinet", at: [20, 35], name: "Cantor's cabinet", locked: 55, inv: [{ id: "laserRifle" }, { id: "cell", n: 40 }, { id: "superHypo", n: 1 }] },
+  { kind: "altar", at: [18, 32], name: "small altar" },
   { kind: "door", at: [44, 36], id: "ct_shedDoor", name: "service shed door", locked: 45 },
   { kind: "manhole", at: [49, 34], name: "service shaft" },
   { kind: "generator", at: [47, 38], name: "relay generator" },
@@ -926,6 +935,7 @@ defineEndings([
       let t: string;
       if (c.flag('ct_lowIntSilence')) t = 'The Shepherd had spent a century wondering whether anyone could end his song. In the end it was someone who did not understand it at all: a single hard pull on a red cable, and a hundred years of the Hymn went out like a candle.';
       else if (c.flag('ct_shepherdSilenced')) t = 'When the Hymn stopped, Aurelio Vance stopped with it. He had made the transmitter his mind, and there was nothing left in the grey body to hold it together. The lens above the dome still gathers the sea light, and pilgrims say the silence under it is the deepest in the Basin.';
+      else if (c.flag('ct_ashgraveTurned') && c.flag('ct_ashgraveDead')) t = 'Aurelio Vance was struck down by his own best note. Ashgrave turned on the throne and died doing it, and the Shepherd died arguing with him, which his old committee would have found very funny. The Grafted buried their lieutenant on the cliff top, under a cairn of broken glass.';
       else if (c.flag('ct_ashgraveTurned')) t = 'Aurelio Vance was struck down by his own best note. Ashgrave\'s hammer broke the throne, and the Shepherd died arguing, which his old committee would have found very funny.';
       else t = 'The Shepherd died under his lens, still trying to explain. For weeks afterward the transmitter whined out his final chord, one note with no end, until the generators ran dry.';
       if (c.flag('ct_cantorTurned') && !c.flag('ct_cantorDead')) t += ' Cantor Idris Moll walked the Choir down the cliff roads himself and spent the rest of his life knocking on doors in Kessler\'s shadow, asking the families of the taken to forgive him. Not all of them did.';

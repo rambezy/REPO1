@@ -185,6 +185,40 @@ async function dialogs() {
   for (const p of r.probs) log('  ', p);
 }
 
+async function reach() {
+  // Flood-fill each map from its default entrance (doors count as passable)
+  // and list floor cells that cannot be reached.
+  for (const id of ['kessler', 'kessler_labs', 'cathedral', 'cathedral_dome']) {
+    await ev((id) => DF.enterMap(id), id);
+    await wait(300);
+    const r = await ev(async () => {
+      const m = G.map;
+      const hex = await import('/src/core/hex.ts');
+      const p = G.state.player;
+      const seen = new Set([p.q + ',' + p.r]);
+      const q = [{ q: p.q, r: p.r }];
+      while (q.length) {
+        const c = q.pop();
+        for (const n of hex.neighbors(c)) {
+          const k = n.q + ',' + n.r;
+          if (seen.has(k) || !m.walkable(n.q, n.r, { ignoreDoors: true })) continue;
+          if (m.objects.some((o) => o.q === n.q && o.r === n.r && ['door', 'gate'].includes(o.kind) && !o.hidden)) { seen.add(k); q.push(n); continue; }
+          seen.add(k); q.push(n);
+        }
+      }
+      // locked doors/gates are walkable only via ignoreDoors when unlocked; treat all as passable
+      const bad = [];
+      for (let r = 0; r < m.h; r++) for (let qq = 0; qq < m.w; qq++) {
+        if (m.walkable(qq, r, { ignoreDoors: true }) && !seen.has(qq + ',' + r)) bad.push(qq + ',' + r);
+      }
+      const exits = [...m.exitAt.keys()].map((i) => (i % m.w) + ',' + Math.floor(i / m.w)).filter((k) => !seen.has(k));
+      const npcsStuck = m.actors.filter((a) => a !== p && !seen.has(a.q + ',' + a.r)).map((a) => a.name + '@' + a.q + ',' + a.r);
+      return { map: m.def.id, unreachable: bad.length, sample: bad.slice(0, 12), exitsUnreached: exits, npcsStuck };
+    });
+    log(JSON.stringify(r));
+  }
+}
+
 async function kessler() {
   await gearUp({ tank: true });
   await ev(() => DF.enterMap('kessler'));
@@ -280,6 +314,23 @@ async function kessler() {
   await closeAll();
 }
 
+async function surrender() {
+  await gearUp({ tank: true });
+  await ev(() => DF.enterMap('kessler'));
+  await wait(500);
+  await goTo(14, 23);
+  await shot('kf-50-gate-closed');
+  await talk('kf_gate', 'kf_gatekeeper');
+  await choose('I\'m stock');
+  await choose('Lead the way');
+  await wait(1500);
+  log(' sabel:', await dlgText());
+  await shot('kf-51-surrender');
+  await choose('Thanks');
+  await closeAll();
+  log('surrender:', JSON.stringify(await state(['kf_passage', 'kf_surrenderDone'])), await ev(() => [G.state.player.q, G.state.player.r, G.map.objects.find((o) => o.id === 'kf_penDoor').open]));
+}
+
 async function coolant() {
   await gearUp({ tank: true });
   await ev(() => { G.state.flags.kf_passage = true; });
@@ -314,7 +365,7 @@ async function cathedral() {
   await goTo(33, 23); await shot('ct-04-nave');
   await goTo(35, 9); await shot('ct-05-dorm');
   await goTo(47, 36); await shot('ct-06-shed');
-  await goTo(19, 32); await shot('ct-07-cantor-house');
+  await goTo(17, 34); await shot('ct-07-cantor-house');
   await goTo(21, 23);
   await talk('ct_cantor', 'ct_cantor');
   await shot('ct-08-cantor');
@@ -374,6 +425,8 @@ async function ashgrave() {
   await wait(600);
   log('combat:', await ev(() => !!G.combat), 'ashgrave companion:', await ev(() => G.map.actors.find((a) => a.npc === 'ct_ashgrave')?.companion));
   const r = await fightAll(60);
+  log('ASHLOG', await ev(async () => { const l = await DF.log(); return l.LOG.filter((x) => /Ashgrave/.test(x)).slice(-25).join('\n'); }));
+  log('ash state:', await ev(() => { const a = G.map.actors.find((x) => x.npc === 'ct_ashgrave'); return a && { dead: a.dead, comp: a.companion, team: a.team, hp: a.hp }; }), JSON.stringify(await state(['party:ct_ashgrave', 'ct_ashgraveDead'])));
   log('fight:', JSON.stringify(r), JSON.stringify(await state(['q:shepherd', 'ct_shepherdKilled', 'ct_ashgraveTurned', 'ct_shepherdDead', 'kf_toldGoHome'])));
   await shot('ct-22-after-fight');
   await talk('ct_ashgrave', 'ct_ashgrave');
@@ -445,8 +498,10 @@ const scen = process.argv[2] ?? 'all';
 try {
   await newGame();
   if (scen === 'dialogs' || scen === 'all') await dialogs();
+  if (scen === 'reach' || scen === 'all') await reach();
   if (scen === 'kessler' || scen === 'all') await kessler();
   if (scen === 'coolant') await coolant();
+  if (scen === 'surrender') await surrender();
   if (scen === 'cathedral' || scen === 'all') await cathedral();
   if (scen === 'ashgrave') await ashgrave();
   if (scen === 'lowint') await lowint();
