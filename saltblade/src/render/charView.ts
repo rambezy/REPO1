@@ -3,14 +3,18 @@
 import * as THREE from 'three';
 import { Char } from '../sim/char';
 import { World } from '../sim/world';
-import { makeRig, makeBones, buildBody, prostMask, buildWeapon, B, BONE_COUNT } from './charModel';
+import { makeRig, makeBones, prostMask, buildWeapon, B, BONE_COUNT } from './charModel';
+import { buildHuman } from './human';
+import { charMaterial } from './charMat';
+import type { Face } from './face';
 import { Animator, AnimIn, Stance } from './anim';
 import { buildAnimal, AnimalRig, AnimalAnimator } from './animalModel';
 import { ANIMAL } from '../content/animals';
 import { LI } from '../sim/body';
 import { ITEM } from '../content/items';
 
-const bodyMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+const bodyMat = charMaterial();
+const animalMat = new THREE.MeshLambertMaterial({ vertexColors: true });
 const weaponMat = new THREE.MeshLambertMaterial({ vertexColors: true });
 
 const ringGeo = new THREE.RingGeometry(0.55, 0.7, 28).rotateX(-Math.PI / 2);
@@ -42,8 +46,10 @@ export class CharView {
   rigKey = '';
   animal = false;
   lastSeen = 0;
+  /** this person's own material, with their face, while seen close */
+  private faceMat: THREE.MeshStandardMaterial | null = null;
 
-  constructor(public c: Char) {
+  constructor(public c: Char, public detail = 1) {
     this.ring = new THREE.Mesh(ringGeo, ringMats.sel);
     this.ring.visible = false;
     this.ring.renderOrder = 3;
@@ -52,7 +58,7 @@ export class CharView {
 
   private visKey() {
     const c = this.c;
-    return JSON.stringify([c.vis(), c.body.lost, c.body.prost]);
+    return JSON.stringify([c.vis(), c.body.lost, c.body.prost, this.detail]);
   }
 
   build() {
@@ -66,7 +72,7 @@ export class CharView {
       if (!this.mesh) {
         const r: AnimalRig = buildAnimal(ANIMAL[c.animal], c.look);
         this.bones = r.bones;
-        this.mesh = new THREE.SkinnedMesh(r.geo, bodyMat);
+        this.mesh = new THREE.SkinnedMesh(r.geo, animalMat);
         this.mesh.add(r.bones[0]);
         this.mesh.updateMatrixWorld(true);
         this.mesh.bind(new THREE.Skeleton(r.bones));
@@ -79,12 +85,16 @@ export class CharView {
     }
     const rig = makeRig(c.look);
     const rigKey = JSON.stringify(c.look);
-    const geo = buildBody(c.look, c.vis(), c.body.lost, rig, prostMask(c.body.prost));
+    const geo = buildHuman(c.look, c.vis(), c.body.lost, rig, prostMask(c.body.prost), this.detail);
+    this.faceMat?.dispose();
+    const face = geo.userData.face as Face | null;
+    this.faceMat = face ? charMaterial(face) : null;
+    const mat = this.faceMat ?? bodyMat;
     if (!this.mesh || rigKey !== this.rigKey) {
       if (this.mesh) { this.root.remove(this.mesh); this.mesh.geometry.dispose(); }
       this.rigKey = rigKey;
       this.bones = makeBones(rig);
-      this.mesh = new THREE.SkinnedMesh(geo, bodyMat);
+      this.mesh = new THREE.SkinnedMesh(geo, mat);
       this.mesh.add(this.bones[0]);
       this.mesh.updateMatrixWorld(true);
       this.mesh.bind(new THREE.Skeleton(this.bones));
@@ -96,6 +106,7 @@ export class CharView {
     } else {
       this.mesh.geometry.dispose();
       this.mesh.geometry = geo;
+      this.mesh.material = mat;
     }
   }
 
@@ -205,6 +216,7 @@ export class CharView {
 
   dispose() {
     this.mesh.geometry.dispose();
+    this.faceMat?.dispose();
     this.root.removeFromParent();
     this.ring.removeFromParent();
   }
@@ -215,35 +227,48 @@ export class CharViews {
   rings = new THREE.Group();
   views = new Map<number, CharView>();
   range = 420;
+  /** At most this many bodies built a frame, and no more once this many milliseconds have gone on it. */
   buildBudget = 6;
+  buildMs = 7;
+  /** Within this distance of the camera people get the detailed body (a little further before they lose it). */
+  nearLod = 42;
+  private want: { c: Char; d: number; v?: CharView }[] = [];
 
   update(dt: number, W: World, cam: THREE.Vector3, focus: THREE.Vector3, sel: Set<number>, hover: number) {
-    let built = 0;
-    const r2 = this.range * this.range;
+    const r2 = this.range * this.range, near2 = this.nearLod * this.nearLod;
     const seen = new Set<number>();
+    const want = this.want;
+    want.length = 0;
     for (const c of W.active) {
       const dx = c.x - focus.x, dz = c.z - focus.z;
       const inRange = dx * dx + dz * dz < r2 || c.faction === 'player';
       if (!inRange) continue;
-      let v = this.views.get(c.id);
-      if (!v) {
-        if (built >= this.buildBudget) continue;
-        built++;
-        v = new CharView(c);
+      const v = this.views.get(c.id);
+      const cd2 = (c.x - cam.x) ** 2 + (c.y - cam.y) ** 2 + (c.z - cam.z) ** 2;
+      if (!v) { want.push({ c, d: cd2 }); continue; }
+      seen.add(c.id);
+      // swap between the detailed and the light body as the camera comes and goes
+      if (!c.animal && (cd2 < (v.detail ? near2 * 1.69 : near2) ? 1 : 0) !== v.detail) want.push({ c, d: cd2, v });
+      this.tick(v, dt, W, sel, hover);
+    }
+    // new bodies first, nearest the camera first, then the detail swaps
+    if (want.length) {
+      want.sort((a, b) => (a.v ? 1 : 0) - (b.v ? 1 : 0) || a.d - b.d);
+      const t0 = performance.now();
+      for (let i = 0; i < want.length && i < this.buildBudget; i++) {
+        if (i > 0 && performance.now() - t0 > this.buildMs) break;
+        const { c, d } = want[i];
+        let v = want[i].v;
+        if (v) { v.detail = v.detail ? 0 : 1; v.build(); continue; }
+        v = new CharView(c, c.animal || d < near2 ? 1 : 0);
         this.views.set(c.id, v);
         this.group.add(v.root);
         this.rings.add(v.ring);
         c.view = v;
+        seen.add(c.id);
+        this.tick(v, dt, W, sel, hover);
       }
-      seen.add(c.id);
-      v.update(dt, W);
-      const ring = sel.has(c.id) ? 'sel' : hover === c.id ? 'hover' : 'none';
-      v.setRing(ring);
-      if (v.ring.visible) {
-        const s = c.animal ? ANIMAL[c.animal].size * 1.1 : c.look.bulk;
-        v.ring.scale.setScalar(s);
-        v.ring.position.set(c.x, c.y + 0.06, c.z);
-      }
+      want.length = 0;
     }
     for (const [id, v] of this.views) {
       if (!seen.has(id)) {
@@ -251,6 +276,17 @@ export class CharViews {
         this.views.delete(id);
         v.c.view = null;
       }
+    }
+  }
+
+  private tick(v: CharView, dt: number, W: World, sel: Set<number>, hover: number) {
+    const c = v.c;
+    v.update(dt, W);
+    v.setRing(sel.has(c.id) ? 'sel' : hover === c.id ? 'hover' : 'none');
+    if (v.ring.visible) {
+      const s = c.animal ? ANIMAL[c.animal].size * 1.1 : c.look.bulk;
+      v.ring.scale.setScalar(s);
+      v.ring.position.set(c.x, c.y + 0.06, c.z);
     }
   }
 

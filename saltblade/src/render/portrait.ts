@@ -1,7 +1,9 @@
 // Head-and-shoulders portraits rendered from the same procedural models.
 import * as THREE from 'three';
 import { Char } from '../sim/char';
-import { makeRig, makeBones, buildBody, prostMask, B } from './charModel';
+import { makeRig, makeBones, prostMask, B } from './charModel';
+import { buildHuman } from './human';
+import { charMaterial } from './charMat';
 import { buildAnimal } from './animalModel';
 import { ANIMAL } from '../content/animals';
 
@@ -9,6 +11,8 @@ let renderer: THREE.WebGLRenderer | null = null;
 let scene: THREE.Scene, cam: THREE.PerspectiveCamera;
 const cache = new Map<string, string>();
 const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+const bodyMat = charMaterial();
+let faceMat: THREE.MeshStandardMaterial | null = null;
 const SIZE = 112;
 
 function setup() {
@@ -53,7 +57,10 @@ export function portrait(c: Char): string {
     } else {
       const rig = makeRig(c.look);
       const bones = makeBones(rig);
-      mesh = new THREE.SkinnedMesh(buildBody(c.look, c.vis(), c.body.lost, rig, prostMask(c.body.prost)), mat);
+      const geo = buildHuman(c.look, c.vis(), c.body.lost, rig, prostMask(c.body.prost), 1);
+      faceMat?.dispose();
+      faceMat = geo.userData.face ? charMaterial(geo.userData.face) : null;
+      mesh = new THREE.SkinnedMesh(geo, faceMat ?? bodyMat);
       mesh.add(bones[0]);
       mesh.updateMatrixWorld(true);
       mesh.bind(new THREE.Skeleton(bones));

@@ -82,6 +82,48 @@ export function attachDebug() {
     raid() { const b = playerBase(); if (!b) return 'no base'; spawnRaid(b.x, b.z, b.n); return b; },
     load: (slot = '1') => loadSlot(slot),
     chat() { chatNow(); return true; },
+    /**
+     * Stands a row of people in front of the camera to look at their models:
+     * each entry is 'race' or 'race:loadout' (add '/f' for a woman).
+     */
+    async lineup(list: string[] = ['valefolk:drifters_wanderer', 'duneborn:merc/f', 'karuk:karuk_guard', 'thrum_worker:thrum_resident', 'hollow:hollows_guard', 'valefolk:concord_guard', 'valefolk:ember_guard/f'], dist = 3.2, pitch = 0.12) {
+      const { makePerson } = await import('./sim/spawn');
+      const { Squad } = await import('./sim/squad');
+      const { RNG } = await import('./core/rng');
+      const W = G.W as any;
+      const p = W.playerChars()[0];
+      const sq = new Squad(); sq.faction = 'drifters'; sq.kind = 'town'; sq.name = 'Lineup'; W.addSquad(sq);
+      const rng = new RNG(4242);
+      const out: string[] = [];
+      list.forEach((spec, i) => {
+        const [rl, fem] = spec.split('/');
+        const [race, loadout] = rl.split(':');
+        const c: any = makePerson(W, { faction: 'drifters', role: 'guard', race, loadout, female: fem === 'f' } as any, rng);
+        W.moveToSquad(c, sq);
+        c.x = p.x + (i - (list.length - 1) / 2) * 0.95; c.z = p.z - 6; c.y = G.T.heightAt(c.x, c.z);
+        c.homeX = c.x; c.homeZ = c.z; c.dir = c.homeDir = 0; c.mem.lineup = true;
+        out.push(c.name + ' ' + race);
+      });
+      G.cam.follow = null;
+      G.cam.lookAt(p.x, p.z - 6, dist); G.cam.dist = dist; G.cam.target.x = p.x; G.cam.target.z = p.z - 6;
+      G.cam.yaw = G.cam.wantYaw = 0; G.cam.pitch = G.cam.wantPitch = pitch;
+      p.x += 3; p.z -= 12;
+      return out;
+    },
+    /** Looks at the i-th person of the lineup from `dist` metres at height h, turned by yaw (no argument: back to the game camera). */
+    closeup(i?: number, dist = 1.1, h = 1.55, yaw = 0) {
+      const cam = G.cam as any;
+      if (i === undefined) { delete cam.apply; return true; }
+      const c: any = [...G.W.chars.values()].filter((c: any) => c.mem.lineup)[i];
+      if (!c) return false;
+      cam.apply = (pc: any) => {
+        pc.position.set(c.x + Math.sin(yaw) * dist, c.y + h, c.z + Math.cos(yaw) * dist);
+        pc.lookAt(c.x, c.y + h - 0.03, c.z);
+        if (pc.near !== 0.05) { pc.near = 0.05; pc.updateProjectionMatrix(); }
+      };
+      cam.target.x = c.x; cam.target.z = c.z;
+      return c.name + ' ' + c.race;
+    },
     /** Sends bounty hunters after the first of your people with a price on their head. */
     hunt() { const c = G.W.playerChars().find((p: any) => Object.values(p.bounty).some((v: any) => v > 0)); if (!c) return 'nobody is wanted'; const f = Object.keys(c.bounty).find((k) => c.bounty[k] > 0)!; const sq = dispatchHunters(c, f); return sq ? { name: sq.name, n: sq.members.length, d: Math.round(Math.hypot(sq.x - c.x, sq.z - c.z)) } : 'no start'; },
     saveSize() { const j = JSON.stringify(snapshot()); return j.length; },
