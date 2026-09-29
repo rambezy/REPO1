@@ -20,6 +20,7 @@ const AP: Record<string, [number, number][]> = {
   armorer: [[44, 21]],
   armoryDoor: [[31, 21]],
   barracksShelf: [[15, 18]],
+  barrel: [[16, 27], [32, 27], [47, 27]],
   bedroll: [[9, 31], [12, 34]],
   bench: [[29, 20]],
   blastDoor: [[24, 25]],
@@ -46,6 +47,7 @@ const AP: Record<string, [number, number][]> = {
   partsShelf: [[19, 6]],
   petitioner: [[30, 34]],
   petitioner2: [[11, 31]],
+  pile: [[36, 37], [42, 32]],
   pipe: [[27, 2], [28, 2]],
   rack: [[34, 18], [37, 18], [40, 18], [43, 18]],
   readTable: [[11, 10], [11, 14]],
@@ -59,6 +61,7 @@ const AP: Record<string, [number, number][]> = {
   sign: [[33, 28]],
   signalDoor: [[24, 8]],
   statue: [[21, 15], [27, 15]],
+  tank: [[45, 30]],
   tent: [[13, 36], [6, 31]],
   tomas: [[40, 7]],
   truck: [[38, 34]],
@@ -239,7 +242,7 @@ defineMap({
   entrances: { default: ap('ent'), gate: ap('entGate') },
   exits: { out: { to: 'world' } },
   objects: [
-    { kind: 'hatch', at: ap('blastDoor'), id: 'ar_blastDoor', name: 'blast door', locked: 95, onUse: 'ar_blastdoor', desc: 'the Archive\'s blast door: a slab of scarred steel on hydraulic rams, an open book stencilled across it in faded red' },
+    { kind: 'gate', at: ap('blastDoor'), id: 'ar_blastDoor', name: 'blast gate', locked: 95, onUse: 'ar_blastdoor', desc: 'the Archive\'s blast gate: a grille of steel bars on hydraulic rams, an open book welded into its centre in rusted iron' },
     { kind: 'door', at: ap('armoryDoor'), id: 'ar_armoryDoor', name: 'armory door', locked: 95, key: 'ar_signet', onUse: 'ar_guarded', desc: 'a vault door with a magnetic signet plate. ARMORY - INITIATES ONLY' },
     { kind: 'door', at: ap('signalDoor'), id: 'ar_signalDoor', name: 'signal room door', locked: 80, key: 'ar_signet', onUse: 'ar_guarded', desc: 'a steel door with a signet plate and a hand-painted lightning bolt' },
     // yard
@@ -253,6 +256,9 @@ defineMap({
     { kind: 'campfire', at: ap('campfire') },
     ...props('tent', { kind: 'tent', tint: '#7a6a4a' }),
     ...props('bedroll', { kind: 'bedroll' }),
+    ...props('barrel', { kind: 'barrel', tint: '#4a5a4a' }),
+    ...props('pile', { kind: 'pile', name: 'scrap heap', inv: [{ id: 'scrapMetal', n: 1 }] }),
+    { kind: 'tank', at: ap('tank'), name: 'water tower', tint: '#6a6a60' },
     // vestibule
     ...props('vestLocker', { kind: 'locker', name: 'sentinel locker', locked: 50, inv: [{ id: 'cell', n: 12 }] }),
     ...props('lampIn', { kind: 'lamp' }),
@@ -314,7 +320,7 @@ defineMap({
       inv: [{ id: 'jerky', n: 6 }, { id: 'water', n: 4 }, { id: 'curePaste', n: 4 }, { id: 'ammo9', n: 30 }, { id: 'flare', n: 3 }, { id: 'scrip', n: 160 }] },
   ],
   onEnter: (c: Ctx, first: boolean) => {
-    if (first) c.msg('A squat concrete bunker squats in the hillside behind a fence and a chicane of sandbags. Two armored figures stand before a blast door painted with an open book. A few tents huddle around a campfire in the yard: petitioners, waiting.');
+    if (first) c.msg('A concrete bunker squats in the hillside behind a fence and a chicane of sandbags. Two armored figures stand before a barred blast gate with an open book welded into its centre. A few tents huddle around a campfire in the yard: petitioners, waiting.');
     if (c.flag('ar_admitted') || isInitiate(c)) {
       const o = c.obj('ar_blastDoor');
       if (o) o.locked = 0;
@@ -359,7 +365,7 @@ defineObjScripts({
       }
       return false;
     }
-    c.msg('The blast door is a slab of steel on hydraulic rams. There is no handle on this side. A Sentinel watches you touch it with polite, total hostility.');
+    c.msg('The blast gate is a grille of steel bars on hydraulic rams. There is no handle or keyhole on this side. A Sentinel watches you touch it with polite, total hostility.');
     return true;
   },
   ar_guarded: (c, o, _u, skill) => {
@@ -502,17 +508,17 @@ defineDialogues([
       },
       letter: {
         onEnter: (c) => admit(c, 'letter'),
-        text: 'He reads the Warden\'s letter twice, then looks at your jumpsuit, then at the letter again. "A sealed shelter. Still sealed, until you." Something shifts behind the visor. "The Commander will want to see you. She has a standing order about shelter folk."\n\nHe raps on the blast door. Somewhere inside, rams groan, and the door grinds open.',
+        text: 'He reads the Warden\'s letter twice, then looks at your jumpsuit, then at the letter again. "A sealed shelter. Still sealed, until you." Something shifts behind the visor. "The Commander will want to see you. She has a standing order about shelter folk."\n\nHe raps on the bars. Somewhere inside, rams groan, and the blast gate grinds open.',
         options: [{ text: 'Thank you.', end: true }],
       },
       spindle: {
         onEnter: (c) => admit(c, 'spindle'),
-        text: '"Show me." He turns the spindle in his gauntlet and a thread of light runs through the glass. "Vault B." He looks at you differently. "Inside. The Commander is in the Hall of Record, straight ahead."\n\nThe blast door grinds open.',
+        text: '"Show me." He turns the spindle in his gauntlet and a thread of light runs through the glass. "Vault B." He looks at you differently. "Inside. The Commander is in the Hall of Record, straight ahead."\n\nThe blast gate grinds open.',
         options: [{ text: 'Thanks.', end: true }, { text: 'Yay! Door open!', lowInt: true, end: true }],
       },
       logs: {
         onEnter: (c) => admit(c, 'logs'),
-        text: '"Shelter 7." He is silent for a moment. "We spoke to them, over the old intercom line. Their Warden turned us down." He hands the tape back. "The Commander will want to hear this herself. Inside."\n\nThe blast door grinds open.',
+        text: '"Shelter 7." He is silent for a moment. "We spoke to them, over the old intercom line. Their Warden turned us down." He hands the tape back. "The Commander will want to hear this herself. Inside."\n\nThe blast gate grinds open.',
         options: [{ text: 'Thank you.', end: true }],
       },
       rams: {
@@ -526,7 +532,7 @@ defineDialogues([
       },
       talked: {
         onEnter: (c) => admit(c, 'speech'),
-        text: 'The Sentinel regards you for a long moment. Then he sighs, and it sounds almost human. "Eleven years I\'ve stood here, and nobody has asked nicely." He keys his radio and mutters. "One visitor. Hall of Record only. Touch nothing."\n\nThe blast door grinds open.',
+        text: 'The Sentinel regards you for a long moment. Then he sighs, and it sounds almost human. "Eleven years I\'ve stood here, and nobody has asked nicely." He keys his radio and mutters. "One visitor. Hall of Record only. Touch nothing."\n\nThe blast gate grinds open.',
         options: [{ text: 'Thank you.', end: true }],
       },
       talkedNo: {
@@ -553,7 +559,7 @@ defineDialogues([
     start: (c) => {
       if (!c.flag('ar_metVarga')) return 'hello';
       if (c.has('dataSpindle') && !isInitiate(c)) return 'spindle';
-      if (c.flag('ar_relayFixed') && c.questState('ar_relay') === 'active' && c.flag('ar_hymnDecoded')) return 'relayDone';
+      if (c.flag('ar_relayFixed') && c.questState('ar_relay') === 'active' && (c.flag('ar_hymnDecoded') || c.flag('dead:ar_ada'))) return 'relayDone';
       return 'again';
     },
     nodes: {
@@ -999,7 +1005,7 @@ defineEndings([
     scene: 'years',
     text: (c) => {
       const parts: string[] = [];
-      if (c.flag('dead:ar_varga') || c.flag('ar_attacked')) {
+      if (c.flag('dead:ar_varga') || c.flag('ar_attacked') || c.flag('hostile:archive:keepers')) {
         parts.push(c.flag('dead:ar_varga')
           ? 'With Scribe-Commander Varga dead, the Keepers sealed their blast door and never opened it again. What they knew died with them, one volume at a time.'
           : 'After the stranger turned on them, the Keepers of the Archive sealed their blast door for good. Petitioners camped in the yard for years, and then stopped coming.');

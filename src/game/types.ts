@@ -92,6 +92,7 @@ export interface MapObject {
   tint?: string;
   facing?: number;
   light?: number;
+  label?: string; // text painted on hatches
 }
 
 export interface GroundItem {
@@ -155,6 +156,7 @@ export interface ObjSpawn {
   blocks?: boolean;
   tint?: string;
   facing?: number;
+  label?: string;
   if?: (c: Ctx) => boolean;
 }
 

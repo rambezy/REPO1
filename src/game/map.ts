@@ -368,6 +368,7 @@ export function loadMap(id: string): MapRuntime {
         blocks: o.blocks ?? !FLAT_KINDS.has(o.kind),
         tint: o.tint,
         facing: o.facing,
+        label: o.label,
         open: isDoor ? false : undefined,
         vertical: isDoor ? doorOrientation(m, p.q, p.r) : undefined,
       });

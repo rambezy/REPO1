@@ -185,7 +185,7 @@ try {
     await resetCamera();
     // Walk from the road into the concourse.
     await ev(async () => { const i = await DF.interact(); i.walkTo(28, 16); });
-    await wait(6000);
+    await wait(12000);
     const pos = await ev(() => [G.state.player.q, G.state.player.r, !!G.combat]);
     check(Math.abs(pos[0] - 28) + Math.abs(pos[1] - 16) <= 2, `walked into the concourse (${pos})`);
     await shot('cr-08-walked');
@@ -238,6 +238,26 @@ try {
       return G.map.def.id;
     });
     check(mh === 'shelter7', 'storm drain leads into Shelter 7');
+  }
+
+  if (scen === 'emerge') {
+    await enter('calder');
+    await enter('shelter7', 'sewer');
+    await ev(async () => {
+      const reg = await import('/src/content/registry.ts');
+      const c = (await import('/src/game/script.ts')).ctx();
+      reg.OBJ_SCRIPTS.s7_door(c, G.map.objects.find((o) => o.id === 's7_door'), G.state.player);
+      const cb = await DF.combat();
+      for (const a of G.map.actors) if (a.hostile) a.dead = true;
+      if (G.combat) cb.endCombat();
+      const t = await DF.travel();
+      t.takeExit('door');
+    });
+    await wait(1500);
+    const txt = await ev(() => document.querySelector('.dlg .reply')?.innerText ?? '(none)');
+    await shot('cr-30-emerge');
+    check(txt.includes('Sleeper'), 'the Sealed see a Sleeper step out of the Door: ' + txt.slice(0, 60));
+    check(await ev(() => G.map.objects.find((o) => o.id === 'cr_greatDoor').open), 'Door open on the Calder side');
   }
 
   if (scen === 'all' || scen === 'shelter7') {
@@ -299,7 +319,7 @@ try {
     await talk('ar_gate', 'ar_gate0', [3]);
     check(await ev(() => !!G.state.flags.ar_admitted && G.map.objects.find((o) => o.id === 'ar_blastDoor').open), 'Warden\'s letter opens the blast door');
     await ev(async () => { const i = await DF.interact(); i.walkTo(24, 13); });
-    await wait(6000);
+    await wait(12000);
     const pos = await ev(() => [G.state.player.q, G.state.player.r]);
     check(Math.abs(pos[0] - 24) + Math.abs(pos[1] - 13) <= 2, `walked into the Hall of Record (${pos})`);
     await shot('ar-07-hall');

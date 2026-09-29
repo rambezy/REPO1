@@ -650,7 +650,7 @@ export function drawDoor(c: CanvasRenderingContext2D, o: MapObject, x: number, y
     c.fillStyle = '#e08a2a';
     c.font = 'bold 12px monospace';
     c.textAlign = 'center';
-    c.fillText('29', 0, -h / 2 + 4);
+    c.fillText(o.label ?? '29', 0, -h / 2 + 4);
     c.strokeStyle = '#3a4044';
     c.lineWidth = 2;
     for (let i = 0; i < 8; i++) {

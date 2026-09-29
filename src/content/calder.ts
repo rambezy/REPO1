@@ -24,6 +24,7 @@ const CP: Record<string, [number, number][]> = {
   annexTable: [[47, 35], [53, 35]],
   annexTerminal: [[56, 34]],
   barkeep: [[35, 16]],
+  barrel: [[18, 17], [36, 17], [41, 13], [13, 22], [31, 21]],
   bed: [[22, 5], [24, 5]],
   bedroll: [[40, 12], [15, 12], [5, 41]],
   blood: [[24, 36], [28, 43]],
@@ -35,6 +36,7 @@ const CP: Record<string, [number, number][]> = {
   chainPost: [[15, 8]],
   chair: [[33, 14], [38, 14]],
   cot: [[21, 9]],
+  deadtree: [[33, 30], [43, 39], [34, 46], [13, 18], [57, 18], [44, 46]],
   debris: [[10, 9], [3, 14], [12, 12], [26, 6], [30, 6], [28, 7], [9, 20], [31, 27], [10, 43], [23, 41], [37, 34], [56, 36], [46, 43]],
   doctor: [[23, 7]],
   ent: [[3, 24]],
@@ -46,7 +48,7 @@ const CP: Record<string, [number, number][]> = {
   greatDoor: [[49, 3]],
   hollowAnnex: [[49, 36], [54, 37], [48, 46], [54, 43]],
   hollowMarket: [[19, 36], [27, 37], [16, 42], [23, 43], [30, 32]],
-  hollowOuter: [[47, 21], [54, 22], [56, 27], [46, 30], [52, 31]],
+  hollowOuter: [[54, 23], [57, 27], [47, 30], [52, 31], [56, 21]],
   jory: [[22, 12]],
   lampIn: [[17, 12], [21, 12], [35, 12], [39, 12], [24, 17], [32, 17]],
   lampOut: [[26, 20], [30, 20], [12, 21], [20, 27]],
@@ -64,6 +66,7 @@ const CP: Record<string, [number, number][]> = {
   officeShelf: [[40, 4]],
   officeTerminal: [[33, 4]],
   pew: [[45, 9], [46, 9], [47, 9], [51, 9], [52, 9], [53, 9], [45, 11], [46, 11], [47, 11], [51, 11], [52, 11], [53, 11], [45, 13], [46, 13], [47, 13], [51, 13], [52, 13], [53, 13]],
+  pile: [[15, 20], [38, 27], [11, 27]],
   pipe: [[27, 11]],
   priest: [[49, 7]],
   pump: [[28, 12]],
@@ -72,10 +75,12 @@ const CP: Record<string, [number, number][]> = {
   radsign: [[12, 11], [44, 20], [44, 27], [43, 30], [44, 33]],
   reliquary: [[55, 15]],
   roadGuard: [[5, 22], [5, 26]],
+  rock: [[36, 29], [41, 47], [43, 33], [56, 19]],
   rug: [[37, 8]],
   rugShrine: [[49, 10], [49, 13]],
   sandbags: [[21, 29], [22, 29], [24, 29], [25, 29]],
   scripture: [[43, 16]],
+  scrubbush: [[3, 19], [33, 43], [40, 29]],
   sealed: [[46, 6], [52, 6], [45, 15]],
   shedDoor: [[7, 10]],
   shedLocker: [[4, 9]],
@@ -279,10 +284,10 @@ defineMap({
     '##,,,,;,,,,,,,%===========================&-------------&;;#',
     '#.,,,,,,;,,,;,%===========================&-------------&;;#',
     '##;,,,,,,,,,;,%===========================&-------------&;;#',
-    '#.###;;###;,,;%===========================&&&&&&&+&&&&&&&;;#',
-    '##............%===========================%................#',
-    '#\'\'\'\'\'\'\'\'\'\'\'\'\'%%%%%%%%%%%%%===%%%%%%%%%%%%%\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'#',
-    '>..................................;..;.................;..#',
+    '#.###;;###;,,;%===========================&&&&&&&&&&&&&&&;;#',
+    '##..:."::.....%===========================%...........:.:::#',
+    '#\'\'\':\':\':\'\'\'\'\'%%%%%%%%%%%%%===%%%%%%%%%%%%%\'\'\'\'\'\'\'\'\'\'\'\'":::#',
+    '>...:::""..........................;..;...............::;.:#',
     '>.....................................;........;..........##',
     '>.;...............................;...;.;.....;..;....`....#',
     '>........................;.;..;............;..`....`...;..##',
@@ -290,27 +295,27 @@ defineMap({
     '>.......................;........................;`.......##',
     '>..;..;.;.....;................;.........................`.#',
     '>............;...;.....................................`..##',
-    '#\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'`\'\'\'\'\'\'#',
-    '##,,,,,,,,,,,......................................`.......#',
-    '#.#####;#####.#########+#########.........................##',
-    '#.#;;;;;;;;;#.#;\'\'\'\'\';\'\'\'\'\'\'\'\'\'\'#..###;####...`...........##',
-    '#.#;;;;;;;;;#.#\';\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'#..#,,,,,,#...............##',
-    '#.#;;;;;;;;;#.#\'\'\'\'\'\'\';\'\'\'\'\'\';\'\'#..#,,,,,,#..&&&;;&&&&&&&&.#',
-    '#.#;;;;;;;;;;.#\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'#..#,,,,,,#..&,,,,;,,,,,,&.#',
-    '#.#;;;;;;;;;;.#\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'#..#,,,,,,#..&,,,,,,,,,;,&.#',
-    '###;;;;;;;;;#.#\';;\'\'\'\'\'\'\'\'\'\'\'\';\'#..;,,,,,,#..;,,,,,,,,,,,&##',
+    '#\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\':::::\'\'\'\'\'\'\'\'\'\'\'\'\'`\'\'\'\'\'\'#',
+    '##,,,,,,,,,,,.....................::.:.............`.......#',
+    '#.#####;#####.#########+#########...:.:...................##',
+    '#.#;;;;;;;;;#.#;\'\'\'\'\';\'\'\'\'\'\'\'\'\'\'#::###;####...`...........##',
+    '#.#;;;;;;;;;#.#\';\'\'\'\'\'\'\'\'\'\'\'\'\'\':#..#,,,,,,#...............##',
+    '#.#;;;;;;;;;#.#\'\'\'\'\'\'\';\'\'\'\'\'\';\'"#::#,,,,,,#..&&&;;&&&&&&&&.#',
+    '#.#;;;;;;;;;;.#\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'#:.#,,,,,,#:.&,,,,;,,,,,,&.#',
+    '#.#;;;;;;;;;;.#\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'#.:#,,,,,,#:.&,,,,,,,,,;,&.#',
+    '###;;;;;;;;;#.#\';;\'\'\'\'\'\'\'\'\'\'\'\';\'#.:;,,,,,,#:.;,,,,,,,,,,,&##',
     '#.#;;;;;;;;;#.#\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'#..#,,,,,,#..;,;,,,,,,,;,&##',
-    '#.####;;#####.#\'\'\'\';\'\'\'\';\'\'\'\'\'\'\'#..#,,,,,,#..&,,,,,,,,,,,&##',
-    '###;;;;;;;;;#.#\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'#..#,,,,,,#..&&&&&+&&&&&&&.#',
-    '#.;;;;;;;;;;#.#\';\';\'\'\'\'\'\'\'\'\'\'\'\'\'#..#,,,,,,;..&,,;,,,,,,,,&.#',
-    '###;;;;;;;;;#.#\'\';\'\'\'\'\'\'\'\'\'\'\'\'\'\'#..#,,,,,,#..&,,,,,;,,,,,&##',
-    '###;;;;;;;;;#.#\'\'\'\';;\'\'\'\'\'\'\'\'\'\';#..#,,,,,,#..&,;,,,,,,,;,&.#',
+    '#.####;;#####.#\'\'\'\';\'\'\'\';\'\'\'\'\'\':#:.#,,,,,,#..&,,,,,,,,,,,&##',
+    '###;;;;;;;;;#.#\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\':#::#,,,,,,#."&&&&&+&&&&&&&.#',
+    '#.;;;;;;;;;;#.#\';\';\'\'\'\'\'\'\'\'\'\'\'\'"#..#,,,,,,;."&,,;,,,,,,,,&.#',
+    '###;;;;;;;;;#.#\'\';\'\'\'\'\'\'\'\'\'\'\'\'\'\'#..#,,,,,,#:.&,,,,,;,,,,,&##',
+    '###;;;;;;;;;#.#\'\'\'\';;\'\'\'\'\'\'\'\'\'\';#""#,,,,,,#:.&,;,,,,,,,;,&.#',
     '###;;;;;;;;;#.#\'\'\'\'\';\'\'\'\'\'\';\'\'\'\'#..#,,,,,,#..&,,,,,,,,,,,&##',
-    '###;;;;;;;;;#.#\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'#..#,,,,,,#..&,,,;,,,,,,,;.#',
-    '###;;;;;;;;;#.#\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'#..####;###..&,,,,,,,,,,,&##',
-    '########;;###.###################............&,;,,,,,,,,,&##',
-    '##,,,,,,,,,,,................................&&&&&&&&;&&&&.#',
-    '#..#..#..#...#..#####.#.#..#.#..#.##.#.#..#..###..##.###..##',
+    '###;;;;;;;;;#.#\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'\'#.:#,,,,,,#..&,,,;,,,,,,,;.#',
+    '###;;;;;;;;;#.#\':::\'\'\'\'\'\'\'\'\'\'\'\'\'#..####;###..&,,,,,,,,,,,&##',
+    '########;;###.###################::......:::.&,;,,,,,,,,,&##',
+    '##,,,,,,,,,,,"::":...::":..:..:...:.:....":."&&&&&&&&;&&&&.#',
+    '#..#..#..#..:#.:#####:#.#..#.#".#:##:#.#.:#::###..##.###..##',
     '############################################################',
     // @gen calder end
   ],
@@ -327,8 +332,8 @@ defineMap({
   objects: [
     // doors and ways down
     { kind: 'door', at: cp('shedDoor'), id: 'cr_shedDoor', name: 'service shed door', locked: 35, key: 'cr_maintKey', desc: 'a steel door with a Transit Authority padlock, newer than the door' },
-    { kind: 'hatch', at: cp('maintHatch'), id: 'cr_maintHatch', name: 'service shaft hatch', locked: 65, key: 'cr_maintKey', desc: 'a round service hatch stencilled S-7 MAINT. Someone has welded a crude bolt across it, then cut the weld' },
-    { kind: 'hatch', at: cp('greatDoor'), id: 'cr_greatDoor', name: 'the Door of Shelter 7', locked: 95, key: 'cr_sealKey', onUse: 'cr_greatdoor', desc: 'the Door: a great round slab of grey steel with a faded yellow 7, its hinges crusted with generations of candle wax' },
+    { kind: 'door', at: cp('maintHatch'), id: 'cr_maintHatch', name: 'service shaft hatch', locked: 65, key: 'cr_maintKey', desc: 'a round service hatch stencilled S-7 MAINT. Someone has welded a crude bolt across it, then cut the weld' },
+    { kind: 'door', at: cp('greatDoor'), id: 'cr_greatDoor', name: 'the Door of Shelter 7', locked: 95, key: 'cr_sealKey', onUse: 'cr_greatdoor', desc: 'the Door: a great round slab of grey steel with a faded yellow 7, its hinges crusted with generations of candle wax' },
     { kind: 'door', at: cp('marketGate'), id: 'cr_marketGate', name: 'market gate', locked: 50, key: 'cr_marketKey', desc: 'a gate of welded car doors, chained shut. Something on the other side has scratched at it' },
     { kind: 'manhole', at: cp('manhole'), id: 'cr_manhole', name: 'storm drain cover', onUse: 'cr_manhole', desc: 'a heavy storm drain cover. Water gurgles somewhere far below' },
     // concourse
@@ -369,6 +374,11 @@ defineMap({
     ...props(CP, 'car', { kind: 'car', tint: '#6a4a3a' }),
     ...props(CP, 'debris', { kind: 'debris' }),
     ...props(CP, 'radsign', { kind: 'radsign', name: 'radiation sign' }),
+    ...props(CP, 'deadtree', { kind: 'deadtree' }),
+    ...props(CP, 'rock', { kind: 'rock' }),
+    ...props(CP, 'pile', { kind: 'pile', name: 'junk pile', inv: [{ id: 'scrapMetal', n: 1 }] }),
+    ...props(CP, 'barrel', { kind: 'barrel', tint: '#5a4a3a' }),
+    ...props(CP, 'scrubbush', { kind: 'scrubbush' }),
     ...props(CP, 'sandbags', { kind: 'sandbags' }),
     ...props(CP, 'brokenStall', { kind: 'stall', tint: '#4a4238', name: 'wrecked market stall' }),
     ...props(CP, 'bones', { kind: 'bones' }),
@@ -509,7 +519,7 @@ defineMap({
   },
   rads: [{ at: sp('s7rad'), radius: 6, perMin: 2 }],
   objects: [
-    { kind: 'hatch', at: sp('greatDoor'), id: 's7_door', name: 'the great door', onUse: 's7_door', desc: 'the inside of Shelter 7\'s great door. A spoked wheel, a pressure gauge stuck at zero, and a stencil: DO NOT OPEN UNTIL ALL-CLEAR' },
+    { kind: 'door', at: sp('greatDoor'), id: 's7_door', name: 'the great door', onUse: 's7_door', desc: 'the inside of Shelter 7\'s great door. A spoked wheel, a pressure gauge stuck at zero, and a stencil: DO NOT OPEN UNTIL ALL-CLEAR' },
     { kind: 'door', at: sp('chamberDoor'), id: 's7_chamberDoor', name: 'water chamber door', locked: 60, key: 'cr_s7card', desc: 'a pressure door marked WATER CHAMBER - AUTHORISED ONLY, with a card slot' },
     { kind: 'terminal', at: sp('wardenTerminal'), id: 's7_wardenTerm', name: 'Warden\'s terminal', onUse: 's7_warden' },
     { kind: 'terminal', at: sp('residentTerminal'), id: 's7_resTerm', name: 'residents\' message board', onUse: 's7_residents' },
@@ -822,6 +832,8 @@ defineDialogues([
         text: 'Tamsin Hale sits behind a desk that used to be a ticket-booth counter. Her face is a map of old burns healed into ridges, but her eyes are brown, sharp and very much alive.\n\n"Teal and orange. A shelter suit." She says it the way other people say *snake*. "Haven\'t seen one of those since the day the Door shut on us. I\'m Tamsin Hale. I keep this station running, which mostly means I keep people from killing each other over water. What do you want, smoothskin?"',
         options: [
           { text: 'I\'m looking for Shelter 7. I need its hydro-core.', to: 'shelter7' },
+          { text: 'I got your pump running, by the way.', if: (c) => !!c.flag('cr_pumpFixed') && c.questState('cr_pump') === 'active', to: 'pumpDone' },
+          { text: 'I cleared the Hollow Ones out of your market, by the way.', if: (c) => !!c.flag('cr_marketCleared') && c.questState('cr_market') === 'active', to: 'marketDone' },
           { text: 'What is this place?', to: 'place' },
           { text: '"Smoothskin"?', to: 'smooth' },
           { text: 'Me need water machine. It under here?', lowInt: true, to: 'dumb' },
@@ -1563,12 +1575,18 @@ defineDialogues([
         options: [
           { text: 'Tamsin sent me to clear it. Open the gate.', if: (c) => !c.flag('cr_marketCleared') && c.questState('cr_market') === 'active' && !c.flag('cr_gateOpened'), to: 'open' },
           { text: 'Me hit bitey people. Open!', lowInt: true, if: (c) => !c.flag('cr_marketCleared') && !c.flag('cr_gateOpened'), to: 'open' },
+          { text: 'I can clear it out for you. Open up.', if: (c) => !c.flag('cr_marketCleared') && c.questState('cr_market') !== 'active' && !c.flag('cr_gateOpened'), skill: { key: 'speech', diff: 20 }, to: 'open', fail: 'no' },
           { text: 'Goodbye.', end: true },
         ],
+      },
+      no: {
+        text: '"Tamsin says who goes in. Talk to her." He goes back to watching the gate.',
+        options: [{ text: 'Fine.', end: true }],
       },
       open: {
         onEnter: (c) => {
           c.set('cr_gateOpened');
+          if (c.questState('cr_market') === 'none') c.quest('cr_market', 'Hask opened the gate to the old market. It\'s full of Hollow Ones.');
           const o = c.obj('cr_marketGate');
           if (o) o.locked = 0;
           c.give('cr_marketKey');
@@ -1623,14 +1641,15 @@ defineEndings([
     scene: 'city',
     text: (c) => {
       const parts: string[] = [];
-      if (c.flag('dead:cr_tamsin')) parts.push('With Tamsin Hale dead, the Withered of Calder quarrelled over water until there was not enough left to quarrel over, and scattered into the ruins.');
+      if (c.flag('hostile:calder:calder') && !c.flag('dead:cr_tamsin')) parts.push('The Withered of Calder never forgot the smoothskin who turned their concourse into a battlefield. For a generation afterward, no one in a shelter suit was allowed past the road watch.');
+      else if (c.flag('dead:cr_tamsin')) parts.push('With Tamsin Hale dead, the Withered of Calder quarrelled over water until there was not enough left to quarrel over, and scattered into the ruins.');
       else if (c.flag('cr_s7Offered') && (c.flag('cr_pumpFixed') || c.flag('cr_marketCleared'))) parts.push('Tamsin Hale moved her people into the empty halls of Shelter 7. Children, the first born in Calder in sixty years, grew up behind its thick walls, and learned to call nobody a smoothskin.');
       else if (c.flag('cr_s7Offered')) parts.push('Tamsin Hale led the Withered down into the empty shelter, out of the Glow. The Door that had once shut them out became the door to their home.');
       else if (c.flag('cr_pumpFixed') && c.flag('cr_marketCleared')) parts.push('With the pump running and the old market green with mushrooms, Calder\'s concourse became a real town again. Tamsin Hale kept the water ledger until she was a hundred and ten.');
       else if (c.flag('cr_pumpFixed')) parts.push('The concourse pump kept thumping for thirty years. Tamsin Hale never lost another hauler to the Glow.');
       else if (c.flag('cr_marketCleared')) parts.push('The old market bloomed with cave caps. One variety, particularly pale and stubborn, was named after a stranger in a shelter suit.');
       else parts.push('The Withered of Calder endured, as they always had: long lives, thin water, and short tempers with smoothskins.');
-      if (c.flag('cr_priorDead') || (c.flag('cr_sealedAttacked') && !c.flag('cr_sealedTurned'))) parts.push('The shrine of the Sealed stood silent, its candles cold, a Door with no one left to keep it.');
+      if (c.flag('cr_priorDead') || ((c.flag('cr_sealedAttacked') || c.flag('hostile:calder:sealed')) && !c.flag('cr_sealedTurned'))) parts.push('The shrine of the Sealed stood silent, its candles cold, a Door with no one left to keep it.');
       else if (c.flag('cr_sealedTurned')) parts.push('The Sealed laid down their spears and became keepers of Calder\'s water, as devoted to the pump as they had been to the Door.');
       else if (c.flag('cr_sealedFreed')) parts.push('The Sealed walked out into the "clean world" their Sleeper had promised them. Many died. The rest founded a singing, stubborn village on the dry lakes, and swore they had seen a Sleeper with their own eyes.');
       else if (c.flag('cr_sealedLie')) parts.push('The Sealed kept their vigil over an empty shelter until the last of them died, content, believing the Sleepers dreamed on below.');
