@@ -13,14 +13,18 @@ export type JobHandler = (c: Char, job: Job, o: WObj, dt: number, think: boolean
 
 export const JOB_HANDLERS: Partial<Record<Job['k'], JobHandler>> = {};
 
+/** What people do at a job, which holds them in place while it lasts. */
+const WORK_ACTS = new Set(['mine', 'build', 'craft', 'farm', 'research']);
+
 export function walkTo(c: Char, x: number, z: number, r = 1.8) {
   if (near(c, x, z, r)) { stop(c); return true; }
+  if (c.act && WORK_ACTS.has(c.act)) c.act = null; // put the tools down to walk
   goTo(c, x, z);
   c.move = c.move === 'sneak' ? 'sneak' : 'run';
   return false;
 }
 
-/** Deposits an item type into storage near a point; returns true if stored anything. */
+/** Storage near someone with room for an item: a store meant for it before a general one. */
 export function storeNear(c: Char, id: string): WObj | null {
   let best: WObj | null = null, bd = 220;
   for (const o of S.W.objs.values()) {
@@ -29,33 +33,41 @@ export function storeNear(c: Char, id: string): WObj | null {
     const accepts = o.data?.accepts as string[] | undefined;
     if (accepts && !accepts.includes(id) && !accepts.includes(ITEM[id].cat)) continue;
     if (!o.inv.findSpot(ITEM[id]) && !o.inv.items.some((i) => i.id === id && i.n < ITEM[id].stack)) continue;
-    const d = Math.hypot(o.x - c.x, o.z - c.z);
+    const d = Math.hypot(o.x - c.x, o.z - c.z) + (accepts ? 0 : 40);
     if (d < bd) { bd = d; best = o; }
   }
   return best;
 }
+
+/** Miners carry this much ore to storage at a time. */
+const HAUL_AT = 20;
 
 JOB_HANDLERS.mine = (c, job, o, dt, think) => {
   if (o.kind !== 'ore') return 'skip';
   if ((o.data?.left ?? 1) <= 0) return 'done';
   const oreId = o.def === 'iron' ? 'iron_ore' : o.def === 'copper' ? 'copper_ore' : 'stone';
   const def = ITEM[oreId];
-  // full: haul it
+  // a load's worth: haul it to storage; with nowhere to put it, dig on until the pack is full.
+  // (only what was dug here: ore fetched for a machine is not the miner's to put away)
+  const dug = Math.min(c.brain.dug ?? 0, c.inv.count(oreId));
   const room = !!c.inv.findSpot(def) || c.inv.items.some((i) => i.id === oreId && i.n < def.stack);
-  if (!room || c.brain.hauling) {
+  const full = !room || (dug > 0 && c.load() > 0.85); // (heavy gear alone does not stop a miner starting)
+  if (full || dug >= HAUL_AT || c.brain.hauling) {
     c.brain.hauling = true;
-    const st = storeNear(c, oreId);
-    if (!st) {
+    const st = dug > 0 ? storeNear(c, oreId) : null;
+    if (st) {
+      if (!walkTo(c, st.x, st.z, 2.2)) return 'work';
+      const moved = dug - st.inv!.add(oreId, dug);
+      c.inv.take(oreId, moved);
+      c.brain.dug = dug - moved;
       c.brain.hauling = false;
+      return 'work';
+    }
+    c.brain.hauling = false;
+    if (full) {
       if (think && !c.mem.fullWarned) { S.fx.notice(`${c.name}'s pockets are full of ore. Build storage, or sell it.`); c.mem.fullWarned = true; }
       return 'skip';
     }
-    if (!walkTo(c, st.x, st.z, 2.2)) return 'work';
-    const n = c.inv.count(oreId);
-    const moved = n - st.inv!.add(oreId, n);
-    c.inv.take(oreId, moved);
-    c.brain.hauling = false;
-    return 'work';
   }
   c.mem.fullWarned = false;
   if (!walkTo(c, o.x, o.z, 1.9)) return 'work';
@@ -65,7 +77,7 @@ JOB_HANDLERS.mine = (c, job, o, dt, think) => {
   c.brain.mineT = (c.brain.mineT ?? 0) + dt * (0.35 + c.skill('labouring') * 0.012 + c.skill('strength') * 0.004);
   if (c.brain.mineT >= 6) {
     c.brain.mineT = 0;
-    c.inv.add(oreId, 1);
+    if (!c.inv.add(oreId, 1)) c.brain.dug = (c.brain.dug ?? 0) + 1;
     if (o.data) o.data.left = (o.data.left ?? 200) - 1;
     train(c, 'labouring', 1, 1);
     train(c, 'strength', 0.35, 1);
@@ -79,13 +91,14 @@ export function runJobs(c: Char, dt: number, think: boolean): boolean {
   for (let i = 0; i < c.jobs.length; i++) {
     const job = c.jobs[i];
     const o = S.W.objs.get(job.obj);
-    if (!o) { c.jobs.splice(i, 1); i--; continue; }
+    // gone (finished by someone else, torn down): drop it, and stop working at it
+    if (!o) { c.jobs.splice(i, 1); i--; if (c.act && WORK_ACTS.has(c.act)) c.act = null; continue; }
     const h = JOB_HANDLERS[job.k];
     if (!h) continue;
     const r = h(c, job, o, dt, think);
     if (r === 'work') return true;
     if (r === 'done') { c.jobs.splice(i, 1); i--; if (c.act) c.act = null; continue; }
   }
-  if (c.act === 'mine' || c.act === 'build' || c.act === 'craft' || c.act === 'farm' || c.act === 'research') c.act = null;
+  if (c.act && WORK_ACTS.has(c.act)) c.act = null;
   return false;
 }

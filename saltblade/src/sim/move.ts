@@ -100,6 +100,8 @@ export function tickMove(c: Char, dt: number): number {
     if (moved < sp * dt * 0.25) {
       c.stuckT += dt;
       if (c.stuckT > 1.2) {
+        // wedged inside something built round them: step out onto open ground
+        if (!S.nav.walkable(c.x, c.z)) { const out = S.nav.nearestOpen(c.x, c.z, 4); if (out) { mx = out[0]; mz = out[1]; } }
         c.path = null; // replan
         c.stuckT = 0;
         c.mem.stuck = (c.mem.stuck ?? 0) + 1;

@@ -17,7 +17,7 @@ import { SK, Skill } from './skills';
 import { emit } from '../core/events';
 import { findEnemy } from './ai';
 import { applyDamage, dist } from './combat';
-import { RATE } from './clock';
+import { RATE, HOUR } from './clock';
 
 const rng = new RNG((Date.now() ^ 777) >>> 0); // a different world story each game
 
@@ -106,11 +106,11 @@ function missing(site: WObj): [string, number] | null {
   return null;
 }
 
-/** Player storage holding an item, nearest first. */
-export function storageWith(id: string, x: number, z: number, r = 260): WObj | null {
+/** Player storage holding an item, nearest first (never `except`, the place it is wanted). */
+export function storageWith(id: string, x: number, z: number, r = 260, except?: WObj): WObj | null {
   let best: WObj | null = null, bd = r;
   for (const o of S.W.objs.values()) {
-    if (o.owner !== 'player' || !o.inv || o.kind === 'site') continue;
+    if (o.owner !== 'player' || !o.inv || o.kind === 'site' || o === except) continue;
     if (!o.inv.count(id)) continue;
     const d = Math.hypot(o.x - x, o.z - z);
     if (d < bd) { bd = d; best = o; }
@@ -130,16 +130,19 @@ function giveTo(c: Char, id: string, n: number) {
   return n - left;
 }
 
-/** Fetch-and-deliver: brings `n` of an item to a target. Returns true when the builder is busy with it. */
-function fetch(c: Char, id: string, n: number, tx: number, tz: number, deliver: (k: number) => void): 'busy' | 'none' {
+/**
+ * Fetch-and-deliver: brings `n` of an item to `to` from the worker's own pack or
+ * the nearest store (not `to` itself, which would only move it round in a circle).
+ */
+function fetch(c: Char, id: string, n: number, to: WObj, deliver: (k: number) => void): 'busy' | 'none' {
   const have = carryCount(c, id);
   if (have > 0) {
-    if (!walkTo(c, tx, tz, 2.2)) return 'busy';
+    if (!walkTo(c, to.x, to.z, 2.2)) return 'busy';
     const k = takeFrom(c, id, Math.min(n, have));
     deliver(k);
     return 'busy';
   }
-  const st = storageWith(id, c.x, c.z);
+  const st = storageWith(id, c.x, c.z, 260, to);
   if (!st) return 'none';
   if (!walkTo(c, st.x, st.z, 2)) return 'busy';
   const d = ITEM[id];
@@ -155,7 +158,7 @@ JOB_HANDLERS.build = (c, job, o, dt, think) => {
   if (o.kind !== 'site') return 'done';
   const miss = missing(o);
   if (miss) {
-    const r = fetch(c, miss[0], miss[1], o.x, o.z, (k) => { o.data.have[miss[0]] = (o.data.have[miss[0]] ?? 0) + k; });
+    const r = fetch(c, miss[0], miss[1], o, (k) => { o.data.have[miss[0]] = (o.data.have[miss[0]] ?? 0) + k; });
     if (r === 'none') {
       if (think && !c.mem.warnMat) { S.fx.notice(`${c.name} needs ${miss[1]} × ${ITEM[miss[0]].name} to build the ${o.data.name}.`); c.mem.warnMat = true; }
       return 'skip';
@@ -203,12 +206,24 @@ export function finishSite(site: WObj, quiet = false) {
   }
   navDirty(o);
   S.W.rebuildObjHash();
+  clearFootprint(o);
   emit('objs');
   if (!quiet) {
     S.fx.notice(`${b.name} finished.`, 'good');
     S.fx.sound('build', o.x, o.z, 1);
   }
   return o;
+}
+
+/** Steps anyone standing where something has just gone up out onto open ground. */
+function clearFootprint(o: WObj) {
+  const [w, d] = footprint(o);
+  const r = Math.hypot(w, d) / 2 + 0.6;
+  for (const c of S.W.active) {
+    if (c.carriedBy || c.cage || c.bed || Math.hypot(c.x - o.x, c.z - o.z) > r || S.nav.walkable(c.x, c.z)) continue;
+    const p = S.nav.nearestOpen(c.x, c.z, r + 3);
+    if (p) { c.x = p[0]; c.z = p[1]; c.path = null; }
+  }
 }
 
 /** Tears something down, returning half its materials on the ground. */
@@ -270,7 +285,7 @@ function workMachine(c: Char, o: WObj, dt: number, think: boolean, anim: 'craft'
   if (c.brain.haul || outputsFull(o)) { if (haulOutputs(c, o)) return 'work'; }
   const need = recipeReady(o, r);
   if (need) {
-    const res = fetch(c, need[0], need[1] * 3, o.x, o.z, (k) => { o.inv!.add(need[0], k); });
+    const res = fetch(c, need[0], need[1] * 3, o, (k) => { o.inv!.add(need[0], k); });
     if (res === 'none') {
       if (think && !c.mem.warnIn) { S.fx.notice(`${o.data.name} needs ${ITEM[need[0]].name}.`); c.mem.warnIn = true; }
       return 'skip';
@@ -331,7 +346,7 @@ JOB_HANDLERS.cook = (c, job, o, dt, think) => {
   if (!o.data.recipe) o.data.recipe = recs[0];
   for (const k of recs) {
     const r = RECIPES[k];
-    const haveAll = Object.entries(r.in).every(([id, n]) => (o.inv!.count(id) + (storageWith(id, o.x, o.z) ? 99 : 0)) >= n);
+    const haveAll = Object.entries(r.in).every(([id, n]) => (o.inv!.count(id) + (storageWith(id, o.x, o.z, 260, o) ? 99 : 0)) >= n);
     if (haveAll) { o.data.recipe = k; break; }
   }
   return workMachine(c, o, dt, think, 'craft');
@@ -383,6 +398,7 @@ JOB_HANDLERS.farm = (c, job, o, dt, think) => {
       d.harvest = 0;
       const yieldN = Math.round((d.w * d.d) / 8 * (0.5 + c.skill('farming') * 0.012) * (S.T.regionAt(o.x, o.z).fertility * 0.7 + 0.3));
       const got = giveTo(c, d.crop, yieldN);
+      c.brain.reaped = (c.brain.reaped ?? 0) + got;
       if (got < yieldN) emit('world:drop', c.x, c.z, [{ uid: 0, id: d.crop, q: 2, n: yieldN - got, x: 0, y: 0 }]);
       d.growth = 0;
       train(c, 'farming', 2, 1);
@@ -391,8 +407,8 @@ JOB_HANDLERS.farm = (c, job, o, dt, think) => {
     }
     return 'work';
   }
-  // carry the harvest away
-  const held = carryCount(c, d.crop);
+  // carry the harvest away (only what was reaped: a crop fetched for a loom or stove stays with the one using it)
+  const held = Math.min(c.brain.reaped ?? 0, carryCount(c, d.crop));
   if (held > 0) {
     const st = [...S.W.objs.values()].filter((s) => s.owner === 'player' && s.kind === 'storage' && s.inv && (!s.data?.accepts || s.data.accepts.includes(d.crop) || s.data.accepts.includes('resource')))
       .sort((a, b) => Math.hypot(a.x - c.x, a.z - c.z) - Math.hypot(b.x - c.x, b.z - c.z))[0];
@@ -401,14 +417,24 @@ JOB_HANDLERS.farm = (c, job, o, dt, think) => {
       const n = takeFrom(c, d.crop, held);
       const left = st.inv!.add(d.crop, n);
       if (left) giveTo(c, d.crop, left);
+      c.brain.reaped = Math.max(0, (c.brain.reaped ?? 0) - (n - left));
       return 'work';
     }
   }
-  // tend the crop while it grows
+  // tend the crop every hour and a half or so while it grows; in between, the farmer's other work comes first
+  const due = S.clock.t - (d.tended ?? -1e9) > 1.5 * HOUR;
+  if (!due && c.brain.tending !== o.id) return 'skip';
   if (!walkTo(c, o.x + Math.sin(S.time * 0.05) * d.w * 0.3, o.z, Math.max(d.w, d.d) / 2)) return 'work';
+  c.brain.tending = o.id;
   c.act = 'farm'; c.actDur = 3;
-  d.tended = S.clock.t;
-  if (rng.chance(dt * 0.05)) train(c, 'farming', 0.5, 1);
+  c.brain.tendT = (c.brain.tendT ?? 0) + dt;
+  if (c.brain.tendT > 30) {
+    d.tended = S.clock.t;
+    c.brain.tendT = 0;
+    c.brain.tending = 0;
+    train(c, 'farming', 0.5, 1);
+    return 'skip';
+  }
   return 'work';
 };
 

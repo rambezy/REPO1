@@ -36,14 +36,19 @@ export function tickSquads(dt: number) {
       continue;
     }
     if (sq.route && sq.ri < sq.route.length / 2) {
-      if (!L.hasGoal) {
+      // the next waypoint counts once the leader gets there, not when he sets off:
+      // a walk cut short (lost path, out of play and back) is taken up again
+      const x = sq.route[sq.ri * 2], z = sq.route[sq.ri * 2 + 1];
+      if (Math.hypot(L.x - x, L.z - z) < 14) { sq.ri++; sq.flags.wpTries = 0; }
+      else if (!L.hasGoal) {
         // wait for stragglers
         const lag = sq.members.some((m) => { const c = S.W.char(m); return c && c.up && Math.hypot(c.x - L.x, c.z - L.z) > 25; });
         if (lag) continue;
-        const x = sq.route[sq.ri * 2], z = sq.route[sq.ri * 2 + 1];
+        // a waypoint that cannot be reached is given up after a few tries
+        sq.flags.wpTries = (sq.flags.wpTries ?? 0) + 1;
+        if (sq.flags.wpTries > 6) { sq.ri++; sq.flags.wpTries = 0; continue; }
         goTo(L, x, z);
         L.move = sq.kind === 'raid' || sq.kind === 'bounty' ? 'run' : 'walk';
-        sq.ri++;
       }
       sq.x = L.x; sq.z = L.z;
     }

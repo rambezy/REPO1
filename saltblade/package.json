@@ -11,6 +11,7 @@
     "preview": "vite preview",
     "soak": "node tools/soak.mjs",
     "test:sim": "tsx tools/simtest.ts",
+    "test:base": "tsx tools/basetest.ts",
     "map": "tsx tools/mapshot.ts",
     "artifact": "node tools/make-artifact.mjs"
   },

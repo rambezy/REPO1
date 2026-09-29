@@ -20,6 +20,7 @@ export function updateActivation(extra?: { x: number; z: number }) {
   for (const c of W.playerChars()) if (c.alive) anchors.push({ x: c.x, z: c.z });
   if (extra) anchors.push(extra);
   const act: Char[] = [];
+  const squadsOn = new Set<number>();
   for (const c of W.chars.values()) {
     let on = false;
     for (const a of anchors) {
@@ -28,8 +29,11 @@ export function updateActivation(extra?: { x: number; z: number }) {
     }
     if (c.faction === 'player') on = true;
     c.active = on;
-    if (on) act.push(c);
+    if (on) { act.push(c); if (c.squad) squadsOn.add(c.squad); }
   }
+  // a squad comes into play together: half a squad on the edge of the world in play
+  // would be moved neither on the map nor off it
+  for (const c of W.chars.values()) if (!c.active && c.squad && squadsOn.has(c.squad)) { c.active = true; act.push(c); }
   W.active = act;
 }
 
