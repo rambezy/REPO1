@@ -14,6 +14,7 @@ import { GridView, hideTip } from './grid';
 import { iconFor } from './icons';
 import { WObj } from '../sim/objects';
 import { SKILL_INFO } from '../sim/skills';
+import { buyHouse, houseOf } from '../sim/property';
 
 let cat: BuildCat = 'Storage';
 let ghost: Ghost;
@@ -185,7 +186,7 @@ export function openObject(id: number) {
   if (!o) return;
   const b = BUILDABLE[o.data?.bkey];
   const mine = o.owner === 'player';
-  const title = o.data?.name ?? b?.name ?? o.def;
+  const title = o.def === 'forsale' ? 'For sale' : o.data?.name ?? b?.name ?? o.def;
   const w = openWindow('obj', title, { w: 460, x: window.innerWidth - 480, y: 120 });
   const cleanup = () => { for (const v of objViews) v.destroy(); objViews = []; hideTip(); };
   w.onClose = cleanup;
@@ -202,6 +203,16 @@ export function openObject(id: number) {
       const cancel = h('button', { class: 'tog' }, 'Cancel construction');
       cancel.onclick = () => { deconstruct(o); w.close(); };
       w.body.append(h('div', { class: 'selrow' }, bb, cancel));
+      return;
+    }
+    if (o.def === 'forsale' && o.data?.price) {
+      const house = houseOf(o);
+      const price = (o.data.price as number).toLocaleString();
+      w.body.append(h('div', {}, `${house?.data?.name ?? 'House'}, ${house?.data?.w ?? '?'} × ${house?.data?.d ?? '?'} m, with its furniture: ${price} chits.`),
+        h('p', { class: 'dim' }, 'A house of your own in town: rest in its beds, keep things in its chests, and build furniture and benches inside it (nowhere else in town). Raiders leave town houses alone.'));
+      const buy = h('button', { class: 'tog' }, `Buy it (${price} chits)`);
+      buy.onclick = () => { const err = buyHouse(o); if (err) S.fx.notice(err, 'bad'); else w.close(); };
+      w.body.append(h('div', { class: 'selrow' }, buy));
       return;
     }
     if (b?.desc) w.body.appendChild(h('p', { class: 'dim' }, b.desc));
@@ -258,7 +269,7 @@ export function openObject(id: number) {
         w.body.append(h('div', { class: 'loot' }, v.el, cv.el));
       } else w.body.append(v.el, h('div', { class: 'dim small' }, 'Bring a character next to it to move items.'));
     }
-    if (mine) {
+    if (mine && !o.site) {
       const d = h('button', { class: 'tog small' }, 'Deconstruct');
       d.onclick = () => { emit('build:deconstruct', o.id); setTimeout(() => { if (!S.W.objs.has(o.id)) w.close(); }, 50); };
       w.body.appendChild(h('div', { class: 'selrow', style: { marginTop: '8px' } }, d));

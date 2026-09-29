@@ -12,7 +12,7 @@ import { RNG, hash3 } from '../src/core/rng';
 import { Weather } from '../src/sim/weather';
 import { simStep } from '../src/sim/sim';
 import { tickSquads } from '../src/sim/squads';
-import { tickBase, canPlace, placeSite, playerBase } from '../src/sim/base';
+import { tickBase, canPlace, placeSite, playerBase, finishSite, deconstruct } from '../src/sim/base';
 import { structuresIn, townRings, buildingAt } from '../src/sim/structures';
 import { buildTown } from '../src/world/towns';
 import { buildSite } from '../src/world/sites';
@@ -123,9 +123,15 @@ if (bed) {
 const chest = [...W.objs.values()].find((o) => o.owner === 'player' && o.data?.bkey === 'chest' && o.parent === house.id);
 check('the chest keeps what you put in it', !!chest?.inv && chest.inv.add('dried_meat', 5) === 0 && chest.inv.count('dried_meat') === 5);
 
-// 4. the town keeps the raiders off: a house in town is not a base
-const mine = [...W.objs.values()].filter((o) => o.owner === 'player').length;
-check('a furnished house in town is not a base for raiders', playerBase() === null, `${mine} things of yours in town; base ${JSON.stringify(playerBase())}`);
+// 4. the town keeps the raiders off: a house in town is not a base, however much is in it
+const more = [spotInside('chest'), spotInside('chest')].filter(Boolean).map((at) => finishSite(placeSite(BUILDABLE.chest, at![0], at![1], house.rot), true));
+const ours = [...W.objs.values()].filter((o) => o.owner === 'player' && o.data?.bkey).length;
+check('a well furnished house in town is not a base for raiders', more.length === 2 && playerBase() === null, `${ours} pieces of your own in it; base ${JSON.stringify(playerBase())}`);
+
+// what you built there can come down again (and leaves the house), the house itself cannot
+const extra = more.pop()!, v0 = house.data.v ?? 0;
+deconstruct(extra);
+check('your own furniture comes down and out of the house', !W.objs.has(extra.id) && !house.data.furniture.includes(extra.id) && (house.data.v ?? 0) > v0);
 
 // 5. and it is still yours after saving and loading
 const data = JSON.parse(JSON.stringify(serialize()));
@@ -134,7 +140,7 @@ const keep = S.W;
 apply(data, w2);
 S.W = keep;
 const h2 = w2.objs.get(house.id);
-check('the house is still yours after a save and load', h2?.owner === 'player' && [...w2.objs.values()].filter((o) => o.parent === house.id && o.owner === 'player').length >= inside.length + wanted.length);
+check('the house is still yours after a save and load', h2?.owner === 'player' && [...w2.objs.values()].filter((o) => o.parent === house.id && o.owner === 'player').length >= inside.length + wanted.length + more.length);
 
 const failed = results.filter((r) => !r[1]);
 console.log(`\n${results.length - failed.length}/${results.length} checks passed.`);

@@ -58,7 +58,7 @@ export function setupHints() {
   on('ui:talk', () => hint('talk', 'Talking', 'People you talk to remember how you treat them. Recruits drink in bars; some join for free, some want paying.'));
   on('ui:trade', () => hint('trade', 'Trading', 'Drag items between your pack and the shop. Prices depend on the trader and your standing with their faction.'));
   on('fx:ko', (c: any) => { if (c.faction === 'player') hint('ko', 'Knocked out', `${c.name} is down. People wake when their wounds allow. Another of yours can <b>pick them up</b> (right-click) and carry them to safety, or treat them with <b>First aid</b>.`); });
-  on('ui:build', () => hint('build', 'Building', 'Place a construction site, then right-click it with someone selected to <b>Build</b>. Materials come from nearby storage or your packs. You cannot build inside towns.'));
+  on('ui:build', () => hint('build', 'Building', 'Place a construction site, then right-click it with someone selected to <b>Build</b>. Materials come from nearby storage or your packs. You cannot build inside towns, except furniture in a house of your own.'));
 }
 
 /** Checks for situations worth a hint, every couple of seconds. */
@@ -78,7 +78,7 @@ export function tickHints(dt: number) {
     if (c.shackled) hint('shackles', 'Shackles', 'Shackled people move slowly. Select them and right-click themselves (or a friend) to <b>pick the shackles</b>. Better when nobody is looking.');
   }
   const site = G.T.siteAt(G.cam.target.x, G.cam.target.z, 20);
-  if (site?.kind === 'town' && W.discovered.has(site.id)) hint('town', 'Towns', 'Right-click shopkeepers and barkeeps to <b>trade</b>. Stealing or fighting in town is a crime if seen. Rest in a bed to heal faster.');
+  if (site?.kind === 'town' && W.discovered.has(site.id)) hint('town', 'Towns', 'Right-click shopkeepers and barkeeps to <b>trade</b>. Stealing or fighting in town is a crime if seen. Rest in a bed to heal faster. Some towns have houses <b>for sale</b>: right-click the sign by the door.');
   if (S.clock.isNight) hint('night', 'Night', 'Sight is shorter at night: a good time to <b>sneak</b> (T). Thieves and cannibals think so too.');
   if (W.money < 150) hint('broke', 'Short of chits', 'Sell what you find, <b>mine</b> ore (right-click a rock) and sell it, or collect a bounty from a town guard.');
   if (W.flags.lastRaid && S.clock.t - W.flags.lastRaid < 3600) hint('raid', 'Raiders', 'Raiders are coming for your base. Stand and fight, pay them off, or let them take what they want.');

@@ -235,6 +235,9 @@ export function deconstruct(o: WObj) {
   const items = o.inv ? o.inv.items.slice() : [];
   if (o.kind === 'building') for (const fid of o.data.furniture ?? []) { const f = S.W.objs.get(fid); if (f) { if (f.inv) items.push(...f.inv.items); S.W.objs.delete(fid); } }
   S.W.removeObj(o);
+  // out of the building it stood in, so the building redraws without it
+  const p = o.parent ? S.W.objs.get(o.parent) : undefined;
+  if (p?.kind === 'building' && p.data.furniture) { p.data.furniture = p.data.furniture.filter((id: number) => id !== o.id); p.data.v = (p.data.v ?? 0) + 1; }
   const g = new Grid(10, 10);
   for (const [id, n] of Object.entries(refund)) if (n > 0) g.add(id, n);
   emit('world:drop', o.x, o.z, [...g.items, ...items]);
@@ -533,10 +536,15 @@ function genOutput(g: WObj) {
 }
 
 /** Where the player's base is, if they have one. */
+/** Part of a town: its own buildings and furniture, or something built inside a house bought there. */
+export function inTown(o: WObj) {
+  return !!o.site || !!(o.parent && S.W.objs.get(o.parent)?.site);
+}
+
 export function playerBase(): { x: number; z: number; n: number } | null {
   let x = 0, z = 0, n = 0;
-  // houses bought in towns are not a base: the town keeps the raiders off
-  for (const o of S.W.objs.values()) if (o.owner === 'player' && o.kind !== 'pile' && o.kind !== 'site' && !o.site) { x += o.x; z += o.z; n++; }
+  // houses bought in towns are not a base, however well furnished: the town keeps the raiders off
+  for (const o of S.W.objs.values()) if (o.owner === 'player' && o.kind !== 'pile' && o.kind !== 'site' && !inTown(o)) { x += o.x; z += o.z; n++; }
   return n >= 4 ? { x: x / n, z: z / n, n } : null;
 }
 

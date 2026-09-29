@@ -9,7 +9,7 @@ import { S } from '../sim/ctx';
 import { FACTION } from '../content/factions';
 import { ITEM, gradeName } from '../content/items';
 import { portrait } from '../render/portrait';
-import { selected, closeMenu } from '../game/control';
+import { selected, closeMenu, menuOpen } from '../game/control';
 import { RACE } from '../content/races';
 import { ANIMAL } from '../content/animals';
 import { Clock } from '../sim/clock';
@@ -64,7 +64,8 @@ export function setupUI() {
       case 'KeyO': emit('ui:factions'); return true;
       case 'KeyK': toggleCodex(); return true;
       case 'Escape':
-        closeMenu();
+        // a right-click menu first, then the top window, and only then the game menu
+        if (menuOpen()) { closeMenu(); return true; }
         if (!closeTop()) emit('ui:menu');
         return true;
       case 'Tab': {

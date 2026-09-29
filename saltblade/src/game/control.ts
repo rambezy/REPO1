@@ -82,18 +82,43 @@ export function charAt(sx: number, sy: number): Char | null {
   return best;
 }
 
+/** How tall things stand, so they can be picked by any part of them: a sign by its board, a turret by its gun. */
+const PICK_H: Partial<Record<WObj['kind'], number>> = {
+  sign: 1.5, lamp: 2.2, banner: 2.6, post: 1.6, shackle_post: 1.8, turret: 2, machine: 1.6, generator: 1.4, battery: 1.2, research: 1.3,
+  bench: 1.1, storage: 1.1, counter: 1.1, cage: 2, stove: 1.2, well: 1, crate: 0.8, chest: 0.7, bed: 0.6, stool: 0.5, table: 0.8,
+  throne: 1.5, campfire: 0.4, ore: 1.4, gate: 3, tower: 5, pile: 0.3,
+};
+
+/** Distance from a point to a segment on screen. */
+function segDist(px: number, py: number, ax: number, ay: number, bx: number, by: number) {
+  const vx = bx - ax, vy = by - ay;
+  const t = Math.max(0, Math.min(1, ((px - ax) * vx + (py - ay) * vy) / (vx * vx + vy * vy || 1)));
+  return Math.hypot(px - ax - vx * t, py - ay - vy * t);
+}
+
 export function objAt(sx: number, sy: number): WObj | null {
   let best: WObj | null = null, bd = Infinity;
-  const cp = G.R.camera.position;
+  const cam = G.R.camera;
   const g = groundAt(sx, sy);
   if (!g) return null;
-  S.W.objHash.near(g.x, g.z, 6, (o) => {
+  const focal = window.innerHeight / (2 * Math.tan(((cam.fov ?? 50) * Math.PI) / 360));
+  S.W.objHash.near(g.x, g.z, 8, (o) => {
     if (o.kind === 'building' || o.kind === 'wall' || o.kind === 'decor' || o.hidden) return;
+    // the ground under the cursor near its foot, or the cursor on it on screen, whichever is closer
     const r = o.kind === 'ore' ? 2.2 : o.kind === 'farm' ? 5 : o.kind === 'site' ? (o.data?.r ?? 3) : 1.3;
-    const d = Math.hypot(o.x - g.x, o.z - g.z);
-    if (d < r && d < bd) { bd = d; best = o; }
+    let score = Math.hypot(o.x - g.x, o.z - g.z) / r;
+    const h = PICK_H[o.kind];
+    if (h) {
+      const [ax, ay, az] = screenOf(o.x, o.y + 0.1, o.z);
+      const [bx, by, bz] = screenOf(o.x, o.y + h, o.z);
+      if (az < 1 && bz < 1) {
+        const dist = Math.hypot(o.x - cam.position.x, o.y + h / 2 - cam.position.y, o.z - cam.position.z);
+        const R = Math.max(10, Math.min(40, (focal * 0.45) / dist));
+        score = Math.min(score, segDist(sx, sy, ax, ay, bx, by) / R);
+      }
+    }
+    if (score < 1 && score < bd) { bd = score; best = o; }
   });
-  void cp;
   return best;
 }
 
@@ -216,13 +241,14 @@ export function objActions(o: WObj): MenuItem[] {
       if (mine && o.data?.job) out.push({ label: o.data.jobLabel ?? 'Work here', run: () => who.forEach((c) => issue(c, { k: 'operate', obj: o.id })) });
       if (mine) out.push({ label: 'Inspect', run: () => emit('ui:object', lead.id, o.id) });
   }
-  if (mine && o.kind !== 'site' && !(o.parent && S.W.objs.get(o.parent)?.site)) out.push({ label: 'Deconstruct', run: () => emit('build:deconstruct', o.id), danger: true });
+  if (mine && o.kind !== 'site' && !o.site) out.push({ label: 'Deconstruct', run: () => emit('build:deconstruct', o.id), danger: true });
   return out;
 }
 
 // ---------------------------------------------------------------- context menu
 let menuEl: HTMLDivElement | null = null;
 export function closeMenu() { menuEl?.remove(); menuEl = null; }
+export function menuOpen() { return !!menuEl; }
 export function openMenu(x: number, y: number, title: string, items: MenuItem[]) {
   closeMenu();
   if (!items.length) return;
@@ -329,6 +355,7 @@ export function attachControl() {
 }
 
 function objTitle(o: WObj) {
+  if (o.def === 'forsale') return 'For sale';
   if (o.kind === 'ore') return o.def === 'stone' ? 'Stone deposit' : `${o.def[0].toUpperCase() + o.def.slice(1)} ore deposit`;
   const n = o.data?.name ?? o.def;
   return n.charAt(0).toUpperCase() + n.slice(1);
