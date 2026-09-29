@@ -3,7 +3,8 @@
 import * as THREE from 'three';
 import { Char } from '../sim/char';
 import { World } from '../sim/world';
-import { makeRig, makeBones, prostMask, buildWeapon, B, BONE_COUNT } from './charModel';
+import { makeRig, makeBones, prostMask, B, BONE_COUNT } from './charModel';
+import { buildWeapon } from './weapon';
 import { buildHuman } from './human';
 import { charMaterial } from './charMat';
 import type { Face } from './face';
@@ -14,8 +15,8 @@ import { LI } from '../sim/body';
 import { ITEM } from '../content/items';
 
 const bodyMat = charMaterial();
-const animalMat = new THREE.MeshLambertMaterial({ vertexColors: true });
-const weaponMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+const animalMat = bodyMat;
+const weaponMat = bodyMat;
 
 const ringGeo = new THREE.RingGeometry(0.55, 0.7, 28).rotateX(-Math.PI / 2);
 const ringMats = {

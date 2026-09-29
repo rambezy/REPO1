@@ -1,7 +1,10 @@
 // Procedural beasts: a shared rig for four-, six- and eight-legged animals
-// with necks, jaws, tails, shells, pincers and wings, plus their gaits.
+// with necks, jaws, tails, shells, pincers and wings, plus their gaits. The
+// bodies are smooth skinned meshes (skin.ts): a lofted trunk from rump to
+// chest, legs that grow out of it, a sculpted head with its own jaw, and
+// shells, plates, horns, wings and crystals on top.
 import * as THREE from 'three';
-import { GeoBuilder } from './geo';
+import { SkinBuilder, Sec, Paint, RGB, Weights, Surf, loft, lathe, blob, frame, rgb, mix, shade, gauss, smoothstep, lerp } from './skin';
 import type { AnimalDef, Shape } from '../content/animals';
 import type { Look } from '../sim/look';
 import type { Stance } from './anim';
@@ -48,15 +51,9 @@ const BASE_PARENTS = (() => {
   return p;
 })();
 
-const dk = (c: number, k: number) => {
-  const r = Math.min(255, ((c >> 16) & 255) * k), g = Math.min(255, ((c >> 8) & 255) * k), b = Math.min(255, (c & 255) * k);
-  return (r << 16) | (g << 8) | b;
-};
-
 export function buildAnimal(def: AnimalDef, look: Look): AnimalRig {
   const sp = SPECS[def.shape];
   const s = def.size * look.bulk;
-  const [col, acc, eyeC] = def.colors;
   const PARENTS = BASE_PARENTS.slice();
   const J: THREE.Vector3[] = [];
   const hz = -sp.len * 0.35 * s, cz = sp.len * 0.35 * s;
@@ -95,132 +92,341 @@ export function buildAnimal(def: AnimalDef, look: Look): AnimalRig {
     bones.push(b);
   }
 
-  const g = new GeoBuilder(true);
-  const at = (bone: number) => { g.bone = bone; };
-  // body: rear and front halves
-  at(A.body);
-  g.push().translate(0, J[A.body].y, (J[A.body].z + J[A.chest].z) / 2 - sp.len * s * 0.12).rotateX(Math.PI / 2).scale(sp.bodyW * s * 1.1, 1, sp.bodyR * s * 2);
-  g.cyl(0.5, 0.45, sp.len * s * 0.55, 8, { color: col, grad: 0.3 });
-  g.pop();
-  at(A.chest);
-  g.push().translate(0, J[A.chest].y, J[A.chest].z - sp.len * s * 0.2).rotateX(Math.PI / 2).scale(sp.bodyW * s * 1.15, 1, sp.bodyR * s * 2.1);
-  g.cyl(0.5, 0.52, sp.len * s * 0.5, 8, { color: col, grad: 0.3 });
-  g.pop();
-  // belly
-  at(A.body);
-  g.push().translate(0, J[A.body].y - sp.bodyR * s * 0.55, (J[A.body].z + J[A.chest].z) / 2).scale(sp.bodyW * s * 0.8, sp.bodyR * s * 0.5, sp.len * s * 0.7);
-  g.sphere(0.6, 7, 4, { color: acc });
-  g.pop();
-  if (sp.shell) {
-    at(A.body);
-    g.push().translate(0, J[A.body].y + sp.bodyR * s * 0.3, (J[A.body].z + J[A.chest].z) / 2).scale(sp.bodyW * s * 0.75, sp.bodyR * s * 1.4, sp.len * s * 0.62);
-    g.ico(1, 1, { color: dk(col, 0.85), jitter: 0.08, seed: 5, grad: 0.4 });
-    g.pop();
-    if (sp.spikes) for (let i = 0; i < 7; i++) {
-      g.push().translate((i % 3 - 1) * sp.bodyW * s * 0.25, J[A.body].y + sp.bodyR * s * 1.5, hz + (i / 7) * sp.len * s * 0.8).cone(0.08 * s, 0.25 * s, 4, { color: dk(acc, 0.8) }).pop();
-    }
-    if (def.key === 'mauler') for (let i = 0; i < 5; i++) g.push().translate(Math.sin(i * 2.3) * 0.4 * s, J[A.body].y + sp.bodyR * s * 1.2, hz + i * 0.3 * s).scale(0.3 * s, 0.1 * s, 0.3 * s).sphere(1, 5, 3, { color: 0x4a6a34 }).pop();
+  const geo = beastGeometry(def, sp, J, s, PARENTS);
+  geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, sp.hipH * s, 0), Math.max(1.5, sp.len * s * 1.6 + sp.neckLen * s));
+  return { bones, geo, spec: sp, shape: def.shape, rest: J };
+}
+
+// ------------------------------------------------------------------ the smooth bodies
+
+const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
+const UP = V(0, 1, 0), FWD = V(0, 0, 1);
+const P = (c: RGB, s: Surf): Paint => ({ c, s });
+
+/** What the hide is like, for the material. */
+const HIDE: Record<Shape, Surf> = {
+  hound: 'leather', shellback: 'leather', hookbeak: 'hair', skitter: 'chitin', crab: 'chitin', bat: 'leather',
+  bovine: 'hair', goat: 'hair', spider: 'metal', turtle: 'leather', fly: 'chitin', stalker: 'leather',
+};
+const INSECT = (sh: Shape) => sh === 'skitter' || sh === 'crab' || sh === 'spider' || sh === 'fly';
+
+/** Rows along the trunk from rump (0) to chest (1): width, back and belly, as fractions of the full size. */
+const TRUNK: Record<'beast' | 'lean' | 'barrel' | 'bug', number[][]> = {
+  beast: [[0, 0.3, 0.4, 0.35], [0.08, 0.72, 0.78, 0.74], [0.22, 0.9, 0.94, 0.9], [0.42, 0.84, 0.88, 0.82], [0.66, 1, 1, 1.02], [0.86, 0.95, 0.98, 0.94], [1, 0.5, 0.6, 0.55]],
+  lean: [[0, 0.3, 0.4, 0.35], [0.08, 0.7, 0.78, 0.7], [0.22, 0.86, 0.9, 0.8], [0.44, 0.74, 0.84, 0.56], [0.68, 0.96, 1, 1.05], [0.87, 0.92, 0.98, 0.92], [1, 0.48, 0.6, 0.55]],
+  barrel: [[0, 0.35, 0.45, 0.4], [0.08, 0.8, 0.84, 0.8], [0.24, 0.96, 0.98, 0.98], [0.46, 1, 1, 1.04], [0.68, 1.02, 1, 1.04], [0.87, 0.95, 0.98, 0.92], [1, 0.5, 0.62, 0.55]],
+  bug: [[0, 0.4, 0.42, 0.4], [0.18, 0.85, 0.85, 0.8], [0.5, 1, 1, 0.95], [0.82, 0.9, 0.9, 0.85], [1, 0.45, 0.45, 0.42]],
+};
+
+function rowLerp(rows: number[][], t: number): number[] {
+  let i = 0;
+  while (i < rows.length - 2 && rows[i + 1][0] < t) i++;
+  const a = rows[i], b = rows[i + 1], k = smoothstep(a[0], b[0], t);
+  return a.slice(1).map((v, j) => lerp(v, b[j + 1], k));
+}
+
+/** A tube through points: sections square to the path, `v` kept toward `up`. */
+function tube(b: SkinBuilder, pts: THREE.Vector3[], rad: (i: number) => [number, number, number], w: (i: number) => Weights, paint: (i: number, a: number) => Paint, n: number, o: { up?: THREE.Vector3; e?: number; capStart?: boolean | THREE.Vector3; capEnd?: boolean | THREE.Vector3 } = {}) {
+  const secs: Sec[] = pts.map((p, i) => {
+    const d = pts[Math.min(pts.length - 1, i + 1)].clone().sub(pts[Math.max(0, i - 1)]).normalize();
+    const { u, v } = frame(d, o.up ?? UP);
+    const [rx, rup, rdown] = rad(i);
+    return { c: p, u, v, rx, rf: rup, rb: rdown, e: o.e, w: w(i), paint: (a: number) => paint(i, a) };
+  });
+  loft(b, secs, n, { capStart: o.capStart, capEnd: o.capEnd });
+}
+
+/** A thin surface through rows of points (wings, membranes), seen from both sides. */
+function sheet(b: SkinBuilder, rows: THREE.Vector3[][], pnt: (i: number, j: number) => Paint, w: (i: number, j: number) => Weights) {
+  const idx = rows.map((r, i) => r.map((p, j) => b.vert(p.x, p.y, p.z, pnt(i, j), w(i, j))));
+  for (let i = 0; i + 1 < idx.length; i++) for (let j = 0; j + 1 < idx[i].length; j++) {
+    const a = idx[i][j], c = idx[i][j + 1], d = idx[i + 1][j], e = idx[i + 1][j + 1];
+    b.tri(a, c, e); b.tri(a, e, d);
   }
-  if (sp.plates) for (let i = 0; i < 4; i++) {
-    at(i < 2 ? A.chest : A.body);
-    g.push().translate(0, J[A.body].y + sp.bodyR * s * 0.95, cz - i * sp.len * s * 0.22).rotateX(0.3).box(sp.bodyW * s * 0.7, 0.05 * s, 0.16 * s, { color: 0xd8ccb0 }).pop();
+}
+
+const bezier = (a: THREE.Vector3, c: THREE.Vector3, d: THREE.Vector3, t: number) => a.clone().multiplyScalar((1 - t) * (1 - t)).addScaledVector(c, 2 * (1 - t) * t).addScaledVector(d, t * t);
+
+function beastGeometry(def: AnimalDef, sp: Spec, J: THREE.Vector3[], s: number, PARENTS: number[]): THREE.BufferGeometry {
+  const b = new SkinBuilder();
+  const sh = def.shape;
+  const C = rgb(def.colors[0]), ACC = rgb(def.colors[1]), EYE = rgb(def.colors[2]);
+  const hide = HIDE[sh];
+  const bug = INSECT(sh);
+  const L = sp.len * s, BW = sp.bodyW * s, BR = sp.bodyR * s;
+  const HORN = rgb(0xd8ccb0), HOOF = rgb(0x2a2420), TOOTH = rgb(0xe8e0d0), DARK = shade(C, 0.55);
+  const glowEyes = !!sp.robot || def.key === 'glassstalker' || def.key === 'hookbeak';
+  /** Countershaded: the back in the main colour, the belly in the second. */
+  const hideAt = (a: number, k = 1): Paint => {
+    const down = -Math.sin(a);
+    return P(shade(mix(C, ACC, smoothstep(0.05, 0.75, down) * (bug ? 0.35 : 0.85)), k), hide);
+  };
+  const mid = (J[A.body].z + J[A.chest].z) / 2;
+
+  // ---- trunk, rump to chest
+  {
+    const prof = sh === 'hound' || sh === 'stalker' ? TRUNK.lean : sh === 'bovine' || sh === 'shellback' || sh === 'turtle' ? TRUNK.barrel : bug ? TRUNK.bug : TRUNK.beast;
+    const z0 = bug ? J[A.body].z - BR * 0.35 : mid - L * 0.43, z1 = bug ? J[A.chest].z + BR * 0.45 : mid + L * 0.44;
+    const y0 = J[A.body].y + BR * 0.08, y1 = J[A.chest].y + BR * 0.15;
+    const ts = [0, 0.04, 0.1, 0.18, 0.28, 0.38, 0.48, 0.58, 0.68, 0.78, 0.87, 0.94, 1];
+    const pts = ts.map((t) => V(0, lerp(y0, y1, t) + BR * 0.08 * Math.sin(Math.PI * t), lerp(z0, z1, t)));
+    tube(b, pts, (i) => { const [wk, bk, dk] = rowLerp(prof, ts[i]); return [BW * 0.55 * wk, BR * bk, BR * dk]; },
+      (i) => { const k = smoothstep(0.38, 0.64, ts[i]); return [[A.body, 1 - k], [A.chest, k]]; },
+      (i, a) => {
+        if (sp.robot) return P(Math.abs(Math.sin(a)) > 0.92 ? shade(C, 0.7) : C, 'metal');
+        if (bug) return P(shade(mix(C, ACC, smoothstep(0.1, 0.8, -Math.sin(a)) * 0.4), Math.floor(ts[i] * 7) % 2 ? 0.86 : 1), hide);
+        return hideAt(a);
+      }, 18, { e: bug ? 2.2 : 2.05, capStart: pts[0].clone().add(V(0, 0, -BR * 0.12)), capEnd: pts[pts.length - 1].clone().add(V(0, 0, BR * 0.1)) });
   }
-  if (sp.crystals) for (let i = 0; i < 6; i++) {
-    at(i < 3 ? A.chest : A.body);
-    g.push().translate(Math.sin(i * 1.7) * 0.1 * s, J[A.body].y + sp.bodyR * s, cz - i * sp.len * s * 0.15).rotateZ(Math.sin(i * 2.1) * 0.4).cone(0.07 * s, (0.3 + (i % 3) * 0.1) * s, 4, { color: 0x9ae0d0 }).pop();
-  }
-  if (sp.robot) {
-    at(A.body);
-    g.push().translate(0, J[A.body].y + sp.bodyR * s * 0.6, J[A.body].z).box(sp.bodyW * s * 0.5, 0.08 * s, sp.len * s * 0.4, { color: dk(col, 0.7) }).pop();
-    g.push().translate(0, J[A.body].y + sp.bodyR * s * 0.75, J[A.body].z).box(0.08 * s, 0.05 * s, 0.08 * s, { color: [3, 0.4, 0.2] }).pop();
-  }
-  // neck and head
-  if (sp.neckLen > 0.08) {
-    at(A.neck);
-    g.limb(J[A.neck].x, J[A.neck].y, J[A.neck].z, J[A.head].x, J[A.head].y, J[A.head].z, sp.neckR * s * 1.1, sp.neckR * s * 0.85, 6, { color: col });
-  }
-  at(A.head);
+
+  // ---- neck and head
   const H = J[A.head];
-  g.push().translate(H.x, H.y, H.z + sp.headLen * s * 0.35).scale(sp.headR * s * 1.1, sp.headR * s, sp.headLen * s * 0.55);
-  g.sphere(1, 7, 5, { color: col, grad: 0.2 });
-  g.pop();
+  if (sp.neckLen > 0.08) {
+    const n0 = J[A.neck].clone().add(V(0, -BR * 0.25, -BR * 0.35));
+    const ctrl = J[A.neck].clone().lerp(H, 0.5).add(V(0, sp.neckLen * s * 0.06, -sp.neckLen * s * 0.04));
+    const ts = [0, 0.2, 0.4, 0.6, 0.8, 1];
+    const pts = ts.map((t) => (t === 0 ? n0 : bezier(J[A.neck], ctrl, H.clone().add(V(0, -sp.headR * s * 0.2, 0)), t)));
+    const r0 = sp.neckR * s;
+    tube(b, pts, (i) => { const t = ts[i]; const r = r0 * lerp(1.45, 0.9, t); return [r * 0.92, r, r * 1.08]; },
+      (i) => { const t = ts[i]; return t < 0.2 ? [[A.chest, 1 - t * 2.5], [A.neck, t * 2.5]] : t < 0.75 ? [[A.neck, 1]] : [[A.neck, 1 - (t - 0.75) * 3], [A.head, (t - 0.75) * 3]]; },
+      (_i, a) => (sp.robot ? P(shade(C, 0.6), 'metal') : hideAt(a)), 14, { up: FWD.clone().multiplyScalar(-1) });
+  }
+  const hl = sp.headLen * s, hr = sp.headR * s;
+  const hc = H.clone().add(V(0, 0, hl * 0.3));
+  const snout = sh === 'hound' || sh === 'stalker' || sh === 'bovine' || sh === 'goat' || sh === 'shellback' || sh === 'turtle';
+  blob(b, hc, 20, 14, (d, out) => {
+    let x = d.x * hr * 1.05, y = d.y * hr * 0.95, z = d.z * hl * 0.55;
+    if (sp.robot) {
+      const pe = (v: number) => Math.sign(v) * Math.pow(Math.abs(v), 0.7);
+      out.set(pe(d.x) * hr * 0.85, pe(d.y) * hr * 0.6, pe(d.z) * hl * 0.4).add(hc);
+      return P(Math.abs(d.y) > 0.8 ? shade(C, 0.75) : shade(C, 1.1), 'metal');
+    }
+    if (snout) {
+      const f = smoothstep(0.1, 0.95, d.z);
+      x *= 1 - 0.42 * f; y *= 1 - 0.3 * f;
+      y -= hr * 0.12 * f; // the muzzle drops a little
+      if (d.y < -0.1) y *= 1 - 0.45 * smoothstep(0.1, 0.8, d.z); // room for the jaw
+      z += hl * 0.06 * gauss(d.y - 0.55, 0.25) * gauss(d.z + 0.2, 0.4); // the brow
+    }
+    if (bug) { x *= 1.05; y *= 0.9; }
+    out.set(x, y, z).add(hc);
+    let c = sp.robot ? C : mix(C, ACC, smoothstep(-0.1, -0.8, d.y) * 0.6);
+    if (snout && d.z > 0.9 && Math.abs(d.x) < 0.3) c = shade(c, 0.45); // the nose
+    return P(c, bug ? 'chitin' : hide === 'hair' ? 'leather' : hide);
+  }, [[A.head, 1]]);
+  // the lower jaw (or beak), hinged at the jaw bone
+  const Jw = J[A.jaw];
+  if (sp.beak) {
+    for (const lower of [false, true]) {
+      const base = V(0, H.y + (lower ? -hr * 0.28 : hr * 0.05), H.z + hl * 0.62);
+      const tip = V(0, H.y + (lower ? -hr * 0.55 : -hr * 0.6), H.z + hl * (lower ? 1.35 : 1.5));
+      const ctrl = V(0, H.y + (lower ? -hr * 0.3 : hr * 0.15), H.z + hl * 1.2);
+      const ts = [0, 0.25, 0.5, 0.75, 0.92];
+      const pts = ts.map((t) => bezier(base, ctrl, tip, t));
+      tube(b, pts, (i) => { const k = 1 - ts[i]; return [hr * 0.55 * k + 0.004, hr * (lower ? 0.25 : 0.4) * k + 0.003, hr * (lower ? 0.2 : 0.3) * k + 0.003]; }, () => [[lower ? A.jaw : A.head, 1]],
+        () => P(rgb(0x2e2a24), 'bone'), 10, { capStart: true, capEnd: tip });
+    }
+  } else if (!bug && !sp.robot) {
+    const jc = V(0, Jw.y, Jw.z + hl * 0.3);
+    blob(b, jc, 14, 8, (d, out) => {
+      const f = smoothstep(-0.4, 1, d.z);
+      out.set(d.x * hr * 0.72 * (1 - 0.35 * f), d.y * hr * 0.26, d.z * hl * 0.48).add(jc);
+      return P(mix(C, ACC, 0.5), hide === 'hair' ? 'leather' : hide);
+    }, [[A.jaw, 1]]);
+    if (sh === 'hound' || sh === 'stalker' || sh === 'turtle') {
+      for (const side of [1, -1]) for (const k of [0, 1]) {
+        const at = V(side * hr * (0.3 - k * 0.08), Jw.y + hr * 0.2, Jw.z + hl * (0.55 + k * 0.12));
+        tube(b, [at, at.clone().add(V(0, hr * 0.28, 0))], () => [hr * 0.06, hr * 0.06, hr * 0.06], () => [[A.jaw, 1]], () => P(TOOTH, 'bone'), 5, { up: FWD, capStart: true, capEnd: at.clone().add(V(0, hr * 0.4, 0)) });
+      }
+    }
+  }
   // eyes
   for (let e = 0; e < sp.eyes; e++) {
     const side = e % 2 ? -1 : 1, row = Math.floor(e / 2);
-    const ex = side * sp.headR * s * (sp.eyes > 2 ? 0.55 : 0.75), ey = H.y + sp.headR * s * (0.35 + row * 0.25), ez = H.z + sp.headLen * s * (0.55 - row * 0.1);
-    if (def.shape === 'crab') {
-      g.limb(ex * 0.6, ey - 0.02, ez, ex * 0.9, ey + 0.18 * s, ez + 0.03, 0.015 * s, 0.012 * s, 4, { color: acc });
-      g.push().translate(ex * 0.9, ey + 0.2 * s, ez + 0.03).sphere(0.035 * s, 5, 3, { color: eyeC }).pop();
-    } else {
-      const glow = sp.robot || def.key === 'glassstalker' || def.key === 'hookbeak';
-      g.push().translate(ex, ey, ez).sphere((sp.eyes > 2 ? 0.03 : 0.04) * s * (def.shape === 'fly' ? 2.4 : 1), 5, 3, { color: glow ? [((eyeC >> 16) & 255) / 60, ((eyeC >> 8) & 255) / 60, (eyeC & 255) / 60] : eyeC }).pop();
-    }
+    const big = sh === 'fly' ? 2.6 : bug ? 1.2 : 1;
+    const er = (sp.eyes > 2 ? 0.028 : 0.034) * s * big;
+    const ec = sh === 'crab'
+      ? V(side * hr * 0.55, H.y + hr * 0.5 + 0.18 * s, H.z + hl * 0.5)
+      : V(side * hr * (sp.eyes > 2 ? 0.52 : 0.7), H.y + hr * (0.32 + row * 0.24), hc.z + hl * (0.22 - row * 0.1));
+    if (sh === 'crab') tube(b, [V(side * hr * 0.4, H.y + hr * 0.3, H.z + hl * 0.45), ec.clone().add(V(0, -er, 0))], () => [0.014 * s, 0.014 * s, 0.014 * s], () => [[A.head, 1]], () => P(ACC, 'chitin'), 6, { up: FWD });
+    blob(b, ec, 10, 7, (d, out) => { out.copy(d).multiplyScalar(er).add(ec); return glowEyes ? P(EYE, 'glow') : P(d.z > 0.5 || sh === 'fly' ? EYE : shade(EYE, 0.6), 'eye'); }, [[A.head, 1]]);
   }
-  if (sp.ears) for (const side of [1, -1]) g.push().translate(side * sp.headR * s * 0.6, H.y + sp.headR * s * 0.9, H.z + sp.headLen * s * 0.1).rotateZ(-side * 0.3).cone(0.05 * s * (def.shape === 'bat' ? 2 : 1), 0.14 * s * (def.shape === 'bat' ? 1.8 : 1), 4, { color: dk(col, 0.9) }).pop();
+  // ears, horns, mandibles
+  if (sp.ears) for (const side of [1, -1]) {
+    const bat = sh === 'bat' ? 1.8 : 1;
+    const base = V(side * hr * 0.55, H.y + hr * 0.62, H.z + hl * 0.05);
+    const tip = base.clone().add(V(side * 0.05 * s * bat, 0.14 * s * bat, -0.03 * s));
+    tube(b, [base, base.clone().lerp(tip, 0.5), tip], (i) => { const k = [1, 0.8, 0.1][i]; return [0.045 * s * bat * k, 0.012 * s * k + 0.002, 0.012 * s * k + 0.002]; }, () => [[A.head, 1]], () => P(shade(C, 0.9), hide === 'hair' ? 'leather' : hide), 8, { up: FWD, capStart: true, capEnd: true });
+  }
   if (sp.horns === 'curved') for (const side of [1, -1]) {
-    let px = side * sp.headR * s * 0.8, py = H.y + sp.headR * s * 0.7, pz = H.z + sp.headLen * s * 0.1;
-    for (let k = 0; k < 4; k++) {
-      const qx = px + side * 0.12 * s, qy = py + (k < 2 ? 0.05 : 0.08) * s, qz = pz + (k - 1) * 0.04 * s;
-      g.limb(px, py, pz, qx, qy, qz, (0.05 - k * 0.01) * s, (0.04 - k * 0.01) * s, 5, { color: 0xd8ccb0 });
-      px = qx; py = qy; pz = qz;
+    const a = V(side * hr * 0.75, H.y + hr * 0.62, H.z + hl * 0.05);
+    const c = a.clone().add(V(side * 0.3 * s, 0.02 * s, 0.02 * s)), d = a.clone().add(V(side * 0.42 * s, 0.26 * s, 0.14 * s));
+    const ts = [0, 0.2, 0.4, 0.6, 0.8, 1];
+    tube(b, ts.map((t) => bezier(a, c, d, t)), (i) => { const r = 0.05 * s * (1 - ts[i] * 0.8); return [r, r, r]; }, () => [[A.head, 1]], (i) => P(ts[i] > 0.75 ? shade(HORN, 0.7) : HORN, 'bone'), 8, { up: FWD, capStart: true, capEnd: d.clone().add(V(side * 0.01 * s, 0.03 * s, 0.01 * s)) });
+  }
+  if (sp.horns === 'back') for (const side of [1, -1]) {
+    const a = V(side * hr * 0.4, H.y + hr * 0.75, H.z + hl * 0.1);
+    const c = a.clone().add(V(side * 0.03 * s, 0.2 * s, -0.08 * s)), d = a.clone().add(V(side * 0.08 * s, 0.1 * s, -0.26 * s));
+    const ts = [0, 0.25, 0.5, 0.75, 1];
+    tube(b, ts.map((t) => bezier(a, c, d, t)), (i) => { const r = 0.032 * s * (1 - ts[i] * 0.75); return [r, r * 1.2, r * 1.2]; }, () => [[A.head, 1]], (i) => P(shade(rgb(0x6a5a48), 1 - 0.2 * ((i * 3) % 2)), 'bone'), 8, { up: FWD, capStart: true, capEnd: d.clone().add(V(0, -0.02 * s, -0.02 * s)) });
+  }
+  if (sp.mandibles) for (const side of [1, -1]) {
+    const a = V(side * 0.05 * s, H.y - 0.05 * s, hc.z + hl * 0.45);
+    const c = a.clone().add(V(side * 0.06 * s, -0.02 * s, 0.08 * s)), d = a.clone().add(V(-side * 0.01 * s, -0.04 * s, 0.14 * s));
+    tube(b, [0, 0.33, 0.66, 1].map((t) => bezier(a, c, d, t)), (i) => { const r = 0.02 * s * (1 - i * 0.25); return [r, r * 0.7, r * 0.7]; }, () => [[A.jaw, 1]], () => P(DARK, 'chitin'), 6, { up: UP, capStart: true, capEnd: d });
+  }
+
+  // ---- tail, or the abdomen of insects
+  if (sp.tailLen > 0.05) {
+    const T0 = J[A.tail], tl = sp.tailLen * s, tr = sp.tailR * s;
+    if (sh === 'skitter' || sh === 'fly' || sh === 'spider') {
+      const ac = T0.clone().add(V(0, tr * 0.2, -tl * 0.5));
+      blob(b, ac, 16, 12, (d, out) => {
+        out.set(d.x * tr * 1.1, d.y * tr, d.z * tl * 0.62).add(ac);
+        const band = Math.floor((d.z + 1) * 4) % 2;
+        if (sp.robot) return P(band ? shade(C, 0.8) : C, 'metal');
+        return P(sh === 'fly' ? shade(ACC, band ? 0.8 : 1) : shade(mix(C, ACC, smoothstep(0, -0.8, d.y) * 0.5), band ? 0.82 : 1), hide);
+      }, (p) => { const k = smoothstep(T0.z, T0.z - tl * 0.3, p.z); return [[A.body, 1 - k], [A.tail, k]]; });
+    } else {
+      const end = T0.clone().add(V(0, -tl * 0.45, -tl));
+      const ctrl = T0.clone().add(V(0, 0, -tl * 0.5));
+      const ts = [0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1];
+      const pts = [T0.clone().add(V(0, 0, BR * 0.3)), ...ts.slice(1).map((t) => bezier(T0, ctrl, end, t))];
+      tube(b, pts, (i) => { const r = tr * lerp(1.4, 0.3, ts[i]); return [r, r, r]; }, (i) => (i === 0 ? [[A.body, 1]] : [[A.body, Math.max(0, 0.5 - ts[i] * 2)], [A.tail, Math.min(1, 0.5 + ts[i] * 2)]]),
+        (i, a) => (sh === 'goat' || sh === 'bovine') && ts[i] > 0.85 ? P(shade(C, 0.5), 'hair') : hideAt(a), 10, { up: UP, capEnd: end.clone().add(V(0, -tr * 0.2, -tr * 0.4)) });
+      if (sp.crystals) for (let i = 0; i < 4; i++) {
+        const p = bezier(T0, ctrl, end, 0.2 + i * 0.2).add(V(0, tr * 0.6, 0));
+        crystal(b, p, V(Math.sin(i * 2.1) * 0.3, 1, -0.4).normalize(), 0.035 * s, (0.16 + (i % 2) * 0.06) * s, [[A.tail, 1]]);
+      }
     }
   }
-  if (sp.horns === 'back') for (const side of [1, -1]) g.limb(side * 0.05 * s, H.y + sp.headR * s * 0.8, H.z + 0.1 * s, side * 0.09 * s, H.y + sp.headR * s * 0.8 + 0.18 * s, H.z - 0.15 * s, 0.03 * s, 0.012 * s, 4, { color: 0x6a5a48 });
-  if (sp.mandibles) for (const side of [1, -1]) g.push().translate(side * 0.06 * s, H.y - 0.04 * s, H.z + sp.headLen * s * 0.85).rotateX(1.4).rotateZ(side * 0.5).cone(0.025 * s, 0.14 * s, 4, { color: dk(col, 0.6) }).pop();
-  if (sp.robot) g.push().translate(0, H.y, H.z + sp.headLen * s * 0.4).box(sp.headR * s * 1.6, sp.headR * s * 1.1, sp.headLen * s * 0.7, { color: dk(col, 1.1) }).pop();
-  // jaw / beak
-  at(A.jaw);
-  const Jw = J[A.jaw];
-  if (sp.beak) {
-    g.push().translate(Jw.x, H.y + 0.02 * s, H.z + sp.headLen * s * 0.8).rotateX(Math.PI / 2 + 0.2).cone(sp.headR * s * 0.8, sp.headLen * s * 0.9, 5, { color: 0x3a3630 }).pop();
-  }
-  g.push().translate(Jw.x, Jw.y, Jw.z + sp.headLen * s * 0.35).scale(sp.headR * s * 0.8, sp.headR * s * 0.35, sp.headLen * s * 0.45);
-  g.sphere(1, 6, 3, { color: sp.beak ? 0x2a2622 : dk(col, 0.85) });
-  g.pop();
-  if (def.shape === 'hound' || def.shape === 'stalker' || def.shape === 'turtle') for (const side of [1, -1]) g.push().translate(side * 0.04 * s, Jw.y + 0.03 * s, Jw.z + sp.headLen * s * 0.65).cone(0.015 * s, 0.05 * s, 3, { color: 0xe8e0d0 }).pop();
-  // tail
-  if (sp.tailLen > 0.05) {
-    at(A.tail);
-    const T0 = J[A.tail];
-    if (def.shape === 'skitter' || def.shape === 'fly' || def.shape === 'spider') {
-      g.push().translate(T0.x, T0.y, T0.z - sp.tailLen * s * 0.5).scale(sp.tailR * s * 1.1, sp.tailR * s, sp.tailLen * s * 0.6);
-      g.sphere(1, 7, 5, { color: def.shape === 'fly' ? acc : dk(col, 0.9), grad: 0.3 });
-      g.pop();
-    } else g.limb(T0.x, T0.y, T0.z, T0.x, T0.y - sp.tailLen * s * 0.4, T0.z - sp.tailLen * s, sp.tailR * s, sp.tailR * s * 0.4, 5, { color: col });
-  }
-  // legs
+
+  // ---- legs
   for (let k = 0; k < sp.pairs; k++) for (let side = 0; side < 2; side++) {
     const u = LEG0 + (k * 2 + side) * 2;
     const hip = J[u], knee = J[u + 1];
     const sx = side === 0 ? 1 : -1;
-    const foot = new THREE.Vector3(hip.x + sx * sp.spread * s, 0.02, hip.z + (sp.kneeUp ? (k - (sp.pairs - 1) / 2) * 0.12 * s : 0));
-    const wing = sp.wings && k === 0;
+    // (a hovering fly's legs dangle)
+    const foot = V(hip.x + sx * sp.spread * s, sp.hover ? knee.y - sp.legLen * s * 0.55 : 0.02, hip.z + (sp.kneeUp ? (k - (sp.pairs - 1) / 2) * 0.12 * s : 0) + (sp.hover ? (1 - k) * 0.05 * s : 0));
+    const par = PARENTS[u];
+    const lr = sp.legR * s;
+    const wing = sp.wings && k === 0 && sh === 'bat';
     const pincer = sp.pincers && k === 0;
-    g.bone = u;
-    g.limb(hip.x, hip.y, hip.z, knee.x, knee.y, knee.z, sp.legR * s * 1.2, sp.legR * s, 5, { color: pincer ? acc : col });
-    g.bone = u + 1;
+    const legC = sp.robot ? shade(C, 0.8) : C;
+    const legSurf: Surf = sp.robot ? 'metal' : bug ? 'chitin' : hide;
+    if (wing) {
+      // a bat's arm, and the membrane from it back to the flank
+      tube(b, [hip.clone().add(V(-sx * 0.04 * s, 0.03 * s, 0)), hip, knee, foot], (i) => { const r = lr * [1.8, 1.4, 1, 0.6][i]; return [r, r, r]; }, (i) => [[par, i === 0 ? 1 : 0], [u, i === 1 || i === 2 ? 1 : 0], [u + 1, i === 3 ? 1 : 0]], () => P(legC, legSurf), 8, { up: FWD, capEnd: true });
+      const flank = [hip.clone().add(V(-sx * 0.02, -0.04 * s, -0.1 * s)), V(sx * BW * 0.35, J[A.body].y - BR * 0.2, J[A.body].z), V(sx * BW * 0.25, J[A.body].y - BR * 0.4, J[A.body].z - BR * 0.6)];
+      const arm = [knee, knee.clone().lerp(foot, 0.5), foot];
+      sheet(b, [0, 0.5, 1].map((t) => arm.map((p, j) => p.clone().lerp(flank[j], t))), () => P(shade(ACC, 0.7), 'leather'), (i, j) => (i === 2 ? [[A.body, 1]] : j === 0 ? [[u, 1]] : [[u + 1, 1]]));
+      continue;
+    }
+    // from inside the body out through the hip, knee and down to the foot
+    const root = hip.clone().add(V(-sx * lr * 1.2, sp.kneeUp ? 0 : BR * 0.35, 0));
+    const footTop = foot.clone().add(V(0, bug ? 0 : lr * 0.9, 0));
+    let pts: THREE.Vector3[], rad: number[];
+    if (sp.kneeUp) {
+      pts = [root, hip, hip.clone().lerp(knee, 0.5), knee, knee.clone().lerp(foot, 0.35), knee.clone().lerp(foot, 0.7), footTop];
+      rad = [1.5, 1.25, 1.1, 0.95, 0.85, 0.7, 0.45];
+    } else {
+      // a haunch that swells out of the body; hind legs bend forward at the stifle and back at the hock
+      const hind = k === sp.pairs - 1, ll = sp.legLen * s;
+      const kneeP = knee.clone().add(V(0, 0, hind ? 0.08 * ll : -0.02 * ll));
+      const hock = knee.clone().lerp(foot, hind ? 0.52 : 0.62).add(V(0, 0, hind ? -0.09 * ll : 0.012 * ll));
+      pts = [root, hip, hip.clone().lerp(kneeP, 0.5).add(V(0, 0, hind ? 0.02 * ll : 0)), kneeP, kneeP.clone().lerp(hock, 0.5), hock, hock.clone().lerp(footTop, 0.5), footTop];
+      const heavy = sh === 'bovine' || sh === 'shellback' || sh === 'turtle' ? 1.1 : 1;
+      rad = (hind ? [2.9, 2.45, 1.85, 1.1, 0.85, 0.76, 0.64, 0.62] : [2.5, 2.1, 1.55, 1.05, 0.86, 0.7, 0.63, 0.62]).map((r, i) => (i < 3 ? r * heavy : r));
+    }
+    const kneeI = 3;
+    const w = (i: number): Weights => {
+      if (i === 0) return [[par, 0.6], [u, 0.4]];
+      if (i === 1) return [[par, 0.15], [u, 0.85]];
+      if (i < kneeI) return [[u, 1]];
+      if (i === kneeI) return [[u, 0.5], [u + 1, 0.5]];
+      return [[u + 1, 1]];
+    };
     if (pincer) {
-      const tip = new THREE.Vector3(knee.x + sx * 0.05, knee.y - 0.05, knee.z + 0.35 * s);
-      g.limb(knee.x, knee.y, knee.z, tip.x, tip.y, tip.z, sp.legR * s * 1.5, sp.legR * s * 2.2, 6, { color: acc });
-      g.push().translate(tip.x, tip.y, tip.z).scale(0.12 * s, 0.08 * s, 0.2 * s).sphere(1, 6, 4, { color: acc }).pop();
-    } else if (wing) {
-      g.limb(knee.x, knee.y, knee.z, foot.x, foot.y, foot.z, sp.legR * s, sp.legR * s * 0.6, 4, { color: col });
-      // membrane
-      g.push().translate(knee.x, knee.y, knee.z).rotateY(sx * 0.3);
-      g.box(0.02, (knee.y - foot.y) * 0.9, 0.5 * s, { color: dk(acc, 0.9) });
-      g.pop();
-    } else g.limb(knee.x, knee.y, knee.z, foot.x, foot.y, foot.z, sp.legR * s, sp.legR * s * (sp.robot ? 0.5 : 0.8), 5, { color: sp.robot ? dk(col, 0.8) : col });
-    if (!pincer && !wing && (def.shape === 'shellback' || def.shape === 'bovine' || def.shape === 'turtle')) g.push().translate(foot.x, 0.04, foot.z).cyl(sp.legR * s * 1.2, sp.legR * s * 1.3, 0.08, 6, { color: dk(col, 0.6) }).pop();
+      // a crab's great claw on the front pair
+      const tip = V(knee.x + sx * 0.05, knee.y - 0.05, knee.z + 0.35 * s);
+      tube(b, [root, hip, knee, knee.clone().lerp(tip, 0.5), tip], (i) => { const r = lr * [1.6, 1.4, 1.3, 1.9, 2.4][i]; return [r, r, r]; }, (i) => (i < 2 ? w(i) : i === 2 ? [[u, 0.5], [u + 1, 0.5]] : [[u + 1, 1]]), () => P(ACC, 'chitin'), 10, { up: UP });
+      for (const jaw of [1, -1]) {
+        const a = tip.clone().add(V(0, jaw * 0.03 * s, 0)), d = tip.clone().add(V(-sx * 0.02 * s, jaw * 0.05 * s, 0.22 * s)), c = tip.clone().add(V(0, jaw * 0.09 * s, 0.1 * s));
+        tube(b, [0, 0.33, 0.66, 1].map((t) => bezier(a, c, d, t)), (i) => { const r = 0.06 * s * (1 - i * 0.26); return [r * 0.8, r, r]; }, () => [[u + 1, 1]], (i) => P(i === 3 ? DARK : ACC, 'chitin'), 8, { up: FWD, capStart: true, capEnd: d });
+      }
+      continue;
+    }
+    tube(b, pts, (i) => { const r = lr * rad[i]; return sp.kneeUp ? [r, r, r] : [r * (i < 3 ? 0.72 : 0.85), r, r * (i < 3 ? 1.12 : 1)]; }, w,
+      (i, a) => (i >= pts.length - 2 && !bug && !sp.robot ? P(shade(legC, 0.82), legSurf) : i === 0 || i === 1 ? hideAt(a) : P(legC, legSurf)), sp.kneeUp ? 8 : 10,
+      { up: FWD, capEnd: bug || sp.robot ? foot : false });
+    if (!bug && !sp.robot) {
+      // hooves for grazers, a padded paw for the rest
+      const hoof = sh === 'shellback' || sh === 'bovine' || sh === 'turtle' || sh === 'goat';
+      const fc = foot.clone().add(V(0, 0, hoof ? 0 : lr * 0.5));
+      if (hoof) lathe(b, V(foot.x, 0, foot.z), [[0, 0], [lr * 1.05, 0], [lr * 1.0, lr * 0.9], [lr * 0.8, lr * 1.3], [0, lr * 1.35]], 10, (i) => P(i < 2 ? HOOF : shade(HOOF, 1.4), 'bone'), [[u + 1, 1]]);
+      else blob(b, fc, 10, 7, (d, out) => { out.set(d.x * lr * 1.0, Math.max(-0.2, d.y) * lr * 0.8 + lr * 0.35, d.z * lr * 1.5).add(V(fc.x, 0, fc.z)); return P(d.y < -0.1 ? DARK : legC, legSurf); }, [[u + 1, 1]]);
+    }
   }
-  // flies get wings on the chest
-  if (def.shape === 'fly') {
-    g.bone = A.chest;
-    for (const side of [1, -1]) g.push().translate(side * 0.25 * s, J[A.chest].y + 0.15 * s, J[A.chest].z - 0.1 * s).rotateZ(side * 0.2).box(0.5 * s, 0.01, 0.25 * s, { color: 0xa0a8a0 }).pop();
+
+  // ---- shells, plates, crystals and machinery
+  if (sp.shell) {
+    const sc = V(0, J[A.body].y + BR * 0.25, mid);
+    const rx = BW * 0.72, ry = BR * 1.45, rz = L * 0.6;
+    blob(b, sc, 26, 16, (d, out) => {
+      const y = Math.max(d.y, -0.28 + 0.1 * Math.abs(d.z));
+      out.set(d.x * rx * (1 + 0.06 * (1 - Math.abs(d.y))), y * ry, d.z * rz).add(sc);
+      // plates: a pattern of scutes, darker in the seams, the rim lighter
+      const seg = Math.abs(Math.sin(Math.atan2(d.x, d.z) * 3.5)) < 0.12 || Math.abs(Math.sin(d.y * 7)) < 0.1;
+      const rim = d.y < -0.15;
+      return P(rim ? shade(ACC, 0.9) : seg ? shade(C, 0.62) : shade(C, 0.92 + 0.12 * d.y), 'chitin');
+    }, (p) => { const k = smoothstep(mid - L * 0.1, mid + L * 0.2, p.z); return [[A.body, 1 - k], [A.chest, k]]; });
+    if (sp.spikes) for (let i = 0; i < 7; i++) {
+      const a = V((i % 3 - 1) * BW * 0.25, J[A.body].y + BR * 1.55, J[A.body].z - BR * 0.3 + (i / 7) * L * 0.8);
+      crystal(b, a, V((i % 3 - 1) * 0.3, 1, 0).normalize(), 0.06 * s, 0.22 * s, [[i < 4 ? A.body : A.chest, 1]], shade(ACC, 0.8), 'bone');
+    }
+    if (def.key === 'mauler') for (let i = 0; i < 5; i++) {
+      const mc = V(Math.sin(i * 2.3) * 0.4 * s, J[A.body].y + BR * 1.35, J[A.body].z + i * 0.3 * s);
+      blob(b, mc, 10, 6, (d, out) => { out.set(d.x * 0.3 * s, Math.max(d.y, -0.3) * 0.1 * s, d.z * 0.3 * s).add(mc); return P(shade(rgb(0x4a6a34), 0.85 + 0.2 * d.y), 'hair'); }, [[A.body, 1]]);
+    }
   }
-  const geo = g.build();
-  geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, sp.hipH * s, 0), Math.max(1.5, sp.len * s * 1.6 + sp.neckLen * s));
-  return { bones, geo, spec: sp, shape: def.shape, rest: J };
+  if (sp.plates) for (let i = 0; i < 4; i++) {
+    const z = J[A.chest].z - i * L * 0.22;
+    const t = (z - (mid - L * 0.43)) / (L * 0.87);
+    const y = lerp(J[A.body].y, J[A.chest].y, t) + BR * 0.98;
+    const pc = V(0, y, z);
+    blob(b, pc, 14, 8, (d, out) => {
+      out.set(d.x * BW * 0.4, Math.max(d.y, -0.2) * 0.03 * s + 0.02 * s * (1 - d.x * d.x) * (d.y > 0 ? 1 : 0), d.z * 0.09 * s).add(pc);
+      out.y -= BW * 0.18 * d.x * d.x; // curving down the flanks
+      return P(shade(HORN, 0.9 + 0.1 * d.y), 'bone');
+    }, [[i < 2 ? A.chest : A.body, 1]]);
+  }
+  if (sp.crystals) for (let i = 0; i < 6; i++) {
+    const z = J[A.chest].z - i * L * 0.15;
+    const at = V(Math.sin(i * 1.7) * 0.1 * s, lerp(J[A.chest].y, J[A.body].y, i / 6) + BR * 0.9, z);
+    crystal(b, at, V(Math.sin(i * 2.1) * 0.4, 1, -0.2).normalize(), 0.05 * s, (0.26 + (i % 3) * 0.1) * s, [[i < 3 ? A.chest : A.body, 1]]);
+  }
+  if (sp.robot) {
+    const pc = V(0, J[A.body].y + BR * 0.72, J[A.body].z + L * 0.1);
+    tube(b, [pc.clone().add(V(0, 0, -L * 0.22)), pc, pc.clone().add(V(0, 0, L * 0.22))], () => [BW * 0.26, 0.04 * s, 0.04 * s], () => [[A.body, 1]], () => P(shade(C, 0.7), 'metal'), 10, { e: 4, capStart: true, capEnd: true });
+    blob(b, pc.clone().add(V(0, 0.05 * s, 0)), 8, 6, (d, out) => { out.copy(d).multiplyScalar(0.035 * s).add(pc).add(V(0, 0.05 * s, 0)); return P([1, 0.2, 0.08], 'glow'); }, [[A.body, 1]]);
+  }
+  if (sh === 'fly') {
+    for (const side of [1, -1]) {
+      const root = V(side * 0.08 * s, J[A.chest].y + BR * 0.7, J[A.chest].z - 0.05 * s);
+      const rows = [0, 0.35, 0.7, 1].map((t) => [-1, -0.5, 0, 0.5, 1].map((q) => root.clone().add(V(side * t * 0.5 * s, 0.02 * s * t, q * 0.13 * s * Math.sin(Math.PI * (0.15 + 0.85 * t)) - t * 0.12 * s))));
+      sheet(b, rows, () => P([0.55, 0.58, 0.55], 'eye'), () => [[A.chest, 1]]);
+    }
+  }
+  return b.build();
 }
+
+/** A faceted crystal or spike standing out along `dir`. */
+function crystal(b: SkinBuilder, at: THREE.Vector3, dir: THREE.Vector3, r: number, h: number, w: Weights, c: RGB = [0.1, 0.3, 0.28], surf: Surf = 'glow') {
+  const { u, v } = frame(dir, Math.abs(dir.y) > 0.9 ? FWD : UP);
+  const secs: Sec[] = [0, 0.55].map((k) => ({ c: at.clone().addScaledVector(dir, h * k), u, v, rx: r * (1 - k * 0.4), rf: r * (1 - k * 0.4), rb: r * (1 - k * 0.4), e: 1.2, w, paint: P(c, surf) }));
+  loft(b, secs, 5, { capStart: true, capEnd: at.clone().addScaledVector(dir, h) });
+}
+
 
 export interface AnimalIn {
   speed: number;

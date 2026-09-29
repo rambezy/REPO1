@@ -110,6 +110,53 @@ export function attachDebug() {
       p.x += 3; p.z -= 12;
       return out;
     },
+    /** One of each beast in a row, side on to the camera, then the world paused (see closeup). */
+    async zoo(keys?: string[], gap = 3.4) {
+      const { makeAnimal } = await import('./sim/spawn');
+      const { ANIMALS } = await import('./content/animals');
+      const { RNG } = await import('./core/rng');
+      const list = keys ?? ANIMALS.map((a) => a.key);
+      const W = G.W as any;
+      const p = W.playerChars()[0];
+      const rng = new RNG(99);
+      const x0 = p.x, z0 = p.z - 8;
+      list.forEach((k, i) => {
+        const c: any = makeAnimal(W, k, rng);
+        c.x = x0 + (i - (list.length - 1) / 2) * gap; c.z = z0; c.y = G.T.heightAt(c.x, c.z);
+        c.dir = Math.PI / 2; c.mem.lineup = true;
+      });
+      for (const c of W.playerChars()) { c.x += 60; c.z += 60; }
+      G.cam.follow = null; G.cam.lookAt(x0, z0, 30);
+      await new Promise((r) => setTimeout(r, 1500));
+      G.speed = 0;
+      return list;
+    },
+    /** Stands one of each kind of weapon in a row in front of the camera, flats toward it. */
+    async rack(gap = 0.34) {
+      const { buildWeapon } = await import('./render/weapon');
+      const { charMaterial } = await import('./render/charMat');
+      const { ITEM } = await import('./content/items');
+      const THREE = await import('three');
+      const seen = new Set<string>();
+      const defs = Object.values(ITEM).filter((d: any) => d.wvis && !seen.has(d.wvis.kind + (d.wvis.variant ?? '')) && seen.add(d.wvis.kind + (d.wvis.variant ?? '')));
+      const p = G.W.playerChars()[0];
+      const g = new THREE.Group();
+      const mat = charMaterial();
+      defs.forEach((d: any, i: number) => {
+        const m = new THREE.Mesh(buildWeapon(d.wvis), mat);
+        m.position.set((i - (defs.length - 1) / 2) * gap, 0, 0);
+        m.rotation.y = d.wvis.kind === 'crossbow' ? -Math.PI / 2 : Math.PI / 2;
+        g.add(m);
+      });
+      g.position.set(p.x, G.T.heightAt(p.x, p.z - 6) + 1.1, p.z - 6);
+      G.R.scene.add(g);
+      (window as any).__rack = g;
+      G.cam.follow = null;
+      const cam = G.cam as any;
+      cam.apply = (pc: any) => { pc.position.set(g.position.x, g.position.y + 0.1, g.position.z + defs.length * gap * 0.95); pc.lookAt(g.position.x, g.position.y + 0.1, g.position.z); if (pc.near !== 0.05) { pc.near = 0.05; pc.updateProjectionMatrix(); } };
+      p.x += 3; p.z -= 12;
+      return defs.map((d: any) => d.id);
+    },
     /** Looks at the i-th person of the lineup from `dist` metres at height h, turned by yaw (no argument: back to the game camera). */
     closeup(i?: number, dist = 1.1, h = 1.55, yaw = 0) {
       const cam = G.cam as any;

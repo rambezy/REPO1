@@ -10,7 +10,6 @@ import { ANIMAL } from '../content/animals';
 let renderer: THREE.WebGLRenderer | null = null;
 let scene: THREE.Scene, cam: THREE.PerspectiveCamera;
 const cache = new Map<string, string>();
-const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
 const bodyMat = charMaterial();
 let faceMat: THREE.MeshStandardMaterial | null = null;
 const SIZE = 112;
@@ -43,7 +42,7 @@ export function portrait(c: Char): string {
     let mesh: THREE.SkinnedMesh;
     if (c.animal) {
       const rig = buildAnimal(ANIMAL[c.animal], c.look);
-      mesh = new THREE.SkinnedMesh(rig.geo, mat);
+      mesh = new THREE.SkinnedMesh(rig.geo, bodyMat);
       mesh.add(rig.bones[0]);
       mesh.updateMatrixWorld(true);
       mesh.bind(new THREE.Skeleton(rig.bones));
