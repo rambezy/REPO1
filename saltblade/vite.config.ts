@@ -11,6 +11,10 @@ export default defineConfig({
   optimizeDeps: {
     include: ['three', ...['EffectComposer', 'RenderPass', 'UnrealBloomPass', 'ShaderPass', 'OutputPass'].map((p) => `three/addons/postprocessing/${p}.js`)],
   },
+  // Whitespace and syntax are still minified, but names stay readable: mangled
+  // two-letter names can by chance spell out markup the artifact publisher
+  // mistakes for one of its own page templates, and then refuses the page.
+  esbuild: { minifyIdentifiers: false },
   build: {
     target: 'es2020',
     assetsInlineLimit: 100000000,
