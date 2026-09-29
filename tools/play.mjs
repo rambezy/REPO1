@@ -166,6 +166,13 @@ try {
     });
     console.log(res.join('\n') || 'all maps ok');
   }
+  if (scen === 'tour') {
+    for (const id of ['cinder_creek','beetle_den','vultures_roost','rustwater','bazaar','calder','shelter7','archive','kessler','kessler_labs','cathedral','cathedral_dome']) {
+      await ev((id) => DF.enterMap(id), id);
+      await wait(700);
+      await shot('t-' + id);
+    }
+  }
   if (scen === 'start') {
     await shot('p01-shelter');
     await ev(async () => { const d = await DF.dialogue(); d.openDialogue('warden', G.map.actors.find((a) => a.npc === 'warden')); });

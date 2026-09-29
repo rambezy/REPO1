@@ -454,7 +454,6 @@ export function openOptions(fromMenu = false) {
   const foot = el('div', 'row');
   foot.style.justifyContent = 'center';
   if (!fromMenu) foot.appendChild(button('Quit to menu', () => {
-    if (!confirm('Quit to the main menu? Unsaved progress will be lost.')) return;
     location.reload();
   }, 'red'));
   foot.appendChild(button('Done', () => closeModal('options')));
