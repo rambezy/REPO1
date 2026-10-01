@@ -1,243 +1,154 @@
-// Synthesised sound effects and a low ambient drone. No audio files.
+// Synthesised sound effects. sfx(name, x?, y?) plays a sound, attenuated by
+// distance from the player when a world position is given.
 
-import { G } from '../game/G';
+import { audio } from './audio';
+import { G } from '../G';
+import { midiFreq, pluck } from './synth';
 
-let ctx: AudioContext | null = null;
-let master: GainNode | null = null;
-let noiseBuf: AudioBuffer | null = null;
-let ambient: { stop: () => void; kind: string } | null = null;
-
-function ac(): AudioContext | null {
-  if (!ctx) {
-    try {
-      ctx = new AudioContext();
-      master = ctx.createGain();
-      master.gain.value = 0.5;
-      master.connect(ctx.destination);
-      noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
-      const d = noiseBuf.getChannelData(0);
-      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-    } catch {
-      return null;
-    }
-  }
-  if (ctx.state === 'suspended') ctx.resume().catch(() => {});
-  return ctx;
+function env(g: GainNode, t: number, a: number, peak: number, d: number) {
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak), t + a);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + a + d);
 }
 
-export function unlockAudio() {
-  ac();
-}
-
-function noise(t0: number, dur: number, freq: number, q: number, vol: number, type: BiquadFilterType = 'bandpass', sweepTo?: number) {
-  const c = ctx!;
-  const src = c.createBufferSource();
-  src.buffer = noiseBuf;
-  const f = c.createBiquadFilter();
+function noiseBurst(dest: AudioNode, t: number, dur: number, type: BiquadFilterType, f0: number, f1: number, peak: number, q = 1) {
+  const ctx = audio.ctx!;
+  const s = ctx.createBufferSource();
+  s.buffer = audio.noise;
+  const f = ctx.createBiquadFilter();
   f.type = type;
-  f.frequency.setValueAtTime(freq, t0);
-  if (sweepTo) f.frequency.exponentialRampToValueAtTime(sweepTo, t0 + dur);
   f.Q.value = q;
-  const g = c.createGain();
-  g.gain.setValueAtTime(vol, t0);
-  g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
-  src.connect(f).connect(g).connect(master!);
-  src.start(t0, Math.random());
-  src.stop(t0 + dur + 0.05);
+  f.frequency.setValueAtTime(f0, t);
+  f.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
+  const g = ctx.createGain();
+  env(g, t, Math.min(0.02, dur * 0.2), peak, dur);
+  s.connect(f).connect(g).connect(dest);
+  s.start(t, Math.random() * 1.5);
+  s.stop(t + dur + 0.05);
 }
 
-function tone(t0: number, dur: number, freq: number, vol: number, type: OscillatorType = 'sine', to?: number) {
-  const c = ctx!;
-  const o = c.createOscillator();
+function tone(dest: AudioNode, t: number, type: OscillatorType, f0: number, f1: number, dur: number, peak: number, attack = 0.005) {
+  const ctx = audio.ctx!;
+  const o = ctx.createOscillator();
   o.type = type;
-  o.frequency.setValueAtTime(freq, t0);
-  if (to) o.frequency.exponentialRampToValueAtTime(to, t0 + dur);
-  const g = c.createGain();
-  g.gain.setValueAtTime(0.0001, t0);
-  g.gain.exponentialRampToValueAtTime(vol, t0 + 0.01);
-  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-  o.connect(g).connect(master!);
-  o.start(t0);
-  o.stop(t0 + dur + 0.05);
+  o.frequency.setValueAtTime(f0, t);
+  if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
+  const g = ctx.createGain();
+  env(g, t, attack, peak, dur);
+  o.connect(g).connect(dest);
+  o.start(t);
+  o.stop(t + dur + attack + 0.05);
 }
 
-export function sfx(id: string) {
-  if (!G.settings.sound) return;
-  const c = ac();
-  if (!c || !master) return;
-  const t = c.currentTime + 0.01;
-  switch (id) {
-    case 'click':
-      tone(t, 0.04, 1800, 0.08, 'square');
-      break;
-    case 'button':
-      noise(t, 0.05, 2500, 3, 0.25);
-      tone(t, 0.06, 220, 0.12, 'square', 110);
-      break;
-    case 'pistol':
-      noise(t, 0.25, 1200, 0.7, 0.9, 'lowpass', 200);
-      tone(t, 0.12, 180, 0.4, 'triangle', 50);
-      break;
-    case 'rifle':
-      noise(t, 0.4, 2000, 0.6, 1, 'lowpass', 150);
-      tone(t, 0.18, 140, 0.5, 'triangle', 40);
-      break;
-    case 'shotgun':
-      noise(t, 0.5, 900, 0.5, 1, 'lowpass', 120);
-      tone(t, 0.25, 100, 0.6, 'triangle', 35);
-      break;
-    case 'smg':
-    case 'minigun': {
-      const n = id === 'minigun' ? 14 : 7;
-      for (let i = 0; i < n; i++) noise(t + i * 0.07, 0.09, 1500, 0.8, 0.6, 'lowpass', 300);
+function metal(dest: AudioNode, t: number, base: number, dur: number, peak: number) {
+  const ratios = [1, 2.76, 5.4, 8.93, 13.3];
+  ratios.forEach((r, i) => tone(dest, t, 'sine', base * r, base * r * 0.998, dur / (1 + i * 0.6), peak / (1 + i * 0.9)));
+}
+
+let lastPlayed = new Map<string, number>();
+
+export function sfx(name: string, x?: number, y?: number, vol = 1) {
+  const ctx = audio.ctx;
+  if (!ctx || !audio.sfx) return;
+  const nowT = ctx.currentTime;
+  // don't stack identical sounds in the same instant
+  const lp = lastPlayed.get(name) || 0;
+  if (nowT - lp < 0.03) return;
+  lastPlayed.set(name, nowT);
+  let v = vol;
+  let pan = 0;
+  if (x !== undefined && y !== undefined && G.player) {
+    const dx = x - G.player.x, dy = y - G.player.y;
+    const d = Math.hypot(dx, dy);
+    if (d > 260) return;
+    v *= Math.max(0, 1 - d / 260);
+    pan = Math.max(-0.8, Math.min(0.8, dx / 160));
+  }
+  const out = ctx.createGain();
+  out.gain.value = v;
+  const p = ctx.createStereoPanner();
+  p.pan.value = pan;
+  out.connect(p).connect(audio.sfx);
+  const t = nowT + 0.005;
+  switch (name) {
+    case 'swing': noiseBurst(out, t, 0.16, 'bandpass', 700, 2600, 0.35, 1.2); break;
+    case 'swing_heavy': noiseBurst(out, t, 0.28, 'bandpass', 400, 1600, 0.45, 1.0); break;
+    case 'hit': tone(out, t, 'sine', 160, 60, 0.12, 0.6); noiseBurst(out, t, 0.08, 'lowpass', 2500, 600, 0.35); break;
+    case 'hit_heavy': tone(out, t, 'sine', 120, 40, 0.22, 0.8); noiseBurst(out, t, 0.14, 'lowpass', 1800, 300, 0.5); break;
+    case 'hit_flesh': tone(out, t, 'sine', 140, 70, 0.1, 0.5); noiseBurst(out, t, 0.06, 'lowpass', 1200, 400, 0.25); break;
+    case 'block': metal(out, t, 520 + Math.random() * 60, 0.35, 0.18); noiseBurst(out, t, 0.05, 'highpass', 3000, 3000, 0.3); break;
+    case 'parry': metal(out, t, 760 + Math.random() * 40, 0.8, 0.22); noiseBurst(out, t, 0.08, 'highpass', 4000, 4000, 0.35); break;
+    case 'dodge': noiseBurst(out, t, 0.18, 'bandpass', 1200, 500, 0.18, 0.8); break;
+    case 'die': tone(out, t, 'sawtooth', 180, 70, 0.6, 0.08, 0.03); noiseBurst(out, t, 0.3, 'lowpass', 600, 200, 0.12); break;
+    case 'animal_die': tone(out, t, 'sawtooth', 700, 200, 0.35, 0.1, 0.01); break;
+    case 'bow': tone(out, t, 'triangle', 180, 150, 0.2, 0.3); noiseBurst(out, t, 0.12, 'highpass', 2000, 800, 0.2); break;
+    case 'step_grass': noiseBurst(out, t, 0.05, 'bandpass', 1800, 1200, 0.05, 0.8); break;
+    case 'step_dirt': noiseBurst(out, t, 0.05, 'lowpass', 900, 400, 0.07); break;
+    case 'step_stone': noiseBurst(out, t, 0.04, 'bandpass', 2400, 1800, 0.07, 2); tone(out, t, 'sine', 200, 160, 0.03, 0.04); break;
+    case 'step_wood': tone(out, t, 'sine', 180, 120, 0.06, 0.12); noiseBurst(out, t, 0.04, 'lowpass', 1400, 600, 0.05); break;
+    case 'step_water': noiseBurst(out, t, 0.12, 'bandpass', 900, 2400, 0.12, 1.5); break;
+    case 'coin': metal(out, t, 1900, 0.25, 0.08); metal(out, t + 0.07, 2300, 0.3, 0.07); break;
+    case 'pickup': pluck(out, t, 76, 0.5, 'harp'); break;
+    case 'herb': noiseBurst(out, t, 0.12, 'bandpass', 3000, 1500, 0.12, 1); pluck(out, t + 0.05, 81, 0.3, 'harp'); break;
+    case 'door': tone(out, t, 'sawtooth', 90, 70, 0.35, 0.05, 0.08); noiseBurst(out, t + 0.3, 0.1, 'lowpass', 400, 100, 0.4); break;
+    case 'chest': tone(out, t, 'sawtooth', 120, 90, 0.2, 0.04, 0.03); noiseBurst(out, t, 0.08, 'lowpass', 800, 200, 0.25); break;
+    case 'ui': pluck(out, t, 72, 0.25, 'lute'); break;
+    case 'ui_back': pluck(out, t, 67, 0.22, 'lute'); break;
+    case 'page': noiseBurst(out, t, 0.18, 'bandpass', 3500, 2000, 0.1, 0.7); break;
+    case 'book': noiseBurst(out, t, 0.12, 'lowpass', 1200, 300, 0.3); break;
+    case 'bark': {
+      for (let i = 0; i < (Math.random() < 0.5 ? 1 : 2); i++) {
+        const tt = t + i * 0.18;
+        const o = ctx.createOscillator();
+        o.type = 'sawtooth';
+        o.frequency.setValueAtTime(520, tt);
+        o.frequency.exponentialRampToValueAtTime(260, tt + 0.1);
+        const bp = ctx.createBiquadFilter();
+        bp.type = 'bandpass'; bp.frequency.value = 1100; bp.Q.value = 3;
+        const g = ctx.createGain();
+        env(g, tt, 0.01, 0.35, 0.1);
+        o.connect(bp).connect(g).connect(out);
+        o.start(tt); o.stop(tt + 0.16);
+      }
       break;
     }
-    case 'laser':
-      tone(t, 0.3, 1400, 0.25, 'sawtooth', 300);
-      tone(t, 0.3, 1410, 0.15, 'square', 290);
-      break;
-    case 'plasma':
-      tone(t, 0.45, 300, 0.3, 'sawtooth', 60);
-      noise(t, 0.4, 600, 2, 0.4, 'bandpass', 100);
-      break;
-    case 'flame':
-      noise(t, 0.8, 500, 0.5, 0.7, 'lowpass', 1500);
-      break;
-    case 'rocket':
-      noise(t, 0.6, 400, 0.6, 0.8, 'lowpass', 2000);
-      break;
-    case 'explode':
-      noise(t, 1.2, 800, 0.5, 1, 'lowpass', 60);
-      tone(t, 0.8, 70, 0.8, 'sine', 25);
-      break;
-    case 'swing':
-    case 'throw':
-      noise(t, 0.2, 800, 2, 0.4, 'bandpass', 3000);
-      break;
-    case 'punch':
-    case 'hit':
-      noise(t, 0.12, 300, 1, 0.8, 'lowpass');
-      tone(t, 0.1, 90, 0.5, 'sine', 50);
-      break;
-    case 'miss':
-      noise(t, 0.15, 3000, 4, 0.25, 'bandpass', 5000);
-      break;
-    case 'bite':
-      noise(t, 0.1, 1800, 3, 0.4);
-      break;
-    case 'death':
-      tone(t, 0.6, 200, 0.3, 'sawtooth', 60);
-      noise(t, 0.3, 400, 1, 0.3, 'lowpass');
-      break;
-    case 'door':
-      tone(t, 0.25, 120, 0.3, 'square', 70);
-      noise(t, 0.3, 500, 1, 0.3, 'lowpass');
-      break;
-    case 'hatch':
-      for (let i = 0; i < 6; i++) tone(t + i * 0.18, 0.15, 90 - i * 5, 0.35, 'sawtooth', 60);
-      noise(t, 1.4, 300, 0.7, 0.5, 'lowpass', 80);
-      break;
-    case 'locked':
-      tone(t, 0.08, 400, 0.2, 'square');
-      tone(t + 0.1, 0.08, 300, 0.2, 'square');
-      break;
-    case 'pickup':
-      tone(t, 0.08, 600, 0.15, 'triangle', 900);
-      break;
-    case 'drug':
-      noise(t, 0.2, 5000, 2, 0.25, 'highpass');
-      tone(t + 0.05, 0.15, 900, 0.12, 'sine', 500);
-      break;
-    case 'levelup':
-      [523, 659, 784, 1046].forEach((f, i) => tone(t + i * 0.12, 0.3, f, 0.18, 'square'));
-      break;
-    case 'quest':
-      [392, 523].forEach((f, i) => tone(t + i * 0.15, 0.35, f, 0.15, 'triangle'));
-      break;
-    case 'geiger':
-      for (let i = 0; i < 6; i++) noise(t + Math.random() * 0.4, 0.01, 4000, 1, 0.5, 'highpass');
-      break;
-    case 'encounter':
-      tone(t, 0.5, 220, 0.2, 'sawtooth', 110);
-      tone(t + 0.25, 0.5, 207, 0.2, 'sawtooth', 100);
-      break;
-    case 'step':
-      noise(t, 0.06, 300, 1, 0.08, 'lowpass');
-      break;
-    case 'terminal':
-      for (let i = 0; i < 5; i++) tone(t + i * 0.05, 0.04, 800 + Math.random() * 1200, 0.08, 'square');
-      break;
-    case 'coins':
-      for (let i = 0; i < 4; i++) tone(t + i * 0.05, 0.08, 2000 + i * 300, 0.1, 'triangle');
-      break;
-    case 'crit':
-      tone(t, 0.2, 120, 0.5, 'square', 40);
-      noise(t, 0.3, 200, 1, 0.8, 'lowpass');
-      break;
+    case 'whine': tone(out, t, 'sine', 900, 1300, 0.4, 0.06, 0.08); tone(out, t + 0.35, 'sine', 1200, 800, 0.4, 0.05, 0.05); break;
+    case 'growl': noiseBurst(out, t, 0.6, 'lowpass', 300, 200, 0.2); tone(out, t, 'sawtooth', 80, 70, 0.6, 0.05, 0.1); break;
+    case 'howl': tone(out, t, 'sine', 380, 520, 0.8, 0.08, 0.3); tone(out, t + 0.8, 'sine', 520, 340, 1.2, 0.07, 0.05); break;
+    case 'hammer': metal(out, t, 980 + Math.random() * 80, 0.5, 0.2); tone(out, t, 'sine', 150, 80, 0.08, 0.3); break;
+    case 'quench': noiseBurst(out, t, 1.2, 'highpass', 3000, 5000, 0.2); break;
+    case 'bellows': noiseBurst(out, t, 0.45, 'lowpass', 500, 900, 0.18); break;
+    case 'splash': noiseBurst(out, t, 0.3, 'bandpass', 800, 2400, 0.25, 0.8); break;
+    case 'eat': for (let i = 0; i < 3; i++) noiseBurst(out, t + i * 0.13, 0.06, 'bandpass', 1500, 900, 0.14, 1.2); break;
+    case 'drink': for (let i = 0; i < 3; i++) tone(out, t + i * 0.16, 'sine', 300, 500, 0.08, 0.1, 0.01); break;
+    case 'bell': metal(out, t, 196, 4, 0.25); metal(out, t + 2.2, 196, 4, 0.2); break;
+    case 'bell_small': metal(out, t, 660, 1.2, 0.12); break;
+    case 'levelup': [72, 76, 79, 84].forEach((m, i) => pluck(out, t + i * 0.09, m, 0.5, 'harp')); break;
+    case 'quest': [62, 69, 74].forEach((m, i) => pluck(out, t + i * 0.14, m, 0.5, 'lute')); tone(out, t + 0.28, 'triangle', midiFreq(74), midiFreq(74), 0.6, 0.07, 0.05); break;
+    case 'quest_done': [62, 66, 69, 74, 78].forEach((m, i) => pluck(out, t + i * 0.1, m, 0.5, 'harp')); break;
+    case 'fail': [64, 61, 57].forEach((m, i) => pluck(out, t + i * 0.16, m, 0.45, 'lute')); break;
+    case 'heart': tone(out, t, 'sine', 60, 45, 0.12, 0.5); tone(out, t + 0.22, 'sine', 55, 40, 0.12, 0.35); break;
+    case 'crow': tone(out, t, 'sawtooth', 900, 700, 0.18, 0.05, 0.02); tone(out, t + 0.25, 'sawtooth', 850, 650, 0.2, 0.04, 0.02); break;
+    case 'bird': { const b = 2400 + Math.random() * 1200; for (let i = 0; i < 3; i++) tone(out, t + i * 0.09, 'sine', b, b * 1.3, 0.06, 0.03, 0.01); break; }
+    case 'rooster': tone(out, t, 'sawtooth', 500, 900, 0.3, 0.05, 0.05); tone(out, t + 0.3, 'sawtooth', 900, 600, 0.6, 0.05, 0.02); break;
+    case 'thunder': noiseBurst(out, t, 2.5, 'lowpass', 300, 60, 0.8); break;
+    case 'fire': noiseBurst(out, t, 0.05, 'highpass', 2000, 2000, 0.05); break;
+    case 'lockclick': tone(out, t, 'square', 2200, 2000, 0.02, 0.05); break;
+    case 'lockbreak': metal(out, t, 1600, 0.2, 0.1); break;
+    case 'unlock': tone(out, t, 'square', 1400, 1400, 0.03, 0.08); tone(out, t + 0.08, 'square', 900, 900, 0.05, 0.08); break;
+    case 'dice': for (let i = 0; i < 6; i++) noiseBurst(out, t + i * 0.05 + Math.random() * 0.03, 0.03, 'bandpass', 2200, 1800, 0.18, 3); break;
+    case 'gulp': tone(out, t, 'sine', 250, 450, 0.12, 0.15); break;
+    case 'sheathe': noiseBurst(out, t, 0.25, 'bandpass', 3000, 5000, 0.12, 4); break;
+    case 'alarm': metal(out, t, 880, 0.3, 0.15); metal(out, t + 0.35, 880, 0.3, 0.15); break;
+    case 'hmm': tone(out, t, 'triangle', 170, 150, 0.25, 0.08, 0.04); break;
   }
 }
 
-/** Ambient drone per environment: 'wind', 'cave', 'shelter', 'town', 'none'. */
-export function setAmbient(kind: string) {
-  if (!G.settings.music) kind = 'none';
-  if (ambient?.kind === kind) return;
-  ambient?.stop();
-  ambient = null;
-  if (kind === 'none') return;
-  const c = ac();
-  if (!c || !master) return;
-  const out = c.createGain();
-  out.gain.value = 0;
-  out.gain.linearRampToValueAtTime(0.18, c.currentTime + 3);
-  out.connect(master);
-  const nodes: AudioScheduledSourceNode[] = [];
-  const base = kind === 'cave' ? 55 : kind === 'shelter' ? 60 : kind === 'town' ? 73.4 : 49;
-  // Slowly beating detuned drones.
-  for (const [mult, det, vol] of [[1, 0, 0.3], [1.5, 3, 0.12], [2, -4, 0.1], [0.5, 1, 0.25]] as const) {
-    const o = c.createOscillator();
-    o.type = kind === 'shelter' ? 'triangle' : 'sine';
-    o.frequency.value = base * mult;
-    o.detune.value = det;
-    const g = c.createGain();
-    g.gain.value = vol;
-    const lfo = c.createOscillator();
-    lfo.frequency.value = 0.05 + Math.random() * 0.1;
-    const lg = c.createGain();
-    lg.gain.value = vol * 0.8;
-    lfo.connect(lg).connect(g.gain);
-    o.connect(g).connect(out);
-    o.start();
-    lfo.start();
-    nodes.push(o, lfo);
-  }
-  if (kind === 'wind' || kind === 'cave') {
-    const src = c.createBufferSource();
-    src.buffer = noiseBuf;
-    src.loop = true;
-    const f = c.createBiquadFilter();
-    f.type = 'bandpass';
-    f.frequency.value = kind === 'wind' ? 400 : 200;
-    f.Q.value = 0.8;
-    const g = c.createGain();
-    g.gain.value = kind === 'wind' ? 0.35 : 0.15;
-    const lfo = c.createOscillator();
-    lfo.frequency.value = 0.08;
-    const lg = c.createGain();
-    lg.gain.value = 250;
-    lfo.connect(lg).connect(f.frequency);
-    src.connect(f).connect(g).connect(out);
-    src.start();
-    lfo.start();
-    nodes.push(src, lfo);
-  }
-  ambient = {
-    kind,
-    stop: () => {
-      const t = c.currentTime;
-      out.gain.cancelScheduledValues(t);
-      out.gain.setValueAtTime(out.gain.value, t);
-      out.gain.linearRampToValueAtTime(0, t + 1.5);
-      setTimeout(() => nodes.forEach((n) => { try { n.stop(); } catch { /* already stopped */ } }), 1700);
-    },
-  };
+/** Short melodic sting for dramatic moments. */
+export function sting(kind: 'sad' | 'reveal' | 'danger' | 'warm') {
+  const ctx = audio.ctx;
+  if (!ctx || !audio.sfx) return;
+  const t = ctx.currentTime + 0.02;
+  const seqs: Record<string, number[]> = { sad: [62, 65, 69, 67], reveal: [57, 64, 69, 72], danger: [50, 51, 50, 51], warm: [67, 71, 74, 79] };
+  seqs[kind].forEach((m, i) => pluck(audio.sfx!, t + i * 0.22, m, 0.5, 'harp'));
 }

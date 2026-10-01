@@ -1,0 +1,21 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Icons</title>
+<style>
+  body { margin: 0; background: #0b0806; color: #d8cfb5; font: 10px/1.15 system-ui, sans-serif; }
+  .panel { display: flex; flex-wrap: wrap; gap: 2px 0; padding: 6px 4px; }
+  .panel.dark { background: #16110d; color: #cbbd9c; }
+  .panel.parch { background: #e9dfc6; color: #3a2c1e; }
+  .big .cell { width: auto; margin: 2px; }
+  .big .cell span { width: auto; }
+  .cell { width: 88px; display: flex; flex-direction: column; align-items: center; }
+  .cell span { display: block; width: 86px; height: 22px; text-align: center; overflow: hidden; }
+  .cell.extra span { color: #c07a1a; font-weight: 600; }
+  .both .cell { width: 150px; }
+  .both .cell span { width: 148px; height: 12px; white-space: nowrap; text-overflow: ellipsis; }
+  .pair { display: flex; }
+  .pair div { width: 74px; height: 70px; display: grid; place-items: center; }
+  .bg-dark { background: #16110d; }
+  .bg-parch { background: #e9dfc6; }
+  canvas { display: block; }
+</style></head>
+<body><div id="root"></div><script type="module" src="./icons.ts"></script></body></html>
