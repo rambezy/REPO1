@@ -152,9 +152,20 @@ export class Actor {
       }
       return false;
     };
+    // Furniture the actor already stands inside (a chest across a door spot,
+    // a prop that appeared on top of them) never traps it: any step that
+    // doesn't push further in is allowed, so it slides out but can't pass through.
+    const b0 = box(this.x, this.y);
+    const inside = map.solidsOverlapping(b0.x0, b0.y0, b0.x1, b0.y1);
+    const overlap = (b: { x0: number; y0: number; x1: number; y1: number }, s: { x: number; y: number; w: number; h: number }) =>
+      Math.max(0, Math.min(b.x1, s.x + s.w) - Math.max(b.x0, s.x)) * Math.max(0, Math.min(b.y1, s.y + s.h) - Math.max(b.y0, s.y));
     const free = (x: number, y: number) => {
       const b = box(x, y);
-      return !map.blocked(b.x0, b.y0, b.x1, b.y1) && !hitsActor(x, y);
+      if (!inside.length) return !map.blocked(b.x0, b.y0, b.x1, b.y1) && !hitsActor(x, y);
+      if (map.blocked(b.x0, b.y0, b.x1, b.y1, inside)) return false;
+      const cur = box(this.x, this.y);
+      for (const o of inside) if (overlap(b, o.solid!) > overlap(cur, o.solid!) + 1e-6) return false;
+      return !hitsActor(x, y);
     };
     const sx = this.x, sy = this.y;
     // Move in small steps so fast movement cannot tunnel through thin walls.

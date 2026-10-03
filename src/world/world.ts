@@ -17,6 +17,8 @@ export function registerMap(id: string, build: () => GameMap) {
   builders.set(id, build);
 }
 export function hasMap(id: string) { return builders.has(id) || maps.has(id); }
+/** Every map the world knows how to build. */
+export function mapIds(): string[] { return [...builders.keys()]; }
 
 export function getMap(id: string): GameMap {
   let m = maps.get(id);

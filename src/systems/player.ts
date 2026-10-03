@@ -207,6 +207,13 @@ export function updatePlayer(dt: number) {
   }
   if (c.phase === 'block' || c.phase === 'draw' || (playerState.combatNear && c.phase === 'none' && input.lastDevice === 'mouse')) p.dir = dirFromAngle(ang);
 
+  // wedged inside a wall (nothing should put you there, but if something does,
+  // trying to walk hops you to the nearest clear ground)
+  if (canMove && moving && !didMove && G.map.blocked(p.x - p.hitW / 2, p.y - p.hitH, p.x + p.hitW / 2, p.y)) {
+    const spot = G.map.nearestFree(p.x, p.y, p.hitW / 2, p.hitH);
+    if (spot) { p.x = spot.x; p.y = spot.y; }
+  }
+
   if (c.phase === 'none' && p.poseLock <= 0 && !p.sitting) p.pose = didMove ? 'walk' : (p.crouching ? 'crouch' : 'idle');
   // moving while recovering, blocking or drawing a bow: the legs keep walking
   else if ((c.phase === 'recover' || c.phase === 'block' || c.phase === 'draw') && p.poseLock <= 0 && !p.sitting) {

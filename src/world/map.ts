@@ -166,19 +166,46 @@ export class GameMap {
     return this.tileBlock[ty * this.w + tx] === 1;
   }
 
+  /** Solid object footprints overlapping a pixel-space AABB. */
+  solidsOverlapping(x0: number, y0: number, x1: number, y1: number): MapObject[] {
+    if (this.dirtyIndex) this.rebuildIndex();
+    const out: MapObject[] = [];
+    for (const o of this.queryObjects(x0 - 64, y0 - 16, x1 + 64, y1 + 96)) {
+      if (!o.solid || o.hidden) continue;
+      const s = o.solid;
+      if (x1 > s.x && x0 < s.x + s.w && y1 > s.y && y0 < s.y + s.h) out.push(o);
+    }
+    return out;
+  }
+
   /** True if the pixel-space AABB overlaps any solid terrain or object footprint. */
-  blocked(x0: number, y0: number, x1: number, y1: number, ignore?: MapObject): boolean {
+  blocked(x0: number, y0: number, x1: number, y1: number, ignore?: MapObject | MapObject[]): boolean {
     if (this.dirtyIndex) this.rebuildIndex();
     const tx0 = Math.floor(x0 / TILE), ty0 = Math.floor(y0 / TILE);
     const tx1 = Math.floor((x1 - 0.001) / TILE), ty1 = Math.floor((y1 - 0.001) / TILE);
     for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) if (this.tileSolid(tx, ty)) return true;
     const near = this.queryObjects(x0 - 64, y0 - 16, x1 + 64, y1 + 96);
     for (const o of near) {
-      if (!o.solid || o.hidden || o === ignore) continue;
+      if (!o.solid || o.hidden || o === ignore || (Array.isArray(ignore) && ignore.includes(o))) continue;
       const s = o.solid;
       if (x1 > s.x && x0 < s.x + s.w && y1 > s.y && y0 < s.y + s.h) return true;
     }
     return false;
+  }
+
+  /** The nearest spot (feet position) where a box of half-width hw and height h stands clear. */
+  nearestFree(x: number, y: number, hw: number, h: number, maxR = 48): { x: number; y: number } | null {
+    const clear = (px: number, py: number) => !this.blocked(px - hw, py - h, px + hw, py);
+    if (clear(x, y)) return { x, y };
+    for (let r = 4; r <= maxR; r += 4) {
+      let best: { x: number; y: number } | null = null, bd = Infinity;
+      for (let i = -r; i <= r; i += 4) for (const [dx, dy] of [[i, -r], [i, r], [-r, i], [r, i]]) {
+        const d = Math.hypot(dx, dy);
+        if (d < bd && clear(x + dx, y + dy)) { bd = d; best = { x: x + dx, y: y + dy }; }
+      }
+      if (best) return best;
+    }
+    return null;
   }
 
   /** Walkability of a tile centre for path-finding (checks objects too). */

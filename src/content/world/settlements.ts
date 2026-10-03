@@ -186,7 +186,8 @@ export function lindenHill(b: MapBuilder) {
   house(b, L.x0 + 21, L.y0 + 34, { w: 4, h: 3, style: 'townhouse', door: 1, chimney: true, seed: 44 }, 'lh_house1', 'a house');
   house(b, L.x0 + 33, L.y0 + 32, { w: 4, h: 3, style: 'townhouse', door: 1, seed: 45 }, 'lh_house2', 'a house');
   house(b, L.x0 + 13, L.y0 + 34, { w: 4, h: 3, style: 'cottage', door: 1, chimney: true, seed: 46 }, 'lh_house3', 'a house');
-  house(b, L.x0 + 28, L.y0 + 35, { w: 4, h: 3, style: 'cottage', door: 1, seed: 47 }, 'lh_house4', 'a house');
+  // a tile clear of the town wall, so its door opens onto the street
+  house(b, L.x0 + 28, L.y0 + 34, { w: 4, h: 3, style: 'cottage', door: 1, seed: 47 }, 'lh_house4', 'a house');
   // gates: torches and guards
   for (const [x, y] of [[cx - 3, L.y1 - 1], [cx + 2, L.y1 - 1], [cx - 3, L.y0 + 3], [cx + 2, L.y0 + 3], [L.x1 - 3, L.y0 + 19], [L.x1 - 3, L.y0 + 24]]) b.prop('torch', x, y, { solid: false });
   b.spawn('south_gate', cx, L.y1 + 1, 0);
@@ -432,8 +433,10 @@ export function ravenstone(b: MapBuilder) {
   for (const [x, y] of [[R.x0 + 9, R.y1 - 1], [R.x0 + 14, R.y1 - 1]]) b.prop('torch', x, y, { solid: false });
   // postern on the east wall (a way in for the careful)
   b.marker((R.x1) * TILE + 8, (R.y0 + 12) * TILE + 10, { type: 'door', to: 'overworld', spawn: 'rv_postern_in', label: 'The postern gate', locked: 2 }, { key: 'rv_postern' });
+  // a goat path up through the crag to it (the rock used to wall it off)
+  b.path([[R.x1 + 1, R.y0 + 12], [R.x1 + 4, R.y0 + 13], [R.x1 + 9, R.y0 + 15]], 2.2, T.DIRT, 0.3, true, [T.ROCK]);
   b.spawn('rv_postern_in', R.x1 - 3, R.y0 + 12, 1);
-  b.spawn('rv_postern_out', R.x1 + 1, R.y0 + 13, 2);
+  b.spawn('rv_postern_out', R.x1 + 2, R.y0 + 12, 2);
   b.spawn('ravenstone', R.x0 + 12, R.y1 + 8, 3);
   b.spawn('rv_gate_in', R.x0 + 12, R.y1 - 4, 3);
   b.spawn('rv_bailey', R.x0 + 12, R.y0 + 13, 3);

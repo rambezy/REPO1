@@ -19,6 +19,7 @@ page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}\n${(e.stack || '
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const g = {
   page,
+  url,
   logs,
   sleep,
   log: (...a) => console.log('  ·', ...a),

@@ -238,7 +238,7 @@ function registerScenes() {
   }));
   on('script:rv_winch', () => openGateFromInside());
   trigger('a3_march', () => qAt('main_siege', 'march') && nearTile(194, 40, 7), () => councilOfWar());
-  trigger('a3_postern_in', () => qAt('main_siege', 'postern') && onMap('overworld') && regionIs('ravenstone') && G.player.x > 200 * TILE && G.player.y < 26 * TILE, () => { setFlag('postern_in'); tip('sneak', 'Crouch (<b>Ctrl</b> or <b>X</b>) to move quietly. Stay out of the guards\' sight, and out of the torchlight.'); });
+  trigger('a3_postern_in', () => qAt('main_siege', 'postern') && onMap('overworld') && regionIs('ravenstone') && G.player.x > 200 * TILE && G.player.x < 205 * TILE && G.player.y < 26 * TILE, () => { setFlag('postern_in'); tip('sneak', 'Crouch (<b>Ctrl</b> or <b>X</b>) to move quietly. Stay out of the guards\' sight, and out of the torchlight.'); });
   trigger('a3_bailey_clear', () => qAt('main_siege', 'bailey') && hostiles('siege').length === 0, () => dieterDuel());
   trigger('a3_hall', () => qAt('main_siege', 'hall') && onMap('rv_hall'), () => lotharScene());
   trigger('a3_kitchen', () => qAt('main_siege', 'lida') && onMap('rv_kitchen'), () => lidaReunion());

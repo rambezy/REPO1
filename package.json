@@ -11,7 +11,7 @@
     "preview": "vite preview",
     "lint:content": "tsx tools/validate-content.ts",
     "test:smoke": "node tools/smoke-test.mjs",
-    "test:story": "node tools/drive.mjs tools/scen/prologue.mjs && node tools/drive.mjs tools/scen/raid.mjs && node tools/drive.mjs tools/scen/act1.mjs && node tools/drive.mjs tools/scen/act2.mjs && node tools/drive.mjs tools/scen/act3.mjs && node tools/drive.mjs tools/scen/trade.mjs && node tools/drive.mjs tools/scen/combat.mjs"
+    "test:story": "node tools/drive.mjs tools/scen/prologue.mjs && node tools/drive.mjs tools/scen/raid.mjs && node tools/drive.mjs tools/scen/act1.mjs && node tools/drive.mjs tools/scen/act2.mjs && node tools/drive.mjs tools/scen/act3.mjs && node tools/drive.mjs tools/scen/trade.mjs && node tools/drive.mjs tools/scen/combat.mjs && node tools/drive.mjs tools/scen/doors.mjs"
   },
   "devDependencies": {
     "playwright": "1.56.1",

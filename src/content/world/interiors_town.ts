@@ -81,7 +81,7 @@ export function registerTownInteriors() {
     r.wallProp('weaponrack', 8);
     r.bed(9, 5, 'kovar', CLOTH.grey, true);
     r.chest(0, 6, 'lh_smithy_chest:tools', { owner: 'kovar' });
-    r.prop('woodpile', 4, 6);
+    r.prop('woodpile', 2.5, 6);
     r.spot('anvil', 5, 3, 3);
     r.spot('forge', 3, 2, 3);
     r.spot('bed', 9, 4.6);

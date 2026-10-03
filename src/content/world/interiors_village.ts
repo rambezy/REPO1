@@ -90,7 +90,7 @@ export function registerVillageInteriors() {
     r.window(6);
     r.bed(7, 3, 'hanka', CLOTH.green);
     r.prop('table', 3, 3, { opt: 'bread' });
-    r.prop('dryingrack', 5, 5, { solid: true });
+    r.prop('dryingrack', 6.5, 5, { solid: true });
     r.chest(0, 5, 'hb_hanka_chest:herbs', { owner: 'hanka' });
     r.spot('table', 3, 2, 0);
     r.spot('bed', 7, 2.6);
@@ -144,7 +144,7 @@ export function registerVillageInteriors() {
     r.prop('shelf', 0, 1);
     r.bed(8, 4, 'wenda', CLOTH.forest, true);
     r.prop('dryingrack', 1, 5, { solid: true });
-    r.chest(4, 5, 'wenda_chest:herbs', { owner: 'wenda' });
+    r.chest(6, 5, 'wenda_chest:herbs', { owner: 'wenda' });
     r.spot('cauldron', 4, 2, 3);
     r.spot('bench', 7, 3, 3);
     r.spot('bed', 8, 3.6);
@@ -164,7 +164,7 @@ export function registerVillageInteriors() {
     r.bed(0, 2, 'burners', CLOTH.charcoal, true);
     r.bed(6, 2, 'burners', CLOTH.charcoal, true);
     r.prop('table', 3, 2);
-    r.chest(3, 4, 'burner_chest:tools', { owner: 'burners' });
+    r.chest(5, 4, 'burner_chest:tools', { owner: 'burners' });
     r.spot('table', 3, 1, 0);
   });
 
