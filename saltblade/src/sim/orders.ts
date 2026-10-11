@@ -9,14 +9,29 @@ import { dropCarried, treatLimb, aidPlan, needsCare, repairProst, worstLimb, bro
 import { train, versus } from './train';
 import { canSee } from './ai';
 import { ITEM } from '../content/items';
-import { crime } from './crime';
+import { crime, witness, reportRunaway } from './crime';
 import { knockOut } from './health';
 import { angleTo, wrapAngle } from '../core/math';
 import { useObject, placeInto } from './use';
 import { reachOf } from './structures';
 import { canSalvage, canReprogram, workSalvage, workReprogram } from './salvage';
+import { HOUR } from './clock';
 
 const REACH = 1.6;
+
+/**
+ * What a go at a lock teaches: the most when it gives; less with each failure on the same lock, so
+ * that a cell is no school. The count is forgotten after an hour away from the lock.
+ */
+function lockLesson(c: Char, ok: boolean): number {
+  const B = c.brain;
+  if (S.clock.t - (B.lockTriesT ?? -1e9) > HOUR) B.lockTries = 0;
+  B.lockTriesT = S.clock.t;
+  if (ok) { B.lockTries = 0; return 1; }
+  const tries = B.lockTries ?? 0;
+  B.lockTries = tries + 1;
+  return 0.25 * Math.pow(0.95, Math.min(60, tries));
+}
 
 function walkTo(c: Char, x: number, z: number, r = REACH): boolean {
   if (near(c, x, z, r)) { stop(c); return true; }
@@ -164,57 +179,81 @@ export function runOrder(c: Char, dt: number) {
     case 'lockpick': {
       const ob = S.W.objs.get(o.obj);
       if (!ob) { c.order = null; return; }
-      if (!walkTo(c, ob.x, ob.z, 1.8)) return;
+      // from inside: a prisoner working at their own cage lock
+      const inside = ob.occupant === c.id;
+      if (!inside && !walkTo(c, ob.x, ob.z, 1.8)) return;
       c.act = 'craft'; c.actDur = 1.5;
       c.brain.lockT = (c.brain.lockT ?? 0) + dt;
       if (c.brain.lockT > 2.5) {
         c.brain.lockT = 0;
         const diff = ob.locked ?? 0;
         const skill = c.skill('lockpicking') + (c.inv.count('lockpick_set') ? 8 : 0);
-        const p = Math.max(0.03, Math.min(0.95, 0.35 + (skill - diff) * 0.02));
-        train(c, 'lockpicking', 1, versus(skill, diff));
-        if (S.rng.chance(p)) {
-          ob.locked = 0;
+        // fingers through the bars are clumsy, and a jailer's eye on you worse
+        const watched = ob.owner && ob.owner !== 'player' ? witness(c, ob.owner) : null;
+        const p = Math.max(0.03, Math.min(0.95, 0.35 + (skill - diff) * 0.02)) * (inside ? 0.7 : 1) * (watched ? 0.5 : 1);
+        const ok = S.rng.chance(p);
+        train(c, 'lockpicking', lockLesson(c, ok), versus(skill, diff));
+        if (ok) {
           c.order = null;
           c.act = null;
           S.fx.notice(`${c.name} picked the lock.`, 'good');
           S.fx.sound('unlock', ob.x, ob.z);
-          if ((ob.kind === 'cage' || ob.kind === 'shackle_post') && ob.occupant) { freeFromCage(ob.occupant); }
-          else if (ob.owner !== 'player' && ob.owner) crime(c, 'trespass', ob.owner, 50, true);
-        } else if (S.rng.chance(0.08)) {
-          S.fx.notice('The lockpick slips. Someone may have heard.', 'info');
-          crime(c, 'trespass', ob.owner, 50, true);
+          if ((ob.kind === 'cage' || ob.kind === 'shackle_post') && ob.occupant) {
+            // the door opens; the lock is not broken, and holds the next prisoner as it held this one
+            // (a cage an older save left picked open gets a middling lock back)
+            if (!ob.locked) ob.locked = 40;
+            freeFromCage(ob.occupant);
+            // a sentence walked out on: the law wants them back, if the law saw
+            if (inside) { delete c.mem.jailUntil; if (ob.owner && ob.owner !== 'player') crime(c, 'escape', ob.owner, 500, true); }
+          } else {
+            ob.locked = 0;
+            if (ob.owner !== 'player' && ob.owner) crime(c, 'trespass', ob.owner, 50, true);
+          }
+        } else if (S.rng.chance(watched ? 0.25 : 0.08)) {
+          S.fx.notice(watched ? `${c.name} was seen at the lock.` : 'The lockpick slips. Someone may have heard.', 'info');
+          crime(c, inside ? 'escape' : 'trespass', ob.owner, inside ? 200 : 50, true);
         }
       }
       return;
     }
     case 'free': {
-      // lock-picking someone's shackles
+      // lock-picking someone's shackles, or your own
       const t = S.W.char(o.id);
       if (!t || !t.shackled) { c.order = null; c.act = null; return; }
-      if (!walkTo(c, t.x, t.z, 1.4)) return;
+      const own = t === c;
+      if (own) stop(c);
+      else if (!walkTo(c, t.x, t.z, 1.4)) return;
       c.act = 'craft'; c.actDur = 1.5;
       c.brain.lockT = (c.brain.lockT ?? 0) + dt;
       if (c.brain.lockT > 3) {
         c.brain.lockT = 0;
-        const skill = c.skill('lockpicking');
-        train(c, 'lockpicking', 1, versus(skill, 30));
-        if (S.rng.chance(Math.max(0.05, Math.min(0.9, 0.3 + (skill - 25) * 0.02)))) {
+        const skill = c.skill('lockpicking') + (c.inv.count('lockpick_set') ? 8 : 0);
+        const owner = t.mem.enslavedBy as string | undefined;
+        // irons on your own wrists are awkward, and an overseer watching makes it worse
+        const watched = owner && owner !== 'player' ? witness(t, owner) : null;
+        const p = Math.max(0.04, Math.min(0.9, 0.3 + (skill - 25) * 0.02)) * (own ? 0.6 : 1) * (watched ? 0.5 : 1);
+        const ok = S.rng.chance(p);
+        train(c, 'lockpicking', lockLesson(c, ok), versus(skill, 30));
+        if (ok) {
           t.shackled = false;
           t.dirty = true;
           c.order = null; c.act = null;
-          S.fx.notice(`${t.name}'s shackles are off.`, 'good');
+          S.fx.notice(own ? `${c.name}'s shackles are off.` : `${t.name}'s shackles are off.`, 'good');
           if (t.faction !== 'player' && t.role === 'slave') {
             // freeing someone else's slave: a crime if seen, and a friend made
-            const owner = t.mem.enslavedBy ?? t.faction;
-            crime(c, 'freeing', owner, 500, true);
+            crime(c, 'freeing', owner ?? t.faction, 500, true);
             t.mem.freedBy = 'player';
             t.recruitable = true;
             S.W.flags.freed = (S.W.flags.freed ?? 0) + 1;
             S.W.rel.add('player', 'unchained', 3);
             emit('sim:freedSlave', c.id, t.id);
           }
-          else if (t.mem.enslavedBy) crime(t, 'runaway', t.mem.enslavedBy, 1000, true);
+          else if (owner) reportRunaway(t, owner);
+        } else if (watched && S.rng.chance(0.12)) {
+          // caught fumbling at the irons
+          S.fx.notice(`${c.name} was seen at ${own ? 'their' : t.name + '\'s'} shackles.`, 'bad');
+          if (t.faction !== 'player' && t.role === 'slave') crime(c, 'freeing', owner ?? t.faction, 500, true);
+          else if (owner) reportRunaway(t, owner);
         }
       }
       return;

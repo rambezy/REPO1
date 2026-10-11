@@ -21,6 +21,7 @@ import { toggleMap } from './map';
 import { toggleFactions } from './factions';
 import { fitProsthetic, removeProsthetic } from '../sim/health';
 import { setupHints } from './hints';
+import { setupCaptive } from './captive';
 import { openBook } from './read';
 import { DEEDS } from '../sim/deeds';
 import { setupCodex, toggleCodex } from './codex';
@@ -31,6 +32,7 @@ export function setupUI() {
   buildHUD();
   setupBuild();
   setupHints();
+  setupCaptive();
   setupCodex();
   on('ui:char', () => { if (isOpen('char')) closeWindow('char'); else openCharWindow(); });
   on('ui:loot', (looter: number, target: any) => openLoot(looter, target));

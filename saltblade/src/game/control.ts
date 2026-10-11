@@ -189,11 +189,12 @@ export function charActions(t: Char): MenuItem[] {
     if (canReprogram(t)) { const [lvl, n] = hackNeed(t)!; out.push({ label: `Reprogram (Robotics ${lvl}, ${n} electrical)`, run: one({ k: 'reprogram', id: t.id }), hint: 'Rewrite its orders so it serves you. Fail, and it wakes with its old ones.' }); }
   }
   if (mine && t.status === 'up') {
-    out.push({ label: 'Follow', run: () => who.filter((c) => c !== t).forEach((c) => issue(c, { k: 'follow', id: t.id })) });
+    if (who.some((c) => c !== t)) out.push({ label: 'Follow', run: () => who.filter((c) => c !== t).forEach((c) => issue(c, { k: 'follow', id: t.id })) });
     if (t.body.needsAid()) out.push({ label: t.robot ? 'Repair' : 'First aid', run: one({ k: 'aid', id: t.id }) });
-    if (t.shackled) out.push({ label: t === lead ? 'Pick my shackles' : 'Pick their shackles', run: one({ k: 'free', id: t.id }) });
+    if (t.shackled) out.push({ label: t === lead ? 'Pick my shackles' : 'Pick their shackles', run: one({ k: 'free', id: t.id }), hint: t === lead ? 'Work the irons off your own wrists. Slow, and a crime if an overseer sees it.' : undefined });
   }
-  if (t.cage && t.status !== 'dead') out.push({ label: 'Pick the cage lock', run: one({ k: 'lockpick', obj: t.cage, id: t.id }), danger: !mine });
+  // a cage lock is worked from outside by a friend, or from inside by the prisoner
+  if (t.cage && t.status !== 'dead') out.push({ label: t === lead ? 'Pick the lock from inside' : 'Pick the cage lock', run: one({ k: 'lockpick', obj: t.cage, id: t.id }), danger: !mine });
   return out;
 }
 
@@ -262,11 +263,16 @@ export function openMenu(x: number, y: number, title: string, items: MenuItem[])
   if (!items.length) return;
   const el = document.createElement('div');
   el.className = 'ctxmenu';
-  el.innerHTML = `<div class="ctxtitle">${title}</div>`;
+  // the title carries names people typed in: text, never markup
+  const head = document.createElement('div');
+  head.className = 'ctxtitle';
+  head.textContent = title;
+  el.appendChild(head);
   for (const it of items) {
     const b = document.createElement('button');
     b.className = 'ctxitem' + (it.danger ? ' danger' : '');
     b.textContent = it.label;
+    if (it.hint) b.title = it.hint;
     b.onclick = (e) => { e.stopPropagation(); closeMenu(); it.run(); };
     el.appendChild(b);
   }
@@ -321,10 +327,18 @@ export function attachControl() {
     const who = selected();
     if (!who.length) return;
     const c = charAt(x, y);
-    if (c && !who.includes(c)) {
+    // someone else, or yourself when you are the only one selected: the things to do with them
+    const self = !!c && who.length === 1 && c === who[0];
+    if (c && (!who.includes(c) || self)) {
       const acts = charActions(c);
       // attack hostiles directly unless asking for the menu
       if (c.up && hostile(who[0], c) && !e.ctrlKey && !e.altKey) { acts.find((a) => a.label === 'Attack')?.run(); G.overlay.markers.push({ x: c.x, y: c.y + 0.1, z: c.z, t: 0.8, color: '#f07050' }); return; }
+      if (self) {
+        // your own menu only when there is something in it; a click just beside yourself is otherwise a step, and the menu offers that too
+        const g = groundAt(x, y);
+        if (!acts.length) { if (g) moveGroup(who, g.x, g.z); return; }
+        if (g) acts.push({ label: 'Move here', run: () => moveGroup(who, g.x, g.z) });
+      }
       const title = c.animal ? c.name : `${c.name}${c.title ? ' — ' + c.title : ''} (${FACTION[c.faction]?.short ?? c.faction})`;
       openMenu(x, y, title, acts);
       return;

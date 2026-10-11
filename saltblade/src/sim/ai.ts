@@ -19,6 +19,9 @@ import { wantsToTalk } from './encounters';
 import { leaveFurniture, leaveBed } from './use';
 import { machineSay } from './machines';
 import { stimFor, takeDrug } from './drugs';
+import { train } from './train';
+import { HOUR } from './clock';
+import type { Site } from '../world/terrain';
 
 export const SIGHT_DAY = 42;
 export const SIGHT_NIGHT = 24;
@@ -66,6 +69,8 @@ export function findEnemy(c: Char, radius: number): Char | null {
   S.W.hash.near(c.x, c.z, radius, (o, d2) => {
     if (o === c || !o.alive || o.carriedBy || o.cage) return;
     if (onlyUp && o.status !== 'up') return;
+    if (o.shackled && o.mem.enslavedBy === c.faction && !((o.bounty[c.faction] ?? 0) > 0)) return; // their own chained slaves are worked, not fought (a runaway is another matter)
+    if (o.mem.grace?.[c.faction] > S.clock.t && !S.W.rel.hostile(c.faction, o.faction)) return; // fined and turned loose: the law leaves them be a while
     if (!hostile(c, o)) return;
     if (!canSee(c, o) && o.lastHitBy !== c.id && c.lastHitBy !== o.id) return;
     let d = d2;
@@ -132,12 +137,26 @@ export function tickAI(c: Char, dt: number) {
   if (c.stagger > 0) c.stagger -= dt;
   if (c.knockT > 0) { c.knockT -= dt; if (c.knockT <= 0) { c.knockT = 0; } }
   if (c.atk) tickAttack(c, dt);
-  if (c.status !== 'up' || c.carriedBy || c.cage) return;
+  if (c.status !== 'up' || c.carriedBy) return;
+  if (c.cage) {
+    // locked up, the only things to do are eat what is in the pack and work at the lock from inside; any other order is beyond them
+    c.thinkT -= dt;
+    if (c.thinkT <= 0) { c.thinkT = 0.3 + S.rng.next() * 0.3; if (c.hunger < 150 && !c.robot && !c.animal) eatSomething(c); }
+    if (c.order && selfRescue(c)) runOrder(c, dt);
+    else if (c.order) { c.order = null; if (c.faction === 'player') S.fx.notice(`${c.name} is locked in a cage.`, 'info'); }
+    return;
+  }
   c.thinkT -= dt;
   const think = c.thinkT <= 0;
   if (think) c.thinkT = 0.3 + S.rng.next() * 0.3;
   if (c.faction === 'player') playerAI(c, dt, think);
   else npcAI(c, dt, think);
+}
+
+/** An order a captive can carry out where they are: picking their own cage lock or their own shackles. */
+export function selfRescue(c: Char) {
+  const o = c.order;
+  return !!o && ((o.k === 'lockpick' && o.obj === c.cage && !!c.cage) || (o.k === 'free' && o.id === c.id));
 }
 
 // ---------------------------------------------------------------- player characters
@@ -183,10 +202,43 @@ function playerAI(c: Char, dt: number, think: boolean) {
   if (!B.enemy && c.drawn && S.time - c.lastHitT > 6) c.drawn = false;
   // off watch: down from the tower before anything else
   if (c.mem.using && !c.jobs.some((j) => j.obj === c.mem.using) && onTower(c)) leaveFurniture(c);
-  if (c.order) { runOrder(c, dt); return; } // (not `order`: an attack on someone now gone was just dropped)
+  if (c.order) { B.slaveT = 0; runOrder(c, dt); return; } // (not `order`: an attack on someone now gone was just dropped)
   if (c.jobs.length && runJobs(c, dt, think)) return;
-  // idle: eat when hungry, patch yourself up
-  if (think) idleUpkeep(c);
+  // idle: eat when hungry, patch yourself up; the chained are put to work
+  if (think) { idleUpkeep(c); if (!c.order && c.shackled && c.mem.slaveSite) slaveWork(c); }
+}
+
+/**
+ * Forced labour: a slave of yours left idle in their owners' camp is put to the fields by day,
+ * as the camp's own slaves are (see routine.ts). An order of yours always comes first.
+ */
+function slaveWork(c: Char) {
+  const B = c.brain;
+  const spot = c.mem.slaveSpot ?? (c.mem.slaveSpot = workSpot(c.mem.slaveSite, c.x, c.z));
+  if (!spot) return;
+  const h = S.clock.hour;
+  if (S.clock.isNight || h < 6.5 || h > 18.5) { if (c.act === 'farm') c.act = null; return; } // the fields rest at night
+  // left standing about for half a minute, an overseer sends them back to work
+  if (c.act !== 'farm') { B.slaveT = (B.slaveT ?? 0) + 0.45; if (B.slaveT < 30) return; }
+  if (!near(c, spot.x, spot.z, 2.5)) {
+    if (c.hasGoal || S.time < (B.slaveRest ?? 0)) return;
+    // no way there (a shut gate, a flooded paddy): after a few tries another spot, and failing that a rest before trying again
+    B.slavePF ??= c.mem.pathFail ?? 0; // failures from before the chains don't count
+    if ((c.mem.pathFail ?? 0) > B.slavePF && (B.slaveFails = (B.slaveFails ?? 0) + 1) >= 3) {
+      B.slaveFails = 0;
+      const other = workSpots(c.mem.slaveSite).filter((j) => j.x !== spot.x || j.z !== spot.z);
+      if (other.length) c.mem.slaveSpot = S.rng.pick(other);
+      else B.slaveRest = S.time + 300;
+      return;
+    }
+    B.slavePF = c.mem.pathFail ?? 0;
+    goTo(c, spot.x, spot.z); c.move = 'walk';
+    return;
+  }
+  stop(c);
+  c.dir = spot.dir;
+  c.act = 'farm'; c.actDur = 3;
+  train(c, 'labouring', 0.05, 1);
 }
 
 function hostileOrProvoked(c: Char, a: Char) {
@@ -302,6 +354,8 @@ function npcAI(c: Char, dt: number, think: boolean) {
   // after a fight: help the fallen, loot, capture
   if (think && !c.animal && postFight(c)) return;
   if (B.task && runTask(c, dt)) return;
+  // carrying someone with no idea why (a task lost on the way): put them down rather than carry them about for good
+  if (c.carrying && !B.task) dropCarried(c);
   // walking up to have a word with your people (see encounters): the post can wait
   if (B.talkTo && S.time - (B.talkT ?? -1e9) < 1.5) return;
   runRoutine(c, dt, think);
@@ -320,7 +374,7 @@ function postFight(c: Char): boolean {
       if (o.status !== 'ko') return;
       if (o.faction !== c.faction && !o.animal) {
         if (f?.captures === 'slavery' && c.role !== 'resident' && d2 < bd && !o.robot) { best = o; bd = d2; kind = 'capture'; }
-        else if (f?.captures === 'prison' && (o.bounty[c.faction] ?? 0) > 0 && (c.role === 'guard' || c.role === 'patrol') && d2 < bd) { best = o; bd = d2; kind = 'arrest'; }
+        else if (f?.captures === 'prison' && (o.bounty[c.faction] ?? 0) > 0 && !(o.mem.grace?.[c.faction] > S.clock.t) && (c.role === 'guard' || c.role === 'patrol') && d2 < bd) { best = o; bd = d2; kind = 'arrest'; }
         else if (f?.captures === 'eat' && d2 < bd) { best = o; bd = d2; kind = 'eat'; }
         else if (f?.attitude === 'bandit' && !o.mem.lootedBy && d2 < bd) { best = o; bd = d2; kind = 'loot'; }
       }
@@ -392,13 +446,13 @@ function runTask(c: Char, dt: number): boolean {
         if (task.k === 'capture') o.shackled = true;
         // a live captive is worth more: bind the worst of the bleeding
         if (task.k !== 'eat') for (let l = 0; l < 7; l++) { o.body.bleed[l] *= 0.15; o.body.treated[l] = Math.max(o.body.treated[l], 0.3); }
-        const dest = captureDestination(c, task.k);
-        task.dx = dest[0]; task.dz = dest[1];
+        const dest = captureDestination(c, task.k, o);
+        task.dx = dest.x; task.dz = dest.z; task.site = dest.site;
         return true;
       }
       if (!near(c, task.dx, task.dz, 3)) { goTo(c, task.dx, task.dz); c.move = 'walk'; return true; }
       // arrived: hand over
-      deliverCaptive(c, o, task.k);
+      deliverCaptive(c, o, task.k, task.site);
       B.task = null;
       return true;
     }
@@ -417,19 +471,99 @@ export function pickUp(c: Char, o: Char) {
   return true;
 }
 
-/** Where captors take their prisoners. */
-function captureDestination(c: Char, kind: string): [number, number] {
+/** Named people and the leaders of places are not put in chains: a cage, or let go. */
+const notForChains = (o: Char) => o.faction !== 'player' && (!!o.unique || !!o.mem.leaderOf);
+
+/** Where captors take their prisoners: slaves to the fields, outlaws to a cage, the Mawkin's catch to the cookfires. */
+function captureDestination(c: Char, kind: string, o: Char): { x: number; z: number; site: number } {
   const T = S.T;
   let site = kind === 'capture'
     ? T.nearestSite(c.x, c.z, (s) => s.faction === 'chainhouse' || s.settlement === 'harrowmarket' || s.settlement === 'aurum' || s.faction === 'scorched')
     : kind === 'arrest'
-      ? T.nearestSite(c.x, c.z, (s) => s.kind === 'town' && s.faction === c.faction)
+      ? townWithCell(c)
       : T.nearestSite(c.x, c.z, (s) => s.faction === c.faction || s.kind === 'camp_mawkin' || s.kind === 'mist_camp');
   if (!site) site = T.nearestSite(c.x, c.z, (s) => s.kind === 'town');
+  if (kind === 'capture' && !notForChains(o)) {
+    const w = workSpot(site!.id, c.x, c.z);
+    if (w) return { x: w.x, z: w.z, site: site!.id };
+  }
   // aim for a cage in that site if there is one
   const cage = findFreeCage(site!.id, site!.x, site!.z);
-  if (cage) return [cage.x, cage.z];
-  return [site!.x, site!.z];
+  if (cage) return { x: cage.x, z: cage.z, site: site!.id };
+  return { x: site!.x, z: site!.z, site: site!.id };
+}
+
+/** The nearest of a faction's towns with a cell free, within a walk; failing that its nearest town, where a fine must do. */
+function townWithCell(c: Char): Site | null {
+  const towns = S.T.sites.filter((s) => s.kind === 'town' && s.faction === c.faction).sort((a, b) => Math.hypot(a.x - c.x, a.z - c.z) - Math.hypot(b.x - c.x, b.z - c.z));
+  for (const s of towns) {
+    if (Math.hypot(s.x - c.x, s.z - c.z) > 1500) break;
+    if (findFreeCage(s.id, s.x, s.z)) return s;
+  }
+  return towns[0] ?? null;
+}
+
+/** The spots where a settlement's slaves work: its fields, else open ground by its centre. */
+function workSpots(siteId: number): { x: number; z: number; dir: number }[] {
+  const site = S.T.sites.find((s) => s.id === siteId);
+  if (!site) return [];
+  const jobs = S.W.towns.get(siteId)?.jobs as { x: number; z: number; dir: number }[] | undefined;
+  if (jobs?.length) return jobs.map((j) => ({ x: j.x, z: j.z, dir: j.dir }));
+  const spot = S.nav.nearestOpen(site.x + 6, site.z, 14) ?? [site.x, site.z];
+  return [{ x: spot[0], z: spot[1], dir: 0 }];
+}
+
+/** Where a slave of a settlement works: the nearest of its spots. */
+export function workSpot(siteId: number, x: number, z: number): { x: number; z: number; dir: number } | null {
+  let best: { x: number; z: number; dir: number } | null = null, bd = Infinity;
+  for (const j of workSpots(siteId)) { const d = Math.hypot(j.x - x, j.z - z); if (d < bd) { bd = d; best = j; } }
+  return best;
+}
+
+/** Takes someone out of whatever squad they were in; a slave in the fields answers to nobody on the road. */
+function leaveSquad(o: Char) {
+  const old = S.W.squads.get(o.squad);
+  if (old) {
+    old.members = old.members.filter((m) => m !== o.id);
+    if (old.leader === o.id) old.leader = old.members[0] ?? 0;
+  }
+  o.squad = 0;
+}
+
+/**
+ * Puts a captive to work as a slave of a settlement: shackled, owned, and watched (see tickRunaways in
+ * crime.ts). Nobody is caged for it: a cage with no sentence is a hole with no way out, and the fields
+ * at least can be walked away from, shackles picked, when nobody is looking.
+ */
+export function enslave(o: Char, faction: string, site: Site | null) {
+  o.shackled = true;
+  o.dirty = true;
+  o.mem.enslavedBy = faction;
+  o.bounty[faction] = 0; // sold is as good as punished
+  delete o.mem.jailUntil;
+  o.order = null; o.jobs.length = 0; // whatever they were about is over
+  const spot = site ? workSpot(site.id, o.x, o.z) : null;
+  if (site) { o.mem.slaveSite = site.id; o.mem.slaveSpot = spot; }
+  if (spot) {
+    const p = S.nav.nearestOpen(spot.x, spot.z, 8);
+    if (p) { o.x = p[0]; o.z = p[1]; o.y = S.T.heightAt(o.x, o.z); }
+    o.homeX = o.x; o.homeZ = o.z; o.homeDir = spot.dir;
+  }
+  if (o.faction === 'player') {
+    S.W.say(`${o.name} was taken by the ${FACTION[faction]?.short ?? faction}${site ? ` and put to work at ${site.name}` : ''}.`, 'bad', S.clock.t);
+    S.fx.notice(`${o.name} has been taken by slavers${site ? ` and put to work in the fields of ${site.name}` : ''}.`, 'bad');
+    return;
+  }
+  // someone else's: one more of the camp's chained, who will go with whoever gets the irons off.
+  // They join the camp's people, or stand alone: never a squad of another colour.
+  o.faction = faction;
+  o.role = 'slave';
+  o.title = 'Slave';
+  leaveSquad(o);
+  if (site) {
+    o.site = site.id;
+    for (const q of S.W.squads.values()) if (q.site === site.id && q.kind === 'town' && q.faction === faction) { S.W.moveToSquad(o, q); break; }
+  }
 }
 
 export function findFreeCage(siteId: number, x: number, z: number) {
@@ -442,22 +576,43 @@ export function findFreeCage(siteId: number, x: number, z: number) {
   return best;
 }
 
-function deliverCaptive(c: Char, o: Char, kind: string) {
+function deliverCaptive(c: Char, o: Char, kind: string, siteId = 0) {
   dropCarried(c);
-  const cage = findFreeCage(0, c.x, c.z);
-  if (cage && Math.hypot(cage.x - c.x, cage.z - c.z) < 8) {
-    cage.occupant = o.id;
-    o.cage = cage.id;
-    o.x = cage.x; o.z = cage.z;
-    if (kind === 'arrest') {
+  const site = S.T.sites.find((s) => s.id === siteId) ?? S.T.nearestSite(c.x, c.z) ?? null;
+  const cage = kind === 'eat' ? null : findFreeCage(0, c.x, c.z);
+  const cell = cage && Math.hypot(cage.x - c.x, cage.z - c.z) < 8 ? cage : null;
+  if (kind === 'capture') {
+    if (!notForChains(o)) { enslave(o, c.faction, site); return; }
+    // a name worth something, or a lord: held in a cage for whoever comes for them, or let go
+    o.shackled = false;
+    if (cell) { cell.occupant = o.id; o.cage = cell.id; o.x = cell.x; o.z = cell.z; o.mem.prisonerOf = c.faction; }
+    return;
+  }
+  if (kind === 'arrest') {
+    if (cell) {
+      cell.occupant = o.id;
+      o.cage = cell.id;
+      o.x = cell.x; o.z = cell.z;
       o.mem.jailUntil = S.clock.t + 86400 * (1 + Math.min(4, (o.bounty[c.faction] ?? 0) / 2000));
       o.bounty[c.faction] = 0;
       if (o.faction === 'player') S.fx.notice(`${o.name} has been thrown in a cage.`, 'bad');
-    } else if (kind === 'capture') {
-      o.mem.enslavedBy = c.faction;
-      o.bounty[c.faction] = 0; // sold is as good as punished
-      if (o.faction === 'player') S.fx.notice(`${o.name} has been taken by slavers.`, 'bad');
+    } else {
+      // no cell free anywhere near: a fine of what they can pay, the rest still owed, and a while before the law comes for it again
+      const owed = o.bounty[c.faction] ?? 0;
+      const purse = o.faction === 'player' ? S.W.money : o.money;
+      const fine = Math.max(0, Math.min(owed, Math.floor(purse)));
+      if (o.faction === 'player') S.W.money -= fine; else o.money -= fine;
+      const left = owed - fine;
+      o.bounty[c.faction] = left;
+      (o.mem.grace ??= {})[c.faction] = S.clock.t + 6 * HOUR;
+      o.shackled = false;
+      if (o.faction === 'player') {
+        const short = FACTION[c.faction]?.short ?? 'guards';
+        S.W.say(`The ${short} had no cell for ${o.name}: fined ${fine} chits${left > 0 ? `, ${left} still owed` : ''}.`, 'crime', S.clock.t);
+        S.fx.notice(`The ${short} had no cell for ${o.name}: fined ${fine} chits${left > 0 ? `, ${left} still owed,` : ''} and turned loose.`, left > 0 ? 'bad' : 'info');
+      }
     }
+    return;
   }
   if (kind === 'eat' && o.faction === 'player') S.fx.notice(`${o.name} has been dragged off by the ${FACTION[c.faction]?.short ?? 'enemy'}.`, 'bad');
 }
