@@ -23,6 +23,8 @@ import { makeItem } from '../sim/inventory';
 import { World } from '../sim/world';
 import { postBounties } from '../sim/bounties';
 import { markHousesForSale } from '../sim/property';
+import { beginObjectives, firstGoalSite, welcomingTown } from '../ui/objectives';
+import { clamp } from '../core/math';
 
 export function placeOres() {
   for (const o of G.T.ores) {
@@ -156,6 +158,8 @@ export function makePlayerPerson(p: ScenarioPerson, who: { name: string; look: L
   c.look = { ...who.look };
   c.name = who.name.trim() || c.name;
   c.money = 0;
+  // nobody begins with a habit: whatever the loadout rolled in the way of drugs stays behind
+  for (const g of [c.inv, c.eq.back?.inv]) if (g) for (const it of g.items.filter((i) => ITEM[i.id]?.drug)) g.remove(it);
   for (const [id, n] of p.kit ?? []) if (ITEM[id]) { const left = c.inv.add(id, n); if (left && c.eq.back?.inv) c.eq.back.inv.add(id, left); }
   // a weapon the scenario promises: in hand, whatever the loadout rolled going to the spare slot or the pack
   if (p.weapon && ITEM[p.weapon] && c.eq.weapon?.id !== p.weapon) {
@@ -166,7 +170,7 @@ export function makePlayerPerson(p: ScenarioPerson, who: { name: string; look: L
   for (const l of p.lost ?? []) { c.body.lost |= 1 << l; c.body.hp[l] = 0; }
   for (const [l, id] of p.prost ?? []) if (ITEM[id]?.limb) { c.body.lost |= 1 << l; c.body.prost[l] = id; c.body.hp[l] = c.body.max[l]; }
   if (p.hurt) for (let l = 0; l < 7; l++) if (c.body.has(l)) c.body.hp[l] = Math.round(c.body.hp[l] * (1 - p.hurt * (l <= LI.chest ? 0.7 : 1)));
-  if (p.hurt) c.body.bleed[LI.chest] = 0.05;
+  if (p.hurt) c.body.bleed[LI.chest] = 0.25; // a wound that will not close by itself for a good while
   if (p.hunger !== undefined && RACE[c.look.race].hunger > 0) c.hunger = p.hunger;
   c.shackled = !!p.shackled;
   if (p.enslavedBy) c.mem.enslavedBy = p.enslavedBy;
@@ -190,6 +194,7 @@ export function newGame(setup: NewGameSetup | string) {
   W.factionName = su.faction.trim() || sc.squad;
   W.money = sc.money;
   W.flags.scenario = sc.key;
+  W.flags.hints = []; // the start cards this game has shown (see ui/hints)
   for (const [f, v] of Object.entries(sc.rel ?? {})) W.rel.add('player', f, v);
   for (const r of sc.research ?? []) W.research.done.add(r);
   const sq = playerSquad(W.factionName);
@@ -254,7 +259,44 @@ export function newGame(setup: NewGameSetup | string) {
     }
   }
   const lead = people[0];
-  G.cam.lookAt(lead.x, lead.z, sc.homestead ? 45 : 30);
+  // a clear first day where you begin, whatever the region had brewing
+  S.weather.calm(lead.x, lead.z);
+  openingView(lead, sc);
+  beginObjectives(sc.key);
   W.say(`${W.factionName}: ${sc.name}. ${sc.blurb}`, 'story', S.clock.t);
   void SETTLEMENT;
+}
+
+/**
+ * The opening view: the title screen's wandering angle is dropped for a level
+ * camera behind your people, looking toward the gate of the town the start's
+ * first goal sends them to (else the nearest town they can walk into: not a
+ * cannibal village, not one with their faces on its walls), so both they and
+ * the way to go are on screen.
+ */
+function openingView(lead: Char, sc: Scenario) {
+  const W = G.W;
+  const town = firstGoalSite(sc.key, lead.x, lead.z) ?? G.T.nearestSite(lead.x, lead.z, welcomingTown) ?? G.T.nearestSite(lead.x, lead.z, (s) => s.kind === 'town');
+  let gx = town?.x ?? lead.x, gz = town?.z ?? lead.z;
+  if (town) {
+    let bd = Infinity;
+    for (const o of W.objs.values()) {
+      if (o.kind !== 'gate' || o.site !== town.id) continue;
+      const d = Math.hypot(o.x - lead.x, o.z - lead.z);
+      if (d < bd) { bd = d; gx = o.x; gz = o.z; }
+    }
+  }
+  const dx = gx - lead.x, dz = gz - lead.z, d = Math.hypot(dx, dz);
+  const cam = G.cam;
+  cam.follow = null;
+  // the camera sits behind your people (forward is -sin yaw, -cos yaw), looking along the line to the gate
+  cam.yaw = cam.wantYaw = d > 1 ? Math.atan2(-dx, -dz) : 0.7;
+  // flatter the farther the gate, so it stays under the top of the picture
+  cam.pitch = cam.wantPitch = sc.homestead ? 0.56 : clamp(0.5 - d / 2000, 0.42, 0.5);
+  const dist = sc.homestead ? 48 : 40;
+  cam.dist = cam.wantDist = dist;
+  // a near gate pulls the view a little toward itself; a far one leaves your people in the middle, whatever the ground does
+  const ahead = d > 1 && d < 200 ? Math.min(8, d * 0.1) : 0;
+  cam.lookAt(lead.x + (dx / (d || 1)) * ahead, lead.z + (dz / (d || 1)) * ahead, dist);
+  cam.target.y = G.T.heightAt(cam.target.x, cam.target.z);
 }

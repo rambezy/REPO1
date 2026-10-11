@@ -288,6 +288,7 @@ function payBounty(c: DCtx) {
   S.W.money -= owed;
   c.p.bounty[c.n.faction] = 0;
   S.W.rel.add('player', c.n.faction, bountyStanding(owed));
+  emit('sim:bountyPaid', c.p, c.n.faction, owed);
 }
 
 function tribute(c: DCtx) { return Math.max(50, Math.round(Math.min(S.W.money * 0.25, 2000) / 10) * 10); }

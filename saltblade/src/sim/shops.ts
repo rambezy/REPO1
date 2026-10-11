@@ -5,6 +5,7 @@ import { S } from './ctx';
 import { Grid } from './inventory';
 import { ITEM, itemValue, ItemDef } from '../content/items';
 import { RNG } from '../core/rng';
+import { emit } from '../core/events';
 import { Item } from './inventory';
 import { BOOKS } from '../content/lore';
 import { MARKETS, Market, CHEAP_BUY, CHEAP_SELL, DEAR_BUY, DEAR_SELL, DEAR_RELICS } from '../content/markets';
@@ -186,6 +187,7 @@ export function payForGoods(sh: Shop, it: Item, n: number): number {
   sh.money += cost;
   it.stolen = undefined; // bought and paid for
   S.W.rel.add('player', sh.faction, buyStanding(cost));
+  emit('sim:trade', 'buy', sh, it, n, cost);
   return cost;
 }
 
@@ -200,6 +202,7 @@ export function payForSale(sh: Shop, it: Item, n: number): number {
   S.W.money += val;
   sh.money -= val;
   for (const x of shopGrid(sh)?.items ?? []) if (x.id === it.id) x.stolen = undefined;
+  emit('sim:trade', 'sell', sh, it, n, val);
   return val;
 }
 

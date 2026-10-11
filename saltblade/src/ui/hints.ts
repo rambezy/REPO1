@@ -1,17 +1,32 @@
-// First-time hints: a short note the first time something matters. Each is
-// shown once; the list of seen hints is remembered in the browser.
-import { h, ui } from './dom';
+// First-time hints: a short card the first time something matters. The two
+// start cards ("Your people", then the start's first steps) come first in
+// every new game; situational cards queue behind them by priority, and the
+// queue waits while a window, menu or conversation is open. Each situational
+// card is shown once per browser; the start cards once per game.
+import { h, ui, esc, anyOpen } from './dom';
 import { G } from '../state';
 import { S } from '../sim/ctx';
 import { on } from '../core/events';
 import { uiSound } from '../audio';
 import { input } from '../core/input';
 import { SCENARIO } from '../content/scenarios';
+import { NOTE } from '../content/notes';
+import { shopGrid } from '../sim/shops';
+import { menuOpen } from './menu';
+import { dialogueOpen } from './dialogue';
+import { menuOpen as contextMenuOpen } from '../game/control';
+import type { Char } from '../sim/char';
+
+interface Card { key: string; title: string; text: string; pri: number; perGame?: boolean; }
+/** Lower comes first: the start card, the start's first steps, field notes, then tips. */
+const PRI = { start: 0, steps: 1, note: 2, tip: 3 };
 
 const seen = new Set<string>();
 let box: HTMLDivElement | null = null;
-let queue: [string, string, string][] = [];
-let t = 0;
+let queue: Card[] = [];
+let hidden = false; // the card is up but something is in front of it
+let hold = 0; // real seconds before the next card may show
+let t = 0; // real seconds to the next look round
 
 function load() {
   try { for (const k of JSON.parse(localStorage.getItem('sb-hints') ?? '[]')) seen.add(k); } catch { /* none */ }
@@ -20,84 +35,143 @@ function save() {
   try { localStorage.setItem('sb-hints', JSON.stringify([...seen])); } catch { /* private mode */ }
 }
 
-export function hint(key: string, title: string, text: string) {
+function enqueue(card: Card) {
+  let i = queue.length;
+  while (i > 0 && queue[i - 1].pri > card.pri) i--;
+  queue.splice(i, 0, card);
+}
+
+/** A hint shown once per browser. Names in `text` must already be escaped. */
+export function hint(key: string, title: string, text: string, pri = PRI.tip) {
   if (seen.has(key) || G.settings?.hints === false) return;
   seen.add(key);
   save();
-  queue.push([key, title, text]);
-  if (!box) showNext();
+  enqueue({ key, title, text, pri });
 }
 
-function showNext() {
-  const next = queue.shift();
-  if (!next) return;
-  const [, title, text] = next;
+/** A card shown once per game (remembered in the save when it is shown), so every new start opens with it. */
+function startCard(key: string, title: string, text: string, pri: number) {
+  const shown: string[] | undefined = S.W.flags.hints;
+  if (!shown || shown.includes(key) || G.settings?.hints === false) return;
+  enqueue({ key, title, text, pri, perGame: true });
+}
+
+function show(card: Card) {
+  if (card.perGame) { const shown: string[] | undefined = S.W.flags.hints; if (shown && !shown.includes(card.key)) shown.push(card.key); }
+  hidden = false;
   const ok = h('button', { class: 'tbtn small' }, 'Got it');
   const off = h('button', { class: 'hintoff' }, 'No more hints');
-  box = h('div', { class: 'hintbox' }, h('div', { class: 'hinttitle' }, title), h('div', { class: 'hinttext', html: text }), h('div', { class: 'hintbtns' }, off, ok));
-  for (const ev of ['mousedown', 'click', 'wheel', 'contextmenu']) box.addEventListener(ev, (e) => e.stopPropagation());
-  const close = () => { box?.remove(); box = null; setTimeout(showNext, 400); };
-  ok.onclick = close;
-  off.onclick = () => { if (G.settings) G.settings.hints = false; queue = []; close(); try { const s = JSON.parse(localStorage.getItem('sb-settings') ?? '{}'); s.hints = false; localStorage.setItem('sb-settings', JSON.stringify(s)); } catch { /* ignore */ } };
+  box = h('div', { class: 'hintbox', role: 'status' }, h('div', { class: 'hinttitle' }, card.title), h('div', { class: 'hinttext', html: card.text }), h('div', { class: 'hintbtns' }, off, ok));
+  for (const ev of ['mousedown', 'mouseup', 'wheel', 'contextmenu']) box.addEventListener(ev, (e) => e.stopPropagation());
+  box.onclick = (e) => { e.stopPropagation(); close(); };
+  off.onclick = (e) => {
+    e.stopPropagation();
+    if (G.settings) G.settings.hints = false;
+    queue = [];
+    close();
+    try { const s = JSON.parse(localStorage.getItem('sb-settings') ?? '{}'); s.hints = false; localStorage.setItem('sb-settings', JSON.stringify(s)); } catch { /* ignore */ }
+  };
   ui().appendChild(box);
   uiSound('notify');
-  setTimeout(() => { if (box && box.querySelector('.hinttitle')?.textContent === title) close(); }, 30000);
 }
+
+function close() {
+  box?.remove();
+  box = null;
+  hold = 0.6;
+}
+
+/** Something is open that a card would get in the way of (the captive card too, which shares its corner on narrow screens). */
+const blocked = () => anyOpen() || menuOpen() || dialogueOpen() || contextMenuOpen() || !!document.querySelector('.capcard');
 
 export function setupHints() {
   load();
+  // back to the title, or a fresh world: nothing from the old game lingers
+  on('world:reset', () => { queue = []; box?.remove(); box = null; });
+  // a window, a conversation or the menu opening puts the card away at once, before the next frame looks round
+  for (const ev of ['ui:char', 'ui:build', 'ui:research', 'ui:map', 'ui:factions', 'ui:log', 'ui:codex', 'ui:inspect', 'ui:trade', 'ui:loot', 'ui:talk', 'ui:object', 'ui:read', 'ui:menu']) {
+    on(ev, () => { if (box && !hidden) { hidden = true; box.style.display = 'none'; } });
+  }
   on('game:start', () => {
-    setTimeout(() => {
-      if (input.touch || matchMedia('(pointer: coarse)').matches) hint('start_touch', 'Your people', 'Your people are the portraits at the bottom. <b>Tap</b> to select, <b>press and hold</b> the ground to move there or on someone for things to do. Drag to look around, pinch to zoom, twist with two fingers to turn. Saltblade plays best with a mouse and keyboard.');
-      else hint('start', 'Your people', 'Your people are the portraits at the bottom. <b>Left-click</b> to select (drag a box for several), <b>right-click the ground</b> to move, <b>right-click someone</b> for things to do. <b>Space</b> pauses; <b>1–4</b> set the speed.');
-      // what to do first, for the way this game began
-      const sc = SCENARIO[S.W.flags.scenario];
-      if (sc?.firstSteps) hint('first_' + sc.key, 'First steps', sc.firstSteps);
-    }, 1500);
+    queue = [];
+    box?.remove(); box = null;
+    hold = 1.5;
+    t = 6;
+    if (input.touch || matchMedia('(pointer: coarse)').matches) startCard('start', 'Your people', 'Your people are the portraits at the bottom. <b>Tap</b> to select; <b>press and hold</b> the ground to walk there, or someone for things to do. Drag to look, pinch to zoom.', PRI.start);
+    else startCard('start', 'Your people', 'Your people are the portraits at the bottom. <b>Left-click</b> selects (drag for several); <b>right-click</b> the ground to walk there, or someone for things to do. <b>Space</b> pauses, <b>1–4</b> set the speed.', PRI.start);
+    // what to do first, for the way this game began
+    const sc = SCENARIO[S.W.flags.scenario];
+    if (sc?.firstSteps) startCard('first_' + sc.key, 'First steps', sc.firstSteps, PRI.steps);
   });
-  on('ui:talk', () => hint('talk', 'Talking', 'People you talk to remember how you treat them. Recruits drink in bars; some join for free, some want paying.'));
-  on('ui:trade', () => hint('trade', 'Trading', 'Drag items between your pack and the shop. Prices depend on the trader and your standing with their faction.'));
-  on('fx:ko', (c: any) => { if (c.robot && c.faction !== 'player') hint('machines', 'Old machines', 'A downed machine can be <b>salvaged</b> for servos, cells and parts, or, with enough <b>Robotics</b> and some Electrical Components, <b>reprogrammed</b> to serve you. Right-click it.'); });
-  on('fx:ko', (c: any) => { if (c.faction === 'player') hint('ko', 'Knocked out', `${c.name} is down. People wake when their wounds allow. Another of yours can <b>pick them up</b> (right-click) and carry them to safety, or treat them with <b>First aid</b>.`); });
-  on('ui:build', () => hint('build', 'Building', 'Place a construction site, then right-click it with someone selected to <b>Build</b>. Materials come from nearby storage or your packs. You cannot build inside towns, except furniture in a house of your own.'));
+  on('ui:talk', () => hint('talk', 'Talking', 'People remember how you treat them. Recruits drink in bars: some join for free, some want paying.'));
+  on('ui:trade', (pid: number, nid: number) => {
+    hint('trade', 'Trading', 'Drag items between your pack and the shop (right-click for a whole stack). Prices follow the trader and your standing with their people.');
+    // the harder trades, the first time they are seen for sale
+    const n = S.W.char(nid);
+    const sh = n && S.W.shops.get(+n.shop);
+    const stock = sh ? shopGrid(sh) : null;
+    if (stock?.first((d) => !!d.drug)) note('drugs');
+    if (stock?.first((d) => !!d.limb)) note('limbs');
+  });
+  on('ui:loot', (looter: number, target: { char?: number }) => {
+    const c = target?.char ? S.W.char(target.char) : null;
+    if (c?.inv.first((d) => !!d.drug)) note('drugs');
+  });
+  on('fx:ko', (c: Char) => { if (c.robot && c.faction !== 'player') note('machines'); });
+  on('fx:ko', (c: Char) => { if (c.faction === 'player') hint('ko', 'Knocked out', `${esc(c.name)} is down. They wake when their wounds allow; another of yours can <b>pick them up</b> (right-click) or give <b>First aid</b>.`); });
+  on('ui:build', () => hint('build', 'Building', 'Place a site, then right-click it with someone selected to <b>Build</b>. Materials come from nearby storage or packs. No building in towns, except furniture in a house of your own.'));
 }
 
+const NOTE_TEXT: Record<string, string> = {
+  limbs: 'A lost limb can be replaced with a <b>prosthetic</b>: fit it from the pack (<b>I</b>) near a Robotics Bench or a robotics shop. Metal never bleeds; when it is wrecked, a <b>repair kit</b> mends it.',
+  drugs: 'Drugs are taken from the pack (<b>I</b>, right-click). Each lifts some skills for hours, then crashes, and every dose feeds a <b>habit</b>. The <b>Covenant</b> arrests those who carry them.',
+  machines: 'The Old Machines guard the Makers\' <b>foundries</b>. They fire beams and never heal. A downed machine can be <b>salvaged</b> for parts or, with Robotics, <b>reprogrammed</b> to fight for you (right-click it).',
+  law: 'The Covenant searched your packs. Their patrols stop travellers <b>once a day</b>; a <b>smuggler pack</b> hides most of its load, and a bribe sometimes works.',
+};
+
 /** Writes a field note into the Codex (once) and points at it. */
-function note(key: string, title: string, text: string) {
+function note(key: string) {
   const got: string[] = (S.W.flags.notes ??= []);
   if (got.includes(key)) return;
   got.push(key);
-  hint('note_' + key, title, `${text} <span class="dim">(Codex, <b>K</b>: Field notes.)</span>`);
+  hint('note_' + key, NOTE[key]?.title ?? key, `${NOTE_TEXT[key] ?? ''} <span class="dim">(Codex, <b>K</b>: Field notes.)</span>`, PRI.note);
 }
 
-/** Checks for situations worth a hint, every couple of seconds. */
+/** Shows the next card when nothing is in the way, and looks for situations worth one every couple of seconds. */
 export function tickHints(dt: number) {
-  if (G.mode !== 'play') return;
+  if (G.mode !== 'play') { if (box) { box.remove(); box = null; } return; }
+  const busy = blocked();
+  if (box && busy !== hidden) { hidden = busy; box.style.display = busy ? 'none' : ''; }
+  hold -= dt;
+  if (!box && !busy && hold <= 0 && queue.length) show(queue.shift()!);
   t -= dt;
   if (t > 0) return;
   t = 2;
   const W = S.W;
-  for (const c of W.playerChars()) {
+  const mine = W.playerChars();
+  for (const c of mine) {
     if (!c.alive) continue;
-    if (c.hunger < 100 && !c.robot && !c.animal) hint('hunger', 'Hunger', `${c.name} is getting hungry. Eat from the pack (<b>I</b>, right-click food), buy food in town, or grow it. Starving people fight badly and faint.`);
-    if (c.body.bleeding() > 0.05 && c.up) hint('bleed', 'Bleeding', `${c.name} is bleeding. Right-click them and choose <b>First aid</b>: it needs bandages or a first aid kit in someone's pack.`);
-    if (c.carrying) hint('carry', 'Carrying', 'Right-click a bed to lay them down, a cage to lock them up, or press <b>X</b> to drop them.');
-    if (c.load() > 1) hint('load', 'Overloaded', `${c.name} is carrying too much and slows down. Heavy loads train strength, though.`);
-    if (Object.values(c.bounty).some((v) => v > 0)) hint('wanted', 'Wanted', 'Someone saw a crime. Guards of that faction will try to arrest your people. Pay the bounty to a guard, lie low, or fight.');
-    if (c.shackled) hint('shackles', 'Shackles', 'Shackled people move slowly. Select them and right-click themselves (or a friend) to <b>pick the shackles</b>. Better when nobody is looking.');
-    // the harder trades
+    const name = esc(c.name);
+    if (c.hunger < 100 && !c.robot && !c.animal) hint('hunger', 'Hunger', `${name} is hungry. Eat from the pack (<b>I</b>, right-click food) or buy food in town. The starving fight badly and faint.`);
+    if (c.body.bleeding() > 0.05 && c.up) hint('bleed', 'Bleeding', `${name} is bleeding. Right-click them, <b>First aid</b>: it takes bandages or a kit from someone's pack.`);
+    if (c.carrying) hint('carry', 'Carrying', 'Right-click a bed to lay them down, a cage to lock them in, or press <b>X</b> to put them down.');
+    if (c.load() > 1) hint('load', 'Overloaded', `${name} is carrying too much and slows down. Heavy loads do build strength.`);
+    if (Object.values(c.bounty).some((v) => v > 0)) hint('wanted', 'Wanted', 'Someone saw a crime. That faction\'s guards will try an arrest. Pay a guard, lie low, or fight.');
+    if (c.shackled) hint('shackles', 'Shackles', 'Shackled people move slowly. Select them and right-click themselves (or a friend) to <b>pick the shackles</b>, best unseen.');
+    // the harder trades, the first time they are lived with
     const b = c.body;
-    if ([3, 4, 5, 6].some((l) => !b.has(l)) || c.inv.first((d) => !!d.limb) || c.eq.back?.inv?.first((d) => !!d.limb)) note('limbs', 'Iron limbs', 'A lost limb can be replaced with a <b>prosthetic</b>: fit it from the pack (<b>I</b>, right-click it) near a Robotics Bench or a robotics shop. Metal never bleeds; when it is wrecked, a <b>repair kit</b> mends it.');
-    if ([3, 4, 5, 6].some((l) => b.isProst(l) && b.hp[l] <= 0)) hint('wrecked', 'Wrecked limb', `${c.name}'s prosthetic is wrecked. Right-click them and choose <b>First aid</b> with a repair kit or solder in someone's pack.`);
-    if (c.mem.high || c.mem.habit || c.inv.first((d) => !!d.drug) || c.eq.back?.inv?.first((d) => !!d.drug)) note('drugs', 'Leaf, dust and rage', 'Drugs are taken from the pack (<b>I</b>, right-click). Each lifts some skills for a few hours, and may crash after. Every dose feeds a <b>habit</b>, and an unfed habit turns to withdrawal. The <b>Covenant</b> arrests those who carry it.');
-    if (c.mem.craving) hint('craving', 'Withdrawal', `${c.name} is craving. Withdrawal takes dexterity, eyes and strength until it is fed, or until the habit fades over some days. A badly hooked one will take what is in the pack.`);
+    if ([3, 4, 5, 6].some((l) => !b.has(l) || b.isProst(l))) note('limbs');
+    if ([3, 4, 5, 6].some((l) => b.isProst(l) && b.hp[l] <= 0)) hint('wrecked', 'Wrecked limb', `${name}'s prosthetic is wrecked. Right-click them, <b>First aid</b>, with a repair kit or solder in a pack.`);
+    if (c.mem.high || c.mem.habit || c.mem.craving) note('drugs');
+    if (c.mem.craving) hint('craving', 'Withdrawal', `${name} is craving. Withdrawal dulls hands, eyes and arms until it is fed or fades. The badly hooked take what is in the pack.`);
+    const site = S.T.siteAt(c.x, c.z, 20);
+    if (site?.kind === 'town' && W.discovered.has(site.id)) hint('town', 'Towns', 'Right-click shopkeepers and barkeeps to <b>trade</b>. Crimes seen in town are crimes. Beds heal faster; some houses are <b>for sale</b> (the sign by the door).');
   }
-  if (W.flags.searched) note('law', 'The Covenant\'s law', 'The Covenant searched your packs. Their patrols stop travellers <b>once a day</b>. A <b>smuggler pack</b> hides most of what is in it; a bribe sometimes works. What they take goes to their watch house chest.');
-  if (S.T.sites.some((s) => s.kind === 'foundry' && W.discovered.has(s.id)) || W.flags.salvaged) note('machines', 'The Old Machines', 'The Old Machines guard the Makers\' <b>foundries</b>. They fire beams and do not heal. A downed machine can be <b>salvaged</b> for parts or, with Robotics, <b>reprogrammed</b> to fight for you (right-click it).');
-  const site = G.T.siteAt(G.cam.target.x, G.cam.target.z, 20);
-  if (site?.kind === 'town' && W.discovered.has(site.id)) hint('town', 'Towns', 'Right-click shopkeepers and barkeeps to <b>trade</b>. Stealing or fighting in town is a crime if seen. Rest in a bed to heal faster. Some towns have houses <b>for sale</b>: right-click the sign by the door.');
-  if (S.clock.isNight) hint('night', 'Night', 'Sight is shorter at night: a good time to <b>sneak</b> (T). Thieves and cannibals think so too.');
-  if (W.money < 150) hint('broke', 'Short of chits', 'Sell what you find, <b>mine</b> ore (right-click a rock) and sell it, or collect a bounty from a town guard.');
-  if (W.flags.lastRaid && S.clock.t - W.flags.lastRaid < 3600) hint('raid', 'Raiders', 'Raiders are coming for your base. Stand and fight, pay them off, or let them take what they want.');
-  if (G.weatherState && (G.weatherState.kind === 'acid' || G.weatherState.kind === 'gas') && G.weatherState.intensity > 0.3) hint('hazard', 'Bad weather', 'Acid rain burns and gas chokes. Get under a roof, or wear the right gear: a gas mask, heavy hats and coats.');
+  if (W.flags.searched) note('law');
+  if (S.T.sites.some((s) => s.kind === 'foundry' && W.discovered.has(s.id)) || W.flags.salvaged) note('machines');
+  else if (W.active.some((o) => o.faction === 'machines' && o.alive && mine.some((c) => c.alive && Math.abs(c.x - o.x) < 45 && Math.abs(c.z - o.z) < 45))) note('machines');
+  if (S.clock.isNight) hint('night', 'Night', 'Sight is short at night: good for <b>sneaking</b> (T). Thieves and cannibals think so too.');
+  if (W.money < 150) hint('broke', 'Short of chits', 'Sell what you find, <b>mine</b> ore (right-click a rock) and sell it, or take a bounty from a town guard.');
+  if (W.flags.lastRaid && S.clock.t - W.flags.lastRaid < 3600) hint('raid', 'Raiders', 'Raiders are coming for your base. Fight, pay them off, or let them take what they want.');
+  if (G.weatherState && (G.weatherState.kind === 'acid' || G.weatherState.kind === 'gas') && G.weatherState.intensity > 0.3) hint('hazard', 'Bad weather', 'Acid rain burns and gas chokes. Get under a roof, or wear a gas mask and heavy gear.');
 }

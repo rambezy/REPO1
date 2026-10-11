@@ -12,6 +12,8 @@ import { fmt } from '../core/math';
 import { totalBounty } from '../sim/crime';
 import { drugStatus } from '../sim/drugs';
 import { FACTION } from '../content/factions';
+import { mountObjectives } from './objectives';
+import './objectives.css';
 
 let root: HTMLDivElement;
 let topL: HTMLDivElement, speedBox: HTMLDivElement, squadBar: HTMLDivElement, selBox: HTMLDivElement, notices: HTMLDivElement;
@@ -50,7 +52,7 @@ export function buildHUD() {
   squadTabs = h('div', { class: 'hud-sqtabs' });
   selBox = h('div', { class: 'hud-sel' });
   notices = h('div', { class: 'hud-notices' });
-  root.append(topL, topR, squadTabs, squadBar, selBox, notices);
+  root.append(topL, topR, squadTabs, squadBar, selBox, notices, mountObjectives());
   ui().appendChild(root);
   for (const el of [topL, topR, squadBar, selBox, squadTabs]) shield(el);
   on('squad', () => { tabsKey = ''; squadKey = ''; });

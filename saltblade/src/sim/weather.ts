@@ -36,6 +36,15 @@ export class Weather {
     for (let r = 0; r < this.spells.length; r++) this.next(r, true);
   }
 
+  /** A clear first day where a game begins: whatever was brewing over that region holds off for some hours. */
+  calm(x: number, z: number, hours = 10) {
+    const s = this.at(x, z);
+    s.kind = 'clear';
+    s.i = 0;
+    s.target = 0;
+    s.until = S.clock.t + hours * HOUR;
+  }
+
   private next(r: number, first = false) {
     const s = this.spells[r];
     const table = REGIONS[r].weather;
