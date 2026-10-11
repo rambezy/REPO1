@@ -341,7 +341,7 @@ function refresh() {
   if (!visible) return;
   const n = set ? set.goals.length : 0, d = n - open.length;
   const goalsLeft = !!st && !!set && !st.finished;
-  const foldBtn = h('button', { class: 'objfold', title: fold ? 'Show the goals' : 'Fold the goals away' }, fold ? '▸' : '▾');
+  const foldBtn = h('button', { class: 'objfold', title: fold ? 'Show the goals' : 'Fold the goals away' }, fold ? '+' : '−');
   const x = h('button', { class: 'objx', title: 'Hide the goals for this game' }, '×');
   const head = h('div', { class: 'objhead' }, h('span', { class: 'objtitle' }, set ? set.title : 'Goals'), set ? h('span', { class: 'objcount' }, `${d}/${n}`) : null, foldBtn, x);
   head.onclick = () => setFold(!fold);

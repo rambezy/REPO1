@@ -12,6 +12,10 @@ import { fmt } from '../core/math';
 import { totalBounty } from '../sim/crime';
 import { drugStatus } from '../sim/drugs';
 import { FACTION } from '../content/factions';
+import { keymap, ActionId } from '../core/keys';
+
+/** The first key bound to an action, for a hint. */
+const kb = (a: ActionId) => keymap.labels(a)[0] ?? '—';
 import { mountObjectives } from './objectives';
 import './objectives.css';
 
@@ -27,27 +31,38 @@ export function buildHUD() {
   root = h('div', { id: 'hud' });
   topL = h('div', { class: 'hud-topl' });
   speedBox = h('div', { class: 'hud-speed' });
-  const speeds: [number, string, string][] = [[0, '❚❚', 'Pause (Space)'], [1, '▶', 'Normal speed (1)'], [2, '▶▶', 'Fast (2)'], [3, '▶▶▶', 'Faster (3)'], [5, '⏩', 'Fastest (4)']];
-  for (const [s, label, title] of speeds) {
-    const b = h('button', { class: 'spd', title, 'data-s': String(s) }, label);
+  const speeds: [number, string, string, ActionId][] = [[0, '||', 'Pause', 'pause'], [1, '1×', 'Normal speed', 'speed1'], [2, '2×', 'Fast', 'speed2'], [3, '3×', 'Faster', 'speed3'], [5, '5×', 'Fastest', 'speed4']];
+  for (const [s, label, title, action] of speeds) {
+    const b = h('button', { class: 'spd', 'data-s': String(s), 'data-t': title, 'data-a': action }, label);
     b.onclick = () => setSpeed(s);
     speedBox.appendChild(b);
   }
   const menuBar = h('div', { class: 'hud-menu' });
-  const btn = (label: string, key: string, ev: string) => {
-    const b = h('button', { class: 'mbtn', title: `${label} (${key})` }, h('span', {}, label), h('kbd', {}, key));
+  const btn = (label: string, action: ActionId, ev: string) => {
+    const b = h('button', { class: 'mbtn', 'data-t': label, 'data-a': action }, h('span', {}, label), h('kbd', {}));
     b.onclick = () => emit(ev);
     menuBar.appendChild(b);
   };
-  btn('Squad', 'I', 'ui:char');
-  btn('Build', 'B', 'ui:build');
-  btn('Research', 'U', 'ui:research');
-  btn('Map', 'M', 'ui:map');
-  btn('Factions', 'O', 'ui:factions');
-  btn('Journal', 'J', 'ui:journal');
-  btn('Log', 'L', 'ui:log');
-  btn('Codex', 'K', 'ui:codex');
-  btn('Menu', 'Esc', 'ui:menu');
+  btn('Squad', 'char', 'ui:char');
+  btn('Build', 'build', 'ui:build');
+  btn('Research', 'research', 'ui:research');
+  btn('Map', 'map', 'ui:map');
+  btn('Factions', 'factions', 'ui:factions');
+  btn('Journal', 'journal', 'ui:journal');
+  btn('Log', 'log', 'ui:log');
+  btn('Codex', 'codex', 'ui:codex');
+  btn('Menu', 'back', 'ui:menu');
+  // the key hints follow the bindings
+  const keyHints = () => {
+    for (const b of [...speedBox.children, ...menuBar.children] as HTMLElement[]) {
+      const k = keymap.labels(b.dataset.a as ActionId)[0] ?? '';
+      const kbd = b.querySelector('kbd');
+      if (kbd) kbd.textContent = k;
+      b.title = k ? `${b.dataset.t} (${k})` : b.dataset.t!;
+    }
+  };
+  on('keys', keyHints);
+  keyHints();
   const topR = h('div', { class: 'hud-topr' }, speedBox, menuBar);
   squadBar = h('div', { class: 'hud-squad' });
   squadTabs = h('div', { class: 'hud-sqtabs' });
@@ -270,9 +285,9 @@ function refreshSelBox() {
     b.onclick = () => { fn(); selBox.dataset.k = ''; refreshSelBox(); };
     row.appendChild(b);
   };
-  tog(c.mem.walk ? 'Walk' : 'Run', !c.mem.walk, 'Run or walk (R)', () => { const w = !c.mem.walk; who.forEach((x) => { x.mem.walk = w; if (x.move !== 'sneak') x.move = w ? 'walk' : 'run'; }); });
-  tog('Sneak', c.move === 'sneak', 'Sneak (T)', () => { const s = c.move !== 'sneak'; who.forEach((x) => (x.move = s ? 'sneak' : x.mem.walk ? 'walk' : 'run')); });
-  tog('Hold', c.order?.k === 'hold', 'Hold position (H)', () => { const hold = c.order?.k !== 'hold'; who.forEach((x) => { x.order = hold ? { k: 'hold' } : null; }); });
+  tog(c.mem.walk ? 'Walk' : 'Run', !c.mem.walk, `Run or walk (${kb('walk')})`, () => { const w = !c.mem.walk; who.forEach((x) => { x.mem.walk = w; if (x.move !== 'sneak') x.move = w ? 'walk' : 'run'; }); });
+  tog('Sneak', c.move === 'sneak', `Sneak (${kb('sneak')})`, () => { const s = c.move !== 'sneak'; who.forEach((x) => (x.move = s ? 'sneak' : x.mem.walk ? 'walk' : 'run')); });
+  tog('Hold', c.order?.k === 'hold', `Hold position (${kb('hold')})`, () => { const hold = c.order?.k !== 'hold'; who.forEach((x) => { x.order = hold ? { k: 'hold' } : null; }); });
   const modes: [string, 'aggressive' | 'defensive' | 'passive', string][] = [['Aggressive', 'aggressive', 'Attack enemies in sight'], ['Defensive', 'defensive', 'Fight back when attacked, block more'], ['Passive', 'passive', 'Never fight back']];
   const row2 = h('div', { class: 'selrow' });
   for (const [label, m, title] of modes) {
@@ -291,7 +306,7 @@ function refreshSelBox() {
     selBox.appendChild(jl);
   }
   if (c.carrying) {
-    const b = h('button', { class: 'tog small' }, 'Put down (X)');
+    const b = h('button', { class: 'tog small' }, `Put down (${kb('drop')})`);
     b.onclick = () => emit('order', c, { k: 'drop' });
     selBox.appendChild(b);
   }

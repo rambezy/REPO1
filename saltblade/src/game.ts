@@ -44,7 +44,7 @@ import { tickAutosave, startNewGame, loadData } from './game/session';
 import { showTitle, tickTitle } from './ui/title';
 import { tickHints } from './ui/hints';
 import { tickGameOver } from './ui/gameover';
-import { loadSettings, applySettings } from './game/settings';
+import { loadSettings, applySettings, reducedMotion } from './game/settings';
 import { setupAudio, tickAudio } from './game/audiohook';
 import { Weather, WEATHER_NAME } from './sim/weather';
 import { WeatherFx } from './render/weatherFx';
@@ -293,7 +293,8 @@ function skyAndWeather(dt: number) {
   drips(dt);
   G.weatherName = G.weatherFx.kind !== 'clear' && G.weatherFx.i > 0.25 ? WEATHER_NAME[G.weatherFx.kind as keyof typeof WEATHER_NAME] : '';
   G.daylight.update(dt, G.clock.hour, G.clock.day, G.R, G.sky, G.weather, G.waterMat.uniforms);
-  if (G.weatherFx.flash > 0) { G.R.hemi.intensity += G.weatherFx.flash * 2.2; G.R.gl.toneMappingExposure += G.weatherFx.flash * 0.5; }
+  // lightning, unless the player asked for nothing that flashes
+  if (G.weatherFx.flash > 0 && !reducedMotion()) { G.R.hemi.intensity += G.weatherFx.flash * 2.2; G.R.gl.toneMappingExposure += G.weatherFx.flash * 0.5; }
   G.sky.mesh.position.copy(G.R.camera.position);
   G.sky.u.uTime.value = G.realTime;
   G.waterMat.uniforms.uTime.value = G.realTime;
@@ -321,7 +322,7 @@ function effects(dt: number) {
   const watched = G.W.char([...sel][0]);
   const hurtT = watched && watched.alive && watched.faction === 'player' && !watched.robot ? Math.max(0, Math.min(1, (0.45 - watched.body.total()) / 0.3)) : 0;
   G.R.hurt += (hurtT - G.R.hurt) * Math.min(1, dt * 2);
-  // and the colours swim when they're high
-  const highT = watched && watched.up && watched.mem.high ? highLevel(watched) : 0;
+  // and the colours swim when they're high (not for those who asked for less motion)
+  const highT = watched && watched.up && watched.mem.high && !reducedMotion() ? highLevel(watched) : 0;
   G.R.high += (highT - G.R.high) * Math.min(1, dt * 0.8);
 }

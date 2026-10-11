@@ -5,10 +5,12 @@ import { S } from '../sim/ctx';
 import { input } from '../core/input';
 import { saveGame, autosave, loadSlot, loadData, saveMeta, sessionExtra, unsavedTime } from '../game/session';
 import { listSaves, exportSave, exportText, SaveMeta, saveWhen, slotLabel } from '../sim/save';
-import { renderLoadList, renderOptions, renderHelp, showTitle } from './title';
+import { renderLoadList, renderOptions, renderHelp, renderAbout, showTitle } from './title';
 import { setSpeed } from '../game/control';
 import { uiSound } from '../audio';
 import { on } from '../core/events';
+import { keymap } from '../core/keys';
+import { toggleFullscreen } from '../game/settings';
 
 let root: HTMLDivElement | null = null;
 let unKey: (() => void) | null = null;
@@ -30,7 +32,11 @@ export function openMenu() {
   ui().appendChild(root);
   for (const ev of ['mousedown', 'mouseup', 'click', 'dblclick', 'wheel', 'contextmenu']) root.addEventListener(ev, (e) => e.stopPropagation());
   root.addEventListener('mousedown', (e) => { if (e.target === root) closeMenu(); });
-  unKey = input.onKey((code) => { if (code === 'Escape') closeMenu(); return true; });
+  unKey = input.onKey((code, e) => {
+    if (code === 'Escape') closeMenu();
+    else if (keymap.actionFor(e) === 'fullscreen') toggleFullscreen();
+    return true; // the menu swallows the game keys
+  });
   const tab = (label: string, run: () => void) => {
     const b = h('button', { class: 'gmtab' }, label);
     b.onclick = () => { uiSound('click'); for (const x of side.querySelectorAll('.gmtab')) x.classList.remove('on'); b.classList.add('on'); run(); };
@@ -52,6 +58,7 @@ export function openMenu() {
     }),
     tab('Options', () => { body.innerHTML = ''; const box = h('div', { class: 'opts' }); body.append(h('h2', {}, 'Options'), box); renderOptions(box); }),
     tab('How to play', () => { body.innerHTML = ''; const box = h('div', { class: 'help' }); body.append(h('h2', {}, 'How to play'), box); renderHelp(box); }),
+    tab('About', () => { body.innerHTML = ''; const box = h('div', { class: 'about' }); body.append(h('h2', {}, 'About'), box); renderAbout(box); }),
     tab('Quit to title', () => {
       body.innerHTML = '';
       const yes = h('button', { class: 'tbtn primary' }, 'Quit to the title');
@@ -78,7 +85,7 @@ const describe = (m: SaveMeta) => `"${m.name}", ${saveWhen(m)}, saved ${new Date
 export async function quickLoad() {
   if (G.mode !== 'play' || document.querySelector('.askback')) return; // (already asking)
   const m = (await listSaves().catch(() => [] as SaveMeta[])).find((x) => x.slot === 'quick');
-  if (!m) { S.fx.notice('There is no quick save yet. F5 makes one.', 'bad'); return; }
+  if (!m) { S.fx.notice(`There is no quick save yet. ${keymap.labels('quicksave')[0] ?? 'F5'} makes one.`, 'bad'); return; }
   const go = () => void loadSlot('quick').then((err) => { if (err) S.fx.notice(err, 'bad'); });
   const lost = unsavedTime();
   if (lost <= 60) { go(); return; }

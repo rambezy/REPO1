@@ -1,6 +1,6 @@
 /* The journal (journal.ts): jobs, stories and the crisis; and the board's words in conversation. */
 
-.journalwin .winbody { display: flex; flex-direction: column; max-height: min(78vh, 760px); padding-bottom: 8px; }
+.journalwin .winbody { display: flex; flex-direction: column; max-height: min(78cqh, 760px); padding-bottom: 8px; }
 .journalwin .ftabs { flex: none; }
 .journalwin .ftab.alarm { color: #f0a080; }
 .jnext { flex: none; display: flex; gap: 8px; align-items: center; background: rgba(217,164,65,.1); border: 1px solid #6a5434; border-radius: 4px; padding: 5px 8px; margin-bottom: 8px; font-size: 13.5px; }
@@ -64,6 +64,6 @@
 .dlg .dlgtext { white-space: pre-line; }
 
 @media (max-width: 760px) {
-  .journalwin .winbody { max-height: 70vh; }
+  .journalwin .winbody { max-height: 70cqh; }
   .jtitle { font-size: 15px; }
 }

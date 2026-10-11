@@ -8,6 +8,7 @@ import { World } from '../sim/world';
 import { FACTION } from '../content/factions';
 import { ANIMAL } from '../content/animals';
 import { layoutLabels, labelPriority, nameAlpha, LAYOUT, type LabelItem, type LabelOut, type Importance } from './labels';
+import { palette, watchPalette } from '../ui/palette';
 
 const v = new THREE.Vector3();
 const NAME_FONT = '600 12px "Barlow Condensed", sans-serif';
@@ -15,6 +16,14 @@ const SUB_FONT = '500 10px "Barlow Condensed", sans-serif';
 const FLOAT_FONT = '700 13px "Barlow Condensed", sans-serif';
 const BUBBLE_FONT = '500 12px Barlow, sans-serif';
 const BAR_W = 44, BAR_H = 4;
+
+// the colours that carry meaning come from the palette (a colour-blind mode swaps them); the translucent
+// ones are made up front rather than every frame
+const rgba = (hex: string, a: number) => `rgba(${parseInt(hex.slice(1, 3), 16)},${parseInt(hex.slice(3, 5), 16)},${parseInt(hex.slice(5, 7), 16)},${a})`;
+let lineLead = '', lineOurs = '', lineFoe = '', marqueeLine = '', marqueeFill = '';
+const paint = () => { lineLead = rgba(palette.friend, 0.75); lineOurs = rgba(palette.friend, 0.45); lineFoe = rgba(palette.foe, 0.55); marqueeLine = rgba(palette.friend, 0.9); marqueeFill = rgba(palette.friend, 0.12); };
+paint();
+watchPalette(paint);
 
 export interface Marker { x: number; y: number; z: number; t: number; color: string; }
 interface Floater { id: number; owner: number; x: number; y: number; z: number; text: string; t: number; color: string; rise: number; }
@@ -44,6 +53,8 @@ export class Overlay {
   markers: Marker[] = [];
   floaters: Floater[] = [];
   showAllNames = false;
+  /** the interface-size setting: names, bars and numbers grow with the rest of the interface */
+  scale = 1;
   /** milliseconds a frame spent drawing the overlay (smoothed) */
   ms = 0;
   /** what the last frame drew, for the debug readout and tests */
@@ -137,13 +148,16 @@ export class Overlay {
     this.frame++;
     this.measured = 0;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    const w = window.innerWidth, h = window.innerHeight;
-    if (this.canvas.width !== Math.round(w * dpr) || this.canvas.height !== Math.round(h * dpr)) {
-      this.canvas.width = Math.round(w * dpr); this.canvas.height = Math.round(h * dpr);
-      this.canvas.style.width = w + 'px'; this.canvas.style.height = h + 'px';
+    const pw = window.innerWidth, ph = window.innerHeight;
+    if (this.canvas.width !== Math.round(pw * dpr) || this.canvas.height !== Math.round(ph * dpr)) {
+      this.canvas.width = Math.round(pw * dpr); this.canvas.height = Math.round(ph * dpr);
+      this.canvas.style.width = pw + 'px'; this.canvas.style.height = ph + 'px';
     }
+    // everything is drawn in the interface's own pixels, scaled up with it
+    const s = this.scale;
+    const w = pw / s, h = ph / s;
     const g = this.ctx;
-    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.setTransform(dpr * s, 0, 0, dpr * s, 0, 0);
     g.clearRect(0, 0, w, h);
     const camPos = cam.position;
     g.textAlign = 'center';
@@ -280,9 +294,9 @@ export class Overlay {
     }
     // marquee
     if (this.box) {
-      const [x0, y0, x1, y1] = this.box;
-      g.strokeStyle = 'rgba(180,230,140,0.9)';
-      g.fillStyle = 'rgba(140,200,110,0.12)';
+      const x0 = this.box[0] / s, y0 = this.box[1] / s, x1 = this.box[2] / s, y1 = this.box[3] / s; // the box is in screen pixels
+      g.strokeStyle = marqueeLine;
+      g.fillStyle = marqueeFill;
       g.lineWidth = 1;
       g.fillRect(Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0));
       g.strokeRect(Math.min(x0, x1) + 0.5, Math.min(y0, y1) + 0.5, Math.abs(x1 - x0), Math.abs(y1 - y0));
@@ -307,7 +321,7 @@ export class Overlay {
       const bx = this.sx, by = this.sy;
       if ((ax < 0 && bx < 0) || (ax > w && bx > w) || (ay < 0 && by < 0) || (ay > h && by > h)) continue;
       const lead = ours && sel.has(c.id);
-      g.strokeStyle = ours ? (lead ? 'rgba(214,244,176,0.75)' : 'rgba(200,236,160,0.45)') : 'rgba(240,96,76,0.55)';
+      g.strokeStyle = ours ? (lead ? lineLead : lineOurs) : lineFoe;
       g.beginPath();
       g.moveTo(ax, ay);
       g.lineTo(bx, by);
@@ -334,10 +348,10 @@ export class Overlay {
       g.fillRect(sx - BAR_W / 2 - 1, y - 1, BAR_W + 2, BAR_H + 2);
       g.fillStyle = '#5a1e14';
       g.fillRect(sx - BAR_W / 2, y, BAR_W, BAR_H);
-      g.fillStyle = vital > 0.5 ? '#9cc070' : vital > 0.2 ? '#d8b048' : '#d0583a';
+      g.fillStyle = vital > 0.5 ? palette.hp : vital > 0.2 ? palette.hpMid : palette.hpLow;
       g.fillRect(sx - BAR_W / 2, y, BAR_W * Math.min(1, tot), BAR_H);
       if (c.body.bleeding() > 0.02 && !c.body.robotic) {
-        g.fillStyle = '#e03020';
+        g.fillStyle = palette.blood;
         g.fillRect(sx - BAR_W / 2, y + BAR_H + 1, BAR_W * Math.min(1, c.body.blood / c.body.bloodMax), 2);
       }
       y -= 6;
@@ -345,7 +359,7 @@ export class Overlay {
     if (it.name) {
       g.font = NAME_FONT;
       g.globalAlpha = it.alpha * it.nameA;
-      const col = c.faction === 'player' ? '#d8f0b8' : this.W?.rel.hostile('player', c.faction) || (c.animal && ANIMAL[c.animal].diet !== 'grazer') ? '#f0a088' : '#e8dcc0';
+      const col = c.faction === 'player' ? palette.nameFriend : this.W?.rel.hostile('player', c.faction) || (c.animal && ANIMAL[c.animal].diet !== 'grazer') ? palette.nameFoe : palette.nameNeutral;
       g.fillStyle = 'rgba(0,0,0,0.55)';
       const tw = this.width(NAME_FONT, it.name);
       g.fillRect(sx - tw / 2 - 4, y - 14, tw + 8, 15);
@@ -364,16 +378,16 @@ export class Overlay {
       const seen = it.sneak === 2;
       const ex = sx, ey = y - 8;
       g.lineWidth = 1.6;
-      g.strokeStyle = seen ? '#f0a050' : '#9cd080';
+      g.strokeStyle = seen ? palette.seen : palette.hidden;
       g.fillStyle = 'rgba(0,0,0,0.55)';
       g.beginPath(); g.ellipse(ex, ey, 9, 5.5, 0, 0, Math.PI * 2); g.fill();
       g.beginPath();
       g.moveTo(ex - 7, ey); g.quadraticCurveTo(ex, ey - (seen ? 6 : 1), ex + 7, ey);
       g.quadraticCurveTo(ex, ey + (seen ? 6 : 3), ex - 7, ey);
       g.stroke();
-      if (seen) { g.fillStyle = '#f0a050'; g.beginPath(); g.arc(ex, ey, 2, 0, Math.PI * 2); g.fill(); }
+      if (seen) { g.fillStyle = palette.seen; g.beginPath(); g.arc(ex, ey, 2, 0, Math.PI * 2); g.fill(); }
       g.font = '600 10px "Barlow Condensed", sans-serif';
-      g.fillStyle = seen ? '#f0b070' : '#a8d890';
+      g.fillStyle = seen ? palette.seen : palette.hidden;
       g.fillText(seen ? 'SEEN' : 'HIDDEN', ex, ey - 9);
       y -= 20;
     }

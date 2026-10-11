@@ -4,7 +4,9 @@ import { chromium } from 'playwright';
 const url = process.env.URL || 'http://localhost:5180/#debug';
 const out = process.env.OUT || 'tools/out';
 const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
-const page = await browser.newPage({ viewport: { width: 1280, height: 760 } });
+const [vw, vh] = (process.env.VIEW || '1280x760').split('x').map(Number); // VIEW=390x844 for a phone
+const page = await browser.newPage({ viewport: { width: vw, height: vh } });
+page.setDefaultTimeout(+(process.env.TIMEOUT || 30000)); // a loaded machine renders slowly
 const logs = [];
 page.on('console', (m) => { const t = m.text(); if (!t.includes('[vite]') && !t.includes('fonts.g') && !t.includes('ERR_CERT')) logs.push(`[${m.type()}] ${t}`); });
 page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}\n${e.stack}`));

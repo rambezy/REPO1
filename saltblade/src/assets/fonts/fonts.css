@@ -1,0 +1,13 @@
+/* The game's faces, bundled (subset to Latin and Latin Extended-A) so
+   nothing is fetched from the network and the text never reflows after a
+   font arrives. Barlow and Barlow Condensed by Jeremy Tribby, Cinzel by
+   Natanael Gama, both under the SIL Open Font License 1.1 (OFL-*.txt beside
+   the files). */
+@font-face { font-family: 'Barlow'; font-style: normal; font-weight: 400; font-display: block; src: url('./barlow-400.woff2') format('woff2'); }
+@font-face { font-family: 'Barlow'; font-style: normal; font-weight: 500; font-display: block; src: url('./barlow-500.woff2') format('woff2'); }
+@font-face { font-family: 'Barlow'; font-style: normal; font-weight: 600; font-display: block; src: url('./barlow-600.woff2') format('woff2'); }
+@font-face { font-family: 'Barlow Condensed'; font-style: normal; font-weight: 400; font-display: block; src: url('./barlowcondensed-400.woff2') format('woff2'); }
+@font-face { font-family: 'Barlow Condensed'; font-style: normal; font-weight: 500; font-display: block; src: url('./barlowcondensed-500.woff2') format('woff2'); }
+@font-face { font-family: 'Barlow Condensed'; font-style: normal; font-weight: 600; font-display: block; src: url('./barlowcondensed-600.woff2') format('woff2'); }
+@font-face { font-family: 'Barlow Condensed'; font-style: normal; font-weight: 700; font-display: block; src: url('./barlowcondensed-700.woff2') format('woff2'); }
+@font-face { font-family: 'Cinzel'; font-style: normal; font-weight: 400 900; font-display: block; src: url('./cinzel-var.woff2') format('woff2'); }

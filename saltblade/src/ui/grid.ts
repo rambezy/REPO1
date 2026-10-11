@@ -5,9 +5,9 @@
 // the gentler way is to tap an item to pick it up, then tap a cell or a slot
 // to put it there; a long press, or a tap on the item being carried, opens an
 // action sheet with everything that can be done with it.
-import { h, esc } from './dom';
+import { h, esc, ui, uiScale, uiW, uiH } from './dom';
 import { Grid, Item } from '../sim/inventory';
-import { openSheet, closeSheet, showHoldBar, hideHoldBar, SheetAction, tradeLabel } from './touch';
+import { openSheet, closeSheet, showHoldBar, hideHoldBar, SheetAction, tradeLabel, sheetOpen } from './touch';
 import { ITEM, GRADES, gradeName, itemValue, EquipSlot, slotFor } from '../content/items';
 import { iconFor, CELL_PX } from './icons';
 import { LIMB_NAMES } from '../sim/body';
@@ -31,12 +31,14 @@ export type ItemAction = SheetAction;
 // ---------------------------------------------------------------- tooltip
 let tip: HTMLDivElement | null = null;
 export function showTip(html: string, x: number, y: number) {
-  if (!tip) { tip = h('div', { class: 'tip' }); document.body.appendChild(tip); }
+  if (!tip) { tip = h('div', { class: 'tip' }); ui().appendChild(tip); }
   tip.innerHTML = html;
   tip.style.display = 'block';
+  // the interface is zoomed: the mouse and the rect are in screen pixels, the tip's position in the interface's own
+  const s = uiScale();
   const r = tip.getBoundingClientRect();
-  tip.style.left = Math.min(window.innerWidth - r.width - 8, x + 16) + 'px';
-  tip.style.top = Math.min(window.innerHeight - r.height - 8, y + 12) + 'px';
+  tip.style.left = Math.min(uiW() - r.width / s - 8, x / s + 16) + 'px';
+  tip.style.top = Math.min(uiH() - r.height / s - 8, y / s + 12) + 'px';
 }
 export function hideTip() { if (tip) tip.style.display = 'none'; }
 
@@ -182,7 +184,8 @@ export class GridView {
   cellAt(x: number, y: number): [number, number] | null {
     const r = this.cells.getBoundingClientRect();
     if (x < r.left || y < r.top || x > r.right || y > r.bottom) return null;
-    return [Math.floor((x - r.left) / CELL_PX), Math.floor((y - r.top) / CELL_PX)];
+    const s = uiScale();
+    return [Math.floor((x - r.left) / s / CELL_PX), Math.floor((y - r.top) / s / CELL_PX)];
   }
 }
 
@@ -261,14 +264,16 @@ function startDrag(it: Item, src: Source, ev: PointerEvent, from: HTMLElement) {
   ghost.style.width = d.w * CELL_PX + 'px';
   ghost.style.height = d.h * CELL_PX + 'px';
   ghost.style.backgroundImage = `url(${iconFor(it.id)})`;
-  document.body.appendChild(ghost);
+  ui().appendChild(ghost);
+  // the ghost lives in the zoomed interface, so where it is under the mouse is in the interface's own pixels
+  const s = uiScale();
   const r = from.getBoundingClientRect();
-  const ox = Math.min(ev.clientX - r.left, d.w * CELL_PX - 4), oy = Math.min(ev.clientY - r.top, d.h * CELL_PX - 4);
+  const ox = Math.min((ev.clientX - r.left) / s, d.w * CELL_PX - 4), oy = Math.min((ev.clientY - r.top) / s, d.h * CELL_PX - 4);
   drag = { item: it, src };
   const mv = (e: PointerEvent) => {
     if (e.pointerId !== ev.pointerId) return;
-    ghost.style.left = e.clientX - ox + 'px';
-    ghost.style.top = e.clientY - oy + 'px';
+    ghost.style.left = e.clientX / s - ox + 'px';
+    ghost.style.top = e.clientY / s - oy + 'px';
   };
   mv(ev);
   const end = () => {
@@ -283,7 +288,7 @@ function startDrag(it: Item, src: Source, ev: PointerEvent, from: HTMLElement) {
     end();
     const dg = drag!;
     drag = null;
-    finishDrop(dg, e.clientX - ox + CELL_PX / 2, e.clientY - oy + CELL_PX / 2, e.clientX, e.clientY);
+    finishDrop(dg, e.clientX - (ox - CELL_PX / 2) * s, e.clientY - (oy - CELL_PX / 2) * s, e.clientX, e.clientY);
   };
   const cancel = (e: PointerEvent) => { if (e.pointerId !== ev.pointerId) return; end(); drag = null; };
   // in the capture phase: windows stop mouse events on their way up (see shield), and the drop is
@@ -411,8 +416,8 @@ function openItemSheet(it: Item, src: Source, x?: number, y?: number) {
   openSheet({ title: gradeName(ITEM[it.id], it.q), html: itemTip(it, price) + note, actions: acts, x, y, after: () => view.render() });
 }
 
-// let go of a carried item with Escape (before the windows close); headless tests import this module without a window
-if (typeof window !== 'undefined') window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && held) { e.stopPropagation(); clearHeld(); } }, true);
+// let go of a carried item with Escape (an open sheet goes first, the windows after); headless tests import this module without a window
+if (typeof window !== 'undefined') window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && held && !sheetOpen()) { e.stopPropagation(); clearHeld(); } }, true);
 
 function removeFromSource(src: Source, it: Item) {
   if (src.kind === 'grid') src.grid.remove(it);

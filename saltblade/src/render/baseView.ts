@@ -6,9 +6,14 @@ import { BUILDINGS, STYLES } from '../content/buildings';
 import { WObj } from '../sim/objects';
 import { buildBuilding, buildWallPiece, buildField, drawFurniture } from './buildings';
 import { GeoBuilder } from './geo';
+import { palette, watchPalette } from '../ui/palette';
 
 const ghostOK = new THREE.MeshBasicMaterial({ color: 0x8ce07a, transparent: true, opacity: 0.38, depthWrite: false });
 const ghostBad = new THREE.MeshBasicMaterial({ color: 0xe0583a, transparent: true, opacity: 0.38, depthWrite: false });
+// the ghost's yes and no come from the palette, which a colour-blind mode swaps
+const paintGhost = () => { ghostOK.color.set(palette.good); ghostBad.color.set(palette.bad); };
+paintGhost();
+watchPalette(paintGhost);
 const siteMat = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0.55, depthWrite: true });
 const scaffoldMat = new THREE.MeshLambertMaterial({ vertexColors: true });
 

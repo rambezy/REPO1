@@ -5,11 +5,11 @@
 .item, .slot { touch-action: pan-y; -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
 .wintitle { touch-action: none; -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
 .item.held, .slot.held { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent), 0 0 14px rgba(217,164,65,.55); z-index: 2; }
-.win { max-width: calc(100vw - 8px); }
+.win { max-width: calc(100cqw - 8px); }
 
 /* ---------------- action sheet ---------------- */
 .sheetback { position: fixed; inset: 0; z-index: 450; background: rgba(10,8,6,.45); pointer-events: auto; }
-.sheet { position: fixed; left: 8px; right: 8px; bottom: 8px; max-height: calc(100vh - 16px); overflow: auto; background: rgba(24,21,17,.98); border: 1px solid var(--edge-hi); border-radius: 8px;
+.sheet { position: fixed; left: 8px; right: 8px; bottom: 8px; max-height: calc(100cqh - 16px); overflow: auto; background: rgba(24,21,17,.98); border: 1px solid var(--edge-hi); border-radius: 8px;
   padding: 10px 12px 12px; box-shadow: 0 -8px 40px rgba(0,0,0,.6); display: flex; flex-direction: column; gap: 8px; }
 .sheet.pop { left: auto; right: auto; bottom: auto; width: 320px; border-radius: 5px; }
 .sheettitle { font: 700 17px var(--cond); color: #f0e0bc; letter-spacing: .04em; }
@@ -23,7 +23,7 @@
 .sheetbtn.cancel { align-items: center; color: var(--ink-dim); margin-top: 4px; }
 
 /* ---------------- carried item ---------------- */
-.holdbar { position: absolute; left: 0; right: 0; bottom: 104px; margin: 0 auto; width: max-content; max-width: calc(100vw - 16px); z-index: 420; display: flex; gap: 10px; align-items: center;
+.holdbar { position: absolute; left: 0; right: 0; bottom: 104px; margin: 0 auto; width: max-content; max-width: calc(100cqw - 16px); z-index: 420; display: flex; gap: 10px; align-items: center;
   background: rgba(24,21,17,.96); border: 1px solid var(--accent); border-radius: 6px; padding: 6px 10px; box-shadow: 0 6px 24px rgba(0,0,0,.55); }
 .holdicon { width: 34px; height: 34px; object-fit: contain; background: #16130f; border: 1px solid #4a4234; border-radius: 3px; flex: none; }
 .holdtext { display: flex; flex-direction: column; font-size: 13px; min-width: 0; }

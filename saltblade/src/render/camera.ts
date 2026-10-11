@@ -1,7 +1,9 @@
-// RTS camera: pan with WASD/arrows or screen edges, rotate with the middle
-// mouse (or Alt+drag, Q/E), zoom with the wheel, and follow a character.
+// RTS camera: pan with the keys (WASD and the arrows unless rebound) or
+// screen edges, rotate with the middle mouse (or Alt+drag, Q/E), zoom with
+// the wheel, and follow a character.
 import * as THREE from 'three';
 import { input } from '../core/input';
+import { keymap } from '../core/keys';
 import { clamp, lerp } from '../core/math';
 import type { Terrain } from '../world/terrain';
 import { WORLD } from '../world/consts';
@@ -27,10 +29,10 @@ export class RTSCamera {
     this.wantYaw -= rx * 0.006;
     this.wantPitch = clamp(this.wantPitch + ry * 0.005, 0.12, 1.45);
     if (!input.typing()) {
-      if (input.down('KeyQ')) this.wantYaw += dt * 1.6;
-      if (input.down('KeyE')) this.wantYaw -= dt * 1.6;
-      if (input.down('PageUp')) this.wantPitch = clamp(this.wantPitch + dt, 0.12, 1.45);
-      if (input.down('PageDown')) this.wantPitch = clamp(this.wantPitch - dt, 0.12, 1.45);
+      if (keymap.down('rotate_left')) this.wantYaw += dt * 1.6;
+      if (keymap.down('rotate_right')) this.wantYaw -= dt * 1.6;
+      if (keymap.down('tilt_up')) this.wantPitch = clamp(this.wantPitch + dt, 0.12, 1.45);
+      if (keymap.down('tilt_down')) this.wantPitch = clamp(this.wantPitch - dt, 0.12, 1.45);
     }
     this.yaw = lerp(this.yaw, this.wantYaw, 1 - Math.exp(-dt * 14));
     this.pitch = lerp(this.pitch, this.wantPitch, 1 - Math.exp(-dt * 14));
@@ -39,10 +41,10 @@ export class RTSCamera {
     // pan
     let px = 0, pz = 0;
     if (this.keyPan && !input.typing()) {
-      if (input.down('KeyW') || input.down('ArrowUp')) pz -= 1;
-      if (input.down('KeyS') || input.down('ArrowDown')) pz += 1;
-      if (input.down('KeyA') || input.down('ArrowLeft')) px -= 1;
-      if (input.down('KeyD') || input.down('ArrowRight')) px += 1;
+      if (keymap.down('pan_up')) pz -= 1;
+      if (keymap.down('pan_down')) pz += 1;
+      if (keymap.down('pan_left')) px -= 1;
+      if (keymap.down('pan_right')) px += 1;
     }
     if (this.edgeScroll && input.mouseInWindow) {
       const m = 6;

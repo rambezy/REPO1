@@ -14,6 +14,7 @@ import { buildAnimal, AnimalRig, AnimalAnimator } from './animalModel';
 import { ANIMAL } from '../content/animals';
 import { LI } from '../sim/body';
 import { ITEM } from '../content/items';
+import { palette, watchPalette } from '../ui/palette';
 import { hostile } from '../sim/combat';
 import { S } from '../sim/ctx';
 import { angleTo, wrapAngle } from '../core/math';
@@ -32,6 +33,10 @@ const ringMats = {
   enemy: new THREE.MeshBasicMaterial({ color: 0xe0503a, transparent: true, opacity: 0.6, depthWrite: false, fog: false }),
   target: new THREE.MeshBasicMaterial({ color: 0xff7a48, transparent: true, opacity: 0.95, depthWrite: false, fog: false }),
 };
+// the rings take their colours from the palette, which a colour-blind mode swaps
+const paintRings = () => { ringMats.sel.color.set(palette.friend); ringMats.hover.color.set(palette.hover); ringMats.enemy.color.set(palette.foe); ringMats.target.color.set(palette.attack); };
+paintRings();
+watchPalette(paintRings);
 export type RingKind = keyof typeof ringMats | 'none';
 
 /** How far from your people a hostile gets a ring without a fight on. */

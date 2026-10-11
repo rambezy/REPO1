@@ -1,10 +1,10 @@
 // UI wiring: builds the HUD and opens windows in response to events and keys.
-import { h, openWindow, closeTop, isOpen, closeWindow, esc } from './dom';
-import { buildHUD } from './hud';
+import { h, openWindow, closeTop, isOpen, closeWindow, esc, uiW } from './dom';
+import { buildHUD, switchSquad, togglePerf } from './hud';
 import { openCharWindow, refreshCharWindow } from './charwin';
 import { openLoot, dropOnGround } from './loot';
 import { on, emit } from '../core/events';
-import { input } from '../core/input';
+import { keymap } from '../core/keys';
 import { S } from '../sim/ctx';
 import { FACTION } from '../content/factions';
 import { ITEM, gradeName } from '../content/items';
@@ -27,6 +27,7 @@ import { DEEDS } from '../sim/deeds';
 import { setupCodex, toggleCodex } from './codex';
 import { setupJournal } from './journal';
 import { saveGame } from '../game/session';
+import { toggleFullscreen } from '../game/settings';
 import { G } from '../state';
 
 export function setupUI() {
@@ -64,42 +65,34 @@ export function setupUI() {
   on('world:reset', () => { liveKey = ''; });
   on('sel', () => { if (isOpen('char')) { const c = selected()[0]; if (c) openCharWindow(c); } });
   setInterval(() => { if (isOpen('char')) refreshLive(); }, 1000);
-  input.onKey((code) => {
-    switch (code) {
-      case 'KeyI': emit('ui:char'); return true;
-      case 'KeyL': emit('ui:log'); return true;
-      case 'KeyJ': emit('ui:journal'); return true;
-      case 'KeyM': emit('ui:map'); return true;
-      case 'KeyB': emit('ui:build'); return true;
-      case 'KeyU': emit('ui:research'); return true;
-      case 'KeyO': emit('ui:factions'); return true;
-      case 'KeyK': toggleCodex(); return true;
-      case 'Escape':
-        // a right-click menu first, then the top window, and only then the game menu
-        if (menuOpen()) { closeMenu(); return true; }
-        if (!closeTop()) emit('ui:menu');
-        return true;
-      case 'Tab': {
-        import('./hud').then((m) => {
-          const ids = S.W.playerSquads.filter((id) => (S.W.squads.get(id)?.members.length ?? 0) > 0);
-          if (ids.length < 2) return;
-          const i = ids.indexOf(G.activeSquad);
-          m.switchSquad(ids[(i + 1) % ids.length]);
-        });
-        return true;
-      }
-      case 'F3':
-        import('./hud').then((m) => m.togglePerf());
-        return true;
-      case 'F5':
-        if (G.mode === 'play') void saveGame('quick');
-        return true;
-      case 'F9':
-        void quickLoad();
-        return true;
-    }
-    return false;
+  // the window and game keys, by action (the bindings live in core/keys.ts and the options)
+  keymap.on('char', () => emit('ui:char'));
+  keymap.on('log', () => emit('ui:log'));
+  keymap.on('journal', () => emit('ui:journal'));
+  keymap.on('map', () => emit('ui:map'));
+  keymap.on('build', () => emit('ui:build'));
+  keymap.on('research', () => emit('ui:research'));
+  keymap.on('factions', () => emit('ui:factions'));
+  keymap.on('codex', () => toggleCodex());
+  keymap.on('back', () => {
+    // the right-click menu, then an item menu left behind by its window, then a building being placed,
+    // then the top window, and only then the game menu
+    if (menuOpen()) { closeMenu(); return; }
+    const stray = document.querySelector('.ctxmenu');
+    if (stray) { stray.remove(); return; }
+    if (G.placing) { emit('build:cancel'); return; }
+    if (!closeTop()) emit('ui:menu');
   });
+  keymap.on('next_squad', () => {
+    const ids = S.W.playerSquads.filter((id) => (S.W.squads.get(id)?.members.length ?? 0) > 0);
+    if (ids.length < 2) return;
+    const i = ids.indexOf(G.activeSquad);
+    switchSquad(ids[(i + 1) % ids.length]);
+  });
+  keymap.on('perf', () => togglePerf());
+  keymap.on('quicksave', () => { if (G.mode === 'play') void saveGame('quick'); });
+  keymap.on('quickload', () => { void quickLoad(); });
+  keymap.on('fullscreen', () => toggleFullscreen());
 }
 
 let liveKey = '';
@@ -114,7 +107,7 @@ function refreshLive() {
 function inspect(id: number) {
   const c = S.W.char(id);
   if (!c) return;
-  const w = openWindow('inspect', c.name, { w: 330, x: window.innerWidth - 350, y: 80, cls: 'inspect' });
+  const w = openWindow('inspect', c.name, { w: 330, x: uiW() - 350, y: 80, cls: 'inspect' });
   const render = () => {
     const f = FACTION[c.faction];
     const rel = S.W.rel.get('player', c.faction);
@@ -145,7 +138,7 @@ function inspect(id: number) {
 
 let logTab: 'log' | 'deeds' = 'log';
 function openLog() {
-  const w = openWindow('log', 'Log', { w: 480, x: window.innerWidth - 500, y: 104 });
+  const w = openWindow('log', 'Log', { w: 480, x: uiW() - 500, y: 104 });
   const render = () => {
     w.body.innerHTML = '';
     const tabs = h('div', { class: 'ftabs' });

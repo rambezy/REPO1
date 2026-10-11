@@ -3,6 +3,9 @@
 import * as THREE from 'three';
 import { G } from '../state';
 import { input } from '../core/input';
+import { keymap } from '../core/keys';
+import { uiScale, uiW, uiH } from '../ui/dom';
+import { palette } from '../ui/palette';
 import { Char, Order } from '../sim/char';
 import { WObj } from '../sim/objects';
 import { S } from '../sim/ctx';
@@ -151,7 +154,7 @@ export function moveGroup(chars: Char[], x: number, z: number) {
     const spot = chars.length > 1 ? G.nav.nearestOpen(tx, tz, 4) ?? [x, z] : [x, z];
     issue(c, { k: 'move', x: spot[0], z: spot[1] });
   });
-  G.overlay.markers.push({ x, y: G.T.heightAt(x, z) + 0.1, z, t: 0.8, color: '#a8e08a' });
+  G.overlay.markers.push({ x, y: G.T.heightAt(x, z) + 0.1, z, t: 0.8, color: palette.move });
 }
 
 export interface MenuItem { label: string; run: () => void; danger?: boolean; hint?: string; }
@@ -277,9 +280,10 @@ export function openMenu(x: number, y: number, title: string, items: MenuItem[])
     el.appendChild(b);
   }
   document.getElementById('ui')!.appendChild(el);
-  const r = el.getBoundingClientRect();
-  el.style.left = Math.min(x + 8, window.innerWidth - r.width - 8) + 'px';
-  el.style.top = Math.min(y + 8, window.innerHeight - r.height - 8) + 'px';
+  // the interface is zoomed: the click and the rect are in screen pixels, the menu's place in the interface's own
+  const r = el.getBoundingClientRect(), s = uiScale();
+  el.style.left = Math.min(x / s + 8, uiW() - r.width / s - 8) + 'px';
+  el.style.top = Math.min(y / s + 8, uiH() - r.height / s - 8) + 'px';
   menuEl = el;
 }
 
@@ -332,7 +336,7 @@ export function attachControl() {
     if (c && (!who.includes(c) || self)) {
       const acts = charActions(c);
       // attack hostiles directly unless asking for the menu
-      if (c.up && hostile(who[0], c) && !e.ctrlKey && !e.altKey) { acts.find((a) => a.label === 'Attack')?.run(); G.overlay.markers.push({ x: c.x, y: c.y + 0.1, z: c.z, t: 0.8, color: '#f07050' }); return; }
+      if (c.up && hostile(who[0], c) && !e.ctrlKey && !e.altKey) { acts.find((a) => a.label === 'Attack')?.run(); G.overlay.markers.push({ x: c.x, y: c.y + 0.1, z: c.z, t: 0.8, color: palette.attack }); return; }
       if (self) {
         // your own menu only when there is something in it; a click just beside yourself is otherwise a step, and the menu offers that too
         const g = groundAt(x, y);
@@ -357,22 +361,21 @@ export function attachControl() {
     hoverObj = c ? 0 : objAt(x, y)?.id ?? 0;
     emit('hover', x, y);
   };
-  input.onKey((code, e) => {
-    if (code === 'Escape') { closeMenu(); return false; }
-    if (code === 'Space') { setSpeed(G.speed ? 0 : G.lastSpeed || 1); return true; }
-    if (code === 'Digit1' && !e.ctrlKey) { setSpeed(1); return true; }
-    if (code === 'Digit2') { setSpeed(2); return true; }
-    if (code === 'Digit3') { setSpeed(3); return true; }
-    if (code === 'Digit4') { setSpeed(5); return true; }
-    if (code === 'KeyA' && e.ctrlKey) { sel.clear(); for (const c of S.W.playerChars()) if (c.alive) sel.add(c.id); emit('sel'); return true; }
-    const who = selected();
-    if (code === 'KeyT' && who.length) { const sneak = who.some((c) => c.move !== 'sneak'); who.forEach((c) => (c.move = sneak ? 'sneak' : 'run')); emit('sel'); return true; }
-    if (code === 'KeyR' && who.length) { const walk = !who[0].mem.walk; who.forEach((c) => { c.mem.walk = walk; if (c.move !== 'sneak') c.move = walk ? 'walk' : 'run'; }); emit('sel'); return true; }
-    if (code === 'KeyH' && who.length) { who.forEach((c) => issue(c, c.order?.k === 'hold' ? null : { k: 'hold' })); emit('sel'); return true; }
-    if (code === 'KeyF' && who.length) { const c = who[0]; G.cam.follow = G.cam.follow ? null : () => (c.alive ? c : null); return true; }
-    if (code === 'Delete' || code === 'KeyX') { who.forEach((c) => c.carrying && dropCarried(c)); return true; }
-    return false;
-  });
+  // every game key goes through the action map (core/keys.ts); the title, menus and conversations keep their own
+  input.onKey((_code, e) => keymap.dispatch(e));
+  keymap.on('pause', () => setSpeed(G.speed ? 0 : G.lastSpeed || 1));
+  keymap.on('speed1', () => setSpeed(1));
+  keymap.on('speed2', () => setSpeed(2));
+  keymap.on('speed3', () => setSpeed(3));
+  keymap.on('speed4', () => setSpeed(5));
+  keymap.on('select_all', () => { sel.clear(); for (const c of S.W.playerChars()) if (c.alive) sel.add(c.id); emit('sel'); });
+  // the squad keys only mean something with people selected; otherwise the key goes on to whatever else wants it
+  const withSelected = (fn: (who: Char[]) => void) => () => { const who = selected(); if (!who.length) return false; fn(who); };
+  keymap.on('sneak', withSelected((who) => { const sneak = who.some((c) => c.move !== 'sneak'); who.forEach((c) => (c.move = sneak ? 'sneak' : 'run')); emit('sel'); }));
+  keymap.on('walk', withSelected((who) => { const walk = !who[0].mem.walk; who.forEach((c) => { c.mem.walk = walk; if (c.move !== 'sneak') c.move = walk ? 'walk' : 'run'; }); emit('sel'); }));
+  keymap.on('hold', withSelected((who) => { who.forEach((c) => issue(c, c.order?.k === 'hold' ? null : { k: 'hold' })); emit('sel'); }));
+  keymap.on('follow', withSelected((who) => { const c = who[0]; G.cam.follow = G.cam.follow ? null : () => (c.alive ? c : null); }));
+  keymap.on('drop', () => { selected().forEach((c) => c.carrying && dropCarried(c)); });
   on('order', (c: Char, o: Order) => issue(c, o));
 }
 

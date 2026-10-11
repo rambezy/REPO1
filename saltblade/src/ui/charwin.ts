@@ -1,5 +1,6 @@
 // The character window: gear and inventory, skills, health and background.
-import { h, openWindow, esc, bar, getWindow, isOpen } from './dom';
+import { h, openWindow, esc, bar, getWindow, isOpen, uiScale, uiW, uiH } from './dom';
+import { palette } from './palette';
 import { GridView, SlotView, acceptsSlot, hideTip, ItemAction } from './grid';
 import { Char, EQUIP_SLOTS } from '../sim/char';
 import { S } from '../sim/ctx';
@@ -150,10 +151,11 @@ function itemMenu(c: Char, it: Item, grid: Grid) {
     m.appendChild(b);
   }
   document.getElementById('ui')!.appendChild(m);
-  const r = m.getBoundingClientRect();
-  const mx = (window as any).__mx ?? 200, my = (window as any).__my ?? 200;
-  m.style.left = Math.min(window.innerWidth - r.width - 8, mx + 6) + 'px';
-  m.style.top = Math.min(window.innerHeight - r.height - 8, my + 6) + 'px';
+  // the interface is zoomed: the mouse and the rect are in screen pixels, the menu's place in the interface's own
+  const r = m.getBoundingClientRect(), s = uiScale();
+  const mx = ((window as any).__mx ?? 200) / s, my = ((window as any).__my ?? 200) / s;
+  m.style.left = Math.min(uiW() - r.width / s - 8, mx + 6) + 'px';
+  m.style.top = Math.min(uiH() - r.height / s - 8, my + 6) + 'px';
   setTimeout(() => window.addEventListener('pointerdown', function off(e) { if (!m.contains(e.target as Node)) { m.remove(); window.removeEventListener('pointerdown', off); } }), 0);
 }
 window.addEventListener('mousemove', (e) => { (window as any).__mx = e.clientX; (window as any).__my = e.clientY; });
@@ -203,7 +205,7 @@ function healthTab(c: Char, el: HTMLElement) {
     const [x, y, w, hh] = pos[l];
     const frac = b.has(l) || b.prost[l] ? b.hp[l] / b.max[l] : 0;
     // a prosthetic shows steel, darkening as it is knocked about
-    const col = !b.has(l) ? (b.prost[l] ? (frac > 0.5 ? '#7a8a9a' : frac > 0 ? '#5a6470' : '#4a3a3a') : '#2a2420') : frac > 0.66 ? '#7fae5a' : frac > 0.33 ? '#d8b24a' : frac > 0 ? '#d07a3a' : '#a03a2a';
+    const col = !b.has(l) ? (b.prost[l] ? (frac > 0.5 ? '#7a8a9a' : frac > 0 ? '#5a6470' : '#4a3a3a') : '#2a2420') : frac > 0.66 ? palette.hp : frac > 0.33 ? palette.hpMid : frac > 0 ? palette.hpLow : palette.bad;
     const part = h('div', { class: 'bpart', title: LIMB_NAMES[l] });
     Object.assign(part.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: hh + 'px', background: col });
     if (b.bleed[l] > 0.02) part.classList.add('bleeding');

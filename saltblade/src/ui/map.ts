@@ -1,6 +1,7 @@
 // The world map: the land as your people know it. Places appear once found,
 // the unexplored waste stays pale, and you can send your squad across it.
-import { h, openWindow, isOpen, closeWindow } from './dom';
+import { h, openWindow, isOpen, closeWindow, uiScale, uiW, uiH } from './dom';
+import { palette } from './palette';
 import { G } from '../state';
 import { S } from '../sim/ctx';
 import { REGIONS } from '../world/regions';
@@ -121,7 +122,7 @@ export function toggleMap() {
 
 export function openMap() {
   if (!base) base = paintBase();
-  const size = Math.min(window.innerHeight - 120, window.innerWidth - 80, 900);
+  const size = Math.min(uiH() - 120, uiW() - 80, 900);
   const w = openWindow('map', 'Map of the Sundered Waste', { w: size + 24, y: 50, cls: 'mapwin' });
   w.body.innerHTML = '';
   const cv = h('canvas', { class: 'mapcv', width: String(size), height: String(size) }) as HTMLCanvasElement;
@@ -211,7 +212,7 @@ export function openMap() {
       if (!s) continue;
       const [sx, sy] = toScreen(s.x, s.z);
       if (sx < -20 || sy < -20 || sx > size + 20 || sy > size + 20) continue;
-      ctx.strokeStyle = '#b02a1a'; ctx.lineWidth = 2;
+      ctx.strokeStyle = palette.mapBounty; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(sx, sy, 8, 0, Math.PI * 2); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(sx - 4, sy - 4); ctx.lineTo(sx + 4, sy + 4); ctx.moveTo(sx + 4, sy - 4); ctx.lineTo(sx - 4, sy + 4); ctx.stroke();
       if (view.zoom >= 1.4) label(`${b.name}: ${b.reward.toLocaleString()}c`, sx, sy - 14, '#7a1a0e', 11);
@@ -230,7 +231,7 @@ export function openMap() {
     for (const c of S.W.playerChars()) {
       if (!c.alive) continue;
       const [sx, sy] = toScreen(c.x, c.z);
-      ctx.fillStyle = c.status === 'up' ? '#5ec23a' : '#c05a3a';
+      ctx.fillStyle = c.status === 'up' ? palette.mapMe : palette.mapDown;
       ctx.strokeStyle = '#102008';
       ctx.lineWidth = 1.2;
       ctx.beginPath(); ctx.arc(sx, sy, 3.6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
@@ -260,12 +261,13 @@ export function openMap() {
     ctx.fillStyle = col; ctx.fillText(t, x, y);
   };
 
-  // interaction
+  // interaction (the interface is zoomed: mouse positions are brought into the map's own pixels)
+  const at = (e: MouseEvent): [number, number] => { const r = cv.getBoundingClientRect(), s = uiScale(); return [(e.clientX - r.left) / s, (e.clientY - r.top) / s]; };
   let drag: [number, number, number, number] | null = null, moved = false;
   cv.addEventListener('mousedown', (e) => { if (e.button === 0) { drag = [e.clientX, e.clientY, view.cx, view.cz]; moved = false; } });
   const onMove = (e: MouseEvent) => {
     if (drag) {
-      const dx = e.clientX - drag[0], dy = e.clientY - drag[1];
+      const dx = (e.clientX - drag[0]) / uiScale(), dy = (e.clientY - drag[1]) / uiScale();
       if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
       view.cx = drag[2] - dx * worldPerPx(); view.cz = drag[3] - dy * worldPerPx();
       clampView();
@@ -278,15 +280,13 @@ export function openMap() {
   w.onClose = () => { window.removeEventListener('mousemove', onMove, true); window.removeEventListener('mouseup', onUp, true); };
   cv.addEventListener('click', (e) => {
     if (moved) return;
-    const r = cv.getBoundingClientRect();
-    const [x, z] = toWorld(e.clientX - r.left, e.clientY - r.top);
+    const [x, z] = toWorld(...at(e));
     G.cam.follow = null;
     G.cam.lookAt(x, z);
   });
   cv.addEventListener('contextmenu', (e) => {
     e.preventDefault();
-    const r = cv.getBoundingClientRect();
-    const [x, z] = toWorld(e.clientX - r.left, e.clientY - r.top);
+    const [x, z] = toWorld(...at(e));
     const who = selected();
     if (!who.length) { tip.textContent = 'Select someone first.'; return; }
     who.forEach((c, i) => issue(c, { k: 'move', x: x + (i % 3) * 1.5, z: z + Math.floor(i / 3) * 1.5 }));
@@ -294,17 +294,16 @@ export function openMap() {
   });
   cv.addEventListener('wheel', (e) => {
     e.preventDefault();
-    const r = cv.getBoundingClientRect();
-    const [wx, wz] = toWorld(e.clientX - r.left, e.clientY - r.top);
+    const [mx, my] = at(e);
+    const [wx, wz] = toWorld(mx, my);
     view.zoom = Math.max(1, Math.min(10, view.zoom * (e.deltaY < 0 ? 1.25 : 0.8)));
     // keep the point under the cursor fixed
-    const [nx, nz] = toWorld(e.clientX - r.left, e.clientY - r.top);
+    const [nx, nz] = toWorld(mx, my);
     view.cx += wx - nx; view.cz += wz - nz;
     clampView();
   }, { passive: false });
   cv.addEventListener('mousemove', (e) => {
-    const r = cv.getBoundingClientRect();
-    const [x, z] = toWorld(e.clientX - r.left, e.clientY - r.top);
+    const [x, z] = toWorld(...at(e));
     if (x < 0 || z < 0 || x > WORLD || z > WORLD) { tip.textContent = ''; return; }
     const ei = Math.floor(x / EXP_M), ej = Math.floor(z / EXP_M);
     const seen = (S.W.explored?.[ej * EXP + ei] ?? 0) > 0;

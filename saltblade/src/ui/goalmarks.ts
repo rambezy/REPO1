@@ -4,6 +4,7 @@
 // with the game's own modules (and the headless tests), which have no use
 // for the journal's styles.
 import { goalMarks } from '../sim/contracts';
+import { palette } from './palette';
 
 let marks: ReturnType<typeof goalMarks> = [];
 let marksT = 0;
@@ -14,7 +15,7 @@ export function drawGoalMarks(ctx: CanvasRenderingContext2D, toScreen: (x: numbe
   for (const m of marks) {
     const [sx, sy] = toScreen(m.x, m.z);
     if (sx < -30 || sy < -30 || sx > size + 30 || sy > size + 30) continue;
-    const col = m.kind === 'crisis' ? '#c6523a' : m.kind === 'story' ? '#8a4ec0' : m.done ? '#5a9a3a' : '#d9a441';
+    const col = m.kind === 'crisis' ? palette.bad : m.kind === 'story' ? '#8a4ec0' : m.done ? palette.good : '#d9a441';
     ctx.lineWidth = 2.2;
     ctx.strokeStyle = '#2a1c10';
     ctx.fillStyle = col;

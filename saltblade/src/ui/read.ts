@@ -19,7 +19,7 @@ export function openBook(key: string, readerId?: number) {
       if (b.science > 0 && !c.robot) {
         const before = c.sk[SK.science];
         c.sk[SK.science] = Math.min(100, before + b.science * (before < 20 ? 1.5 : before < 50 ? 1 : 0.5));
-        learned = `${c.name} learned something. Science ${Math.floor(before)} → ${Math.floor(c.sk[SK.science])}.`;
+        learned = `${c.name} learned something. Science ${Math.floor(before)} to ${Math.floor(c.sk[SK.science])}.`;
         S.fx.notice(learned, 'good');
       }
       S.W.say(`${c.name} read ${b.title}.`, 'info', S.clock.t);

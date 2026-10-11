@@ -17,6 +17,22 @@ export function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<s
 
 export const ui = () => document.getElementById('ui')!;
 
+// The whole interface (#ui) is zoomed by the interface-size setting. Mouse
+// events arrive in screen pixels, and rects come back in them, while anything
+// placed inside the interface is laid out in its own, scaled pixels.
+let scale = 1;
+export function setUiScale(s: number) { scale = s; }
+/**
+ * Whether this engine zooms the standard way, with rects in screen pixels (Chrome 128, Firefox 126,
+ * Safari 26.4 and later). Older engines measure inside a zoomed box in its own pixels, which would put
+ * every drop, click and clamp off, so the interface stays at 100% there.
+ */
+export const zoomSupported = typeof Element !== 'undefined' && 'currentCSSZoom' in Element.prototype;
+export const uiScale = () => scale;
+/** The interface's width and height in its own pixels. */
+export const uiW = () => window.innerWidth / scale;
+export const uiH = () => window.innerHeight / scale;
+
 export function esc(s: string) {
   return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 }
@@ -54,8 +70,8 @@ export function openWindow(key: string, title: string, opts: { w?: number; x?: n
   ui().appendChild(el);
   shield(el);
   const saved = winPos[key];
-  const r = el.getBoundingClientRect();
-  el.style.left = (saved?.[0] ?? opts.x ?? (window.innerWidth - r.width) / 2) + 'px';
+  const rw = el.getBoundingClientRect().width / scale; // the interface is zoomed: rects come back in screen pixels
+  el.style.left = (saved?.[0] ?? opts.x ?? (uiW() - rw) / 2) + 'px';
   el.style.top = (saved?.[1] ?? opts.y ?? 90) + 'px';
   fit(el);
   // a window that grows (another tab, more rows) is pulled back on screen
@@ -70,8 +86,8 @@ export function openWindow(key: string, title: string, opts: { w?: number; x?: n
     const mv = (ev: PointerEvent) => {
       if (ev.pointerId !== id) return;
       const r = el.getBoundingClientRect();
-      el.style.left = Math.max(0, Math.min(window.innerWidth - r.width, ox + ev.clientX - sx)) + 'px';
-      el.style.top = Math.max(0, Math.min(window.innerHeight - r.height, oy + ev.clientY - sy)) + 'px';
+      el.style.left = Math.max(0, Math.min(uiW() - r.width / scale, ox + (ev.clientX - sx) / scale)) + 'px';
+      el.style.top = Math.max(0, Math.min(uiH() - r.height / scale, oy + (ev.clientY - sy) / scale)) + 'px';
     };
     const off = () => { window.removeEventListener('pointermove', mv, true); window.removeEventListener('pointerup', up, true); window.removeEventListener('pointercancel', up, true); };
     const up = (ev: PointerEvent) => { if (ev.pointerId !== id) return; off(); winPos[key] = [el.offsetLeft, el.offsetTop]; };
@@ -93,12 +109,14 @@ const winPos: Record<string, [number, number]> = {};
 
 /** Keeps a window inside the viewport; one taller than the screen is capped by its max-height and scrolls inside. */
 function fit(el: HTMLElement) {
-  const r = el.getBoundingClientRect();
-  el.style.left = Math.max(4, Math.min(window.innerWidth - r.width - 4, el.offsetLeft)) + 'px';
-  el.style.top = Math.max(4, Math.min(window.innerHeight - r.height - 4, el.offsetTop)) + 'px';
+  const r = el.getBoundingClientRect(); // in screen pixels; the window is laid out in the zoomed interface's own
+  el.style.left = Math.max(4, Math.min(uiW() - r.width / scale - 4, el.offsetLeft)) + 'px';
+  el.style.top = Math.max(4, Math.min(uiH() - r.height / scale - 4, el.offsetTop)) + 'px';
 }
+/** Pulls every open window back on screen (after the interface changes size). */
+export function refitWindows() { for (const w of openWins.values()) fit(w.el); }
 // (headless tests import this module without a window)
-if (typeof window !== 'undefined') window.addEventListener('resize', () => { for (const w of openWins.values()) fit(w.el); });
+if (typeof window !== 'undefined') window.addEventListener('resize', refitWindows);
 
 export function closeWindow(key: string) { openWins.get(key)?.close(); }
 export function isOpen(key: string) { return openWins.has(key); }

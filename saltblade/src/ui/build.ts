@@ -1,7 +1,7 @@
 // The build menu, placement with a ghost preview, the research window, and
 // windows for machines, benches, storage and fields.
 import './economy.css';
-import { h, openWindow, isOpen, closeWindow, getWindow, esc, ask } from './dom';
+import { h, openWindow, isOpen, closeWindow, getWindow, esc, ask, uiW } from './dom';
 import { G } from '../state';
 import { S } from '../sim/ctx';
 import { BUILDABLES, BUILDABLE, Buildable, RECIPES, TECHS, TECH, BuildCat } from '../content/buildables';
@@ -9,6 +9,7 @@ import { ITEM } from '../content/items';
 import { canPlace, placeSite, unlocked, deconstruct, FUEL_REACH, cropFitness, startResearch, researchPaid, prisonersIn } from '../sim/base';
 import { on, emit } from '../core/events';
 import { input } from '../core/input';
+import { keymap } from '../core/keys';
 import { groundAt, selected } from '../game/control';
 import { Ghost } from '../render/baseView';
 import { GridView, hideTip } from './grid';
@@ -54,11 +55,11 @@ export function setupBuild() {
     emit('sound', 'build', site.x, site.z, 0.5);
   });
   on('hover', (x: number, y: number) => moveGhost(x, y));
-  input.onKey((code) => {
+  // the rotate key is only taken while placing; Esc while placing is handled with the other closes (ui/index.ts)
+  keymap.on('build_rotate', () => {
     if (!placing) return false;
-    if (code === 'KeyR') { rot += Math.PI / 8; moveGhost(input.mx, input.my); return true; }
-    if (code === 'Escape') { stopPlacing(); return true; }
-    return false;
+    rot += Math.PI / 8;
+    moveGhost(input.mx, input.my);
   });
   window.addEventListener('wheel', (e) => { if (placing && input.shift) { rot += Math.sign(e.deltaY) * Math.PI / 16; moveGhost(input.mx, input.my); } }, { passive: true });
 }
@@ -93,7 +94,7 @@ function startPlacing(b: Buildable) {
   placing = b;
   G.placing = true;
   ghost.set(b);
-  emit('notice', `Placing ${b.name}: left-click to place, R to rotate, Shift to place several, right-click to cancel.`);
+  emit('notice', `Placing ${b.name}: left-click to place, ${keymap.labels('build_rotate')[0] ?? 'R'} to rotate, Shift to place several, right-click to cancel.`);
 }
 function stopPlacing() {
   placing = null;
@@ -102,7 +103,7 @@ function stopPlacing() {
 }
 
 function openBuild() {
-  const w = openWindow('build', 'Build', { w: 520, x: window.innerWidth - 540, y: 100, cls: 'buildwin' });
+  const w = openWindow('build', 'Build', { w: 520, x: uiW() - 540, y: 100, cls: 'buildwin' });
   const render = () => {
     w.body.innerHTML = '';
     const cats: BuildCat[] = ['Storage', 'Furniture', 'Housing', 'Production', 'Crafting', 'Farming', 'Power', 'Defence', 'Science', 'Misc'];
@@ -130,11 +131,11 @@ function openBuild() {
 
 function openResearch() {
   // wide enough on a laptop screen that the four tiers rarely wrap, never wider than the screen
-  const w = openWindow('research', 'Research', { w: Math.max(320, Math.min(940, window.innerWidth - 24)), x: 60, y: 70, cls: 'reswin' });
+  const w = openWindow('research', 'Research', { w: Math.max(320, Math.min(940, uiW() - 24)), x: 60, y: 70, cls: 'reswin' });
   const R = S.W.research;
   const render = () => {
     // all of it on screen, below wherever the window sits: the tiers scroll inside it
-    w.el.style.maxHeight = `calc(100vh - ${Math.max(0, w.el.offsetTop) + 10}px)`;
+    w.el.style.maxHeight = `calc(100cqh - ${Math.max(0, w.el.offsetTop) + 10}px)`;
     w.body.innerHTML = '';
     const benches = [...S.W.objs.values()].filter((o) => o.owner === 'player' && o.kind === 'research').length;
     const cur = TECH[R.current];
@@ -150,7 +151,7 @@ function openResearch() {
         const ready = !done && (t.needs ?? []).every((n) => R.done.has(n));
         // known techs shrink to their name (the rest on hover); what a tech waits for shows only while it waits
         const b = h('button', { class: 'tech' + (done ? ' done' : ready ? '' : ' locked') + (R.current === t.key ? ' cur' : ''), title: done ? t.desc : undefined },
-          h('div', { class: 'bname' }, t.name, done ? h('span', { class: 'good' }, ' ✓') : ''),
+          h('div', { class: 'bname' }, t.name, done ? h('span', { class: 'good' }, ' √') : ''),
           done ? '' : h('div', { class: 'bdesc' }, t.desc),
           !done && t.cost ? h('div', { class: 'bcost' }, costStr(t.cost), researchPaid(t.key) ? h('span', { class: 'paid' }, ' · paid') : '') : '',
           !done && !ready && t.needs?.length ? h('div', { class: 'bcost dim' }, 'After: ' + t.needs.filter((n) => !R.done.has(n)).map((n) => TECH[n].name).join(', ')) : '',
@@ -192,7 +193,7 @@ export function openObject(id: number) {
   const b = BUILDABLE[o.data?.bkey];
   const mine = o.owner === 'player';
   const title = o.def === 'forsale' ? 'For sale' : o.data?.name ?? b?.name ?? o.def;
-  const w = openWindow('obj', title, { w: 460, x: window.innerWidth - 480, y: 120 });
+  const w = openWindow('obj', title, { w: 460, x: uiW() - 480, y: 120 });
   const cleanup = () => { for (const v of objViews) v.destroy(); objViews = []; hideTip(); };
   w.onClose = cleanup;
   const render = () => {
@@ -267,7 +268,7 @@ export function openObject(id: number) {
           box.appendChild(row);
         }
         const r = RECIPES[o.data.recipe];
-        if (r) box.appendChild(h('div', {}, `${r.name}: ${costStr(r.in)} → ${costStr(r.out)} · ${Math.floor(((o.data.prog ?? 0) / r.time) * 100)}%`));
+        if (r) box.appendChild(h('div', {}, `${r.name}: ${costStr(r.in)} makes ${costStr(r.out)} · ${Math.floor(((o.data.prog ?? 0) / r.time) * 100)}%`));
       }
       w.body.appendChild(box);
     }

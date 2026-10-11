@@ -2,7 +2,7 @@
 // item, for a finger that has no right button), the bar that names the item a
 // tap picked up, and the stylesheet that fits the windows to a phone.
 import './touch.css';
-import { h, ui } from './dom';
+import { h, ui, uiScale, uiW, uiH } from './dom';
 import { S } from '../sim/ctx';
 import { Grid, Item } from '../sim/inventory';
 import { ITEM } from '../content/items';
@@ -26,9 +26,10 @@ export function openSheet(opts: { title: string; html?: string; actions: SheetAc
   if (opts.html) box.appendChild(h('div', { class: 'sheetcard', html: opts.html }));
   // the sheet opens under the finger that is still pressing the item, and that finger's release lands a
   // click on whatever row is there: a button acts only on a click that a fresh press inside the sheet
-  // (or the keyboard) led to
+  // (or the keyboard) led to. A keyboard click has no pointer type; the release's click can have a
+  // count of 0 too, so the count alone does not tell them apart.
   let armed = false;
-  const fresh = (e: MouseEvent) => armed || e.detail === 0;
+  const fresh = (e: MouseEvent) => armed || (e.detail === 0 && !(e as PointerEvent).pointerType);
   const list = h('div', { class: 'sheetacts' });
   for (const a of opts.actions) {
     const b = h('button', { class: 'sheetbtn' + (a.danger ? ' danger' : '') }, a.label, a.hint ? h('small', {}, a.hint) : null);
@@ -50,9 +51,10 @@ export function openSheet(opts: { title: string; html?: string; actions: SheetAc
   ui().appendChild(back);
   sheet = back;
   if (pop) {
-    const r = box.getBoundingClientRect();
-    box.style.left = Math.max(4, Math.min(window.innerWidth - r.width - 4, opts.x! + 6)) + 'px';
-    box.style.top = Math.max(4, Math.min(window.innerHeight - r.height - 4, opts.y! + 6)) + 'px';
+    // the interface is zoomed: the tap and the rect are in screen pixels, the sheet's place in the interface's own
+    const r = box.getBoundingClientRect(), s = uiScale();
+    box.style.left = Math.max(4, Math.min(uiW() - r.width / s - 4, opts.x! / s + 6)) + 'px';
+    box.style.top = Math.max(4, Math.min(uiH() - r.height / s - 4, opts.y! / s + 6)) + 'px';
   }
   uiSound('open');
 }

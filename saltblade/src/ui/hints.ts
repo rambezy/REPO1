@@ -4,6 +4,7 @@
 // queue waits while a window, menu or conversation is open. Each situational
 // card is shown once per browser; the start cards once per game.
 import { h, ui, esc, anyOpen } from './dom';
+import { keymap, ActionId } from '../core/keys';
 import { G } from '../state';
 import { S } from '../sim/ctx';
 import { on } from '../core/events';
@@ -20,6 +21,9 @@ import type { Char } from '../sim/char';
 interface Card { key: string; title: string; text: string; pri: number; perGame?: boolean; }
 /** Lower comes first: the start card, the start's first steps, field notes, then tips. */
 const PRI = { start: 0, steps: 1, note: 2, tip: 3 };
+
+/** The first key bound to an action, for a hint's text. */
+const kb = (a: ActionId) => esc(keymap.labels(a)[0] ?? '?');
 
 const seen = new Set<string>();
 let box: HTMLDivElement | null = null;
@@ -98,7 +102,7 @@ export function setupHints() {
     hold = 1.5;
     t = 6;
     if (input.touch || matchMedia('(pointer: coarse)').matches) startCard('start', 'Your people', 'Your people are the portraits at the bottom. <b>Tap</b> to select; <b>press and hold</b> the ground to walk there, or someone for things to do. Drag to look, pinch to zoom.', PRI.start);
-    else startCard('start', 'Your people', 'Your people are the portraits at the bottom. <b>Left-click</b> selects (drag for several); <b>right-click</b> the ground to walk there, or someone for things to do. <b>Space</b> pauses, <b>1–4</b> set the speed.', PRI.start);
+    else startCard('start', 'Your people', `Your people are the portraits at the bottom. <b>Left-click</b> selects (drag for several); <b>right-click</b> the ground to walk there, or someone for things to do. <b>${kb('pause')}</b> pauses, <b>${kb('speed1')}–${kb('speed4')}</b> set the speed.`, PRI.start);
     // what to do first, for the way this game began
     const sc = SCENARIO[S.W.flags.scenario];
     if (sc?.firstSteps) startCard('first_' + sc.key, 'First steps', sc.firstSteps, PRI.steps);
@@ -134,7 +138,8 @@ function note(key: string) {
   const got: string[] = (S.W.flags.notes ??= []);
   if (got.includes(key)) return;
   got.push(key);
-  hint('note_' + key, NOTE[key]?.title ?? key, `${NOTE_TEXT[key] ?? ''} <span class="dim">(Codex, <b>K</b>: Field notes.)</span>`, PRI.note);
+  // the notes name the character window's key as I; the live binding goes in its place
+  hint('note_' + key, NOTE[key]?.title ?? key, `${(NOTE_TEXT[key] ?? '').replaceAll('<b>I</b>', `<b>${kb('char')}</b>`)} <span class="dim">(Codex, <b>${kb('codex')}</b>: Field notes.)</span>`, PRI.note);
 }
 
 /** Shows the next card when nothing is in the way, and looks for situations worth one every couple of seconds. */
@@ -152,9 +157,9 @@ export function tickHints(dt: number) {
   for (const c of mine) {
     if (!c.alive) continue;
     const name = esc(c.name);
-    if (c.hunger < 100 && !c.robot && !c.animal) hint('hunger', 'Hunger', `${name} is hungry. Eat from the pack (<b>I</b>, right-click food) or buy food in town. The starving fight badly and faint.`);
+    if (c.hunger < 100 && !c.robot && !c.animal) hint('hunger', 'Hunger', `${name} is hungry. Eat from the pack (<b>${kb('char')}</b>, right-click food) or buy food in town. The starving fight badly and faint.`);
     if (c.body.bleeding() > 0.05 && c.up) hint('bleed', 'Bleeding', `${name} is bleeding. Right-click them, <b>First aid</b>: it takes bandages or a kit from someone's pack.`);
-    if (c.carrying) hint('carry', 'Carrying', 'Right-click a bed to lay them down, a cage to lock them in, or press <b>X</b> to put them down.');
+    if (c.carrying) hint('carry', 'Carrying', `Right-click a bed to lay them down, a cage to lock them in, or press <b>${kb('drop')}</b> to put them down.`);
     if (c.load() > 1) hint('load', 'Overloaded', `${name} is carrying too much and slows down. Heavy loads do build strength.`);
     if (Object.values(c.bounty).some((v) => v > 0)) hint('wanted', 'Wanted', 'Someone saw a crime. That faction\'s guards will try an arrest. Pay a guard, lie low, or fight.');
     if (c.shackled) hint('shackles', 'Shackles', 'Shackled people move slowly. Select them and right-click themselves (or a friend) to <b>pick the shackles</b>, best unseen.');
@@ -170,7 +175,7 @@ export function tickHints(dt: number) {
   if (W.flags.searched) note('law');
   if (S.T.sites.some((s) => s.kind === 'foundry' && W.discovered.has(s.id)) || W.flags.salvaged) note('machines');
   else if (W.active.some((o) => o.faction === 'machines' && o.alive && mine.some((c) => c.alive && Math.abs(c.x - o.x) < 45 && Math.abs(c.z - o.z) < 45))) note('machines');
-  if (S.clock.isNight) hint('night', 'Night', 'Sight is short at night: good for <b>sneaking</b> (T). Thieves and cannibals think so too.');
+  if (S.clock.isNight) hint('night', 'Night', `Sight is short at night: good for <b>sneaking</b> (${kb('sneak')}). Thieves and cannibals think so too.`);
   if (W.money < 150) hint('broke', 'Short of chits', 'Sell what you find, <b>mine</b> ore (right-click a rock) and sell it, or take a bounty from a town guard.');
   if (W.flags.lastRaid && S.clock.t - W.flags.lastRaid < 3600) hint('raid', 'Raiders', 'Raiders are coming for your base. Fight, pay them off, or let them take what they want.');
   if (G.weatherState && (G.weatherState.kind === 'acid' || G.weatherState.kind === 'gas') && G.weatherState.intensity > 0.3) hint('hazard', 'Bad weather', 'Acid rain burns and gas chokes. Get under a roof, or wear a gas mask and heavy gear.');

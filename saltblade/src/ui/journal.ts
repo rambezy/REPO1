@@ -2,7 +2,7 @@
 // part of, the Foundry when it wakes, and what has been done and failed.
 // Every place it sends you is marked on the map (see goalmarks.ts).
 import './journal.css';
-import { h, openWindow, isOpen, closeWindow, getWindow, ask } from './dom';
+import { h, openWindow, isOpen, closeWindow, getWindow, ask, uiW } from './dom';
 import { S } from '../sim/ctx';
 import { on, emit } from '../core/events';
 import {
@@ -28,7 +28,7 @@ export function setupJournal() {
   setInterval(() => { const w = getWindow('journal'); if (w && !w.el.matches(':hover')) render(); }, 1000);
 }
 
-const openIt = () => openWindow('journal', 'Journal', { w: 580, x: Math.max(10, window.innerWidth - 620), y: 100, cls: 'journalwin' });
+const openIt = () => openWindow('journal', 'Journal', { w: 580, x: Math.max(10, uiW() - 620), y: 100, cls: 'journalwin' });
 
 export function toggleJournal() {
   if (isOpen('journal')) { closeWindow('journal'); return; }
