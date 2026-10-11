@@ -7,7 +7,8 @@ import { ITEM, itemValue, ItemDef } from '../content/items';
 import { RNG } from '../core/rng';
 import { Item } from './inventory';
 import { BOOKS } from '../content/lore';
-import { MARKETS, Market, CHEAP_BUY, CHEAP_SELL, DEAR_BUY, DEAR_SELL } from '../content/markets';
+import { MARKETS, Market, CHEAP_BUY, CHEAP_SELL, DEAR_BUY, DEAR_SELL, DEAR_RELICS } from '../content/markets';
+import type { Site } from '../world/terrain';
 
 export interface Shop {
   id: number; // the counter object that holds the stock
@@ -86,13 +87,25 @@ function bookEntries(sh: Shop): Entry[] {
   return out;
 }
 
+/** A town's general store keeps plenty of what the town has too much of: where every haul starts. */
+function surplusEntries(sh: Shop): Entry[] {
+  if (sh.kind !== 'general') return [];
+  const m = marketOf(sh);
+  if (!m) return [];
+  // cheap bulk comes by the sackful, dearer goods a few at a time
+  return m.cheap.filter((id) => ITEM[id]).map((id): Entry => {
+    const v = ITEM[id].value;
+    return v < 100 ? [id, 2, 6, 16] : v < 300 ? [id, 1.5, 3, 8] : [id, 1, 1, 4];
+  });
+}
+
 export function restock(sh: Shop) {
   const g = shopGrid(sh);
   if (!g) return;
   const rng = new RNG((sh.id * 7919 + (S.clock?.day ?? 0) * 104729) >>> 0);
   // keep a little of the old stock, clear the rest
   g.items = g.items.filter(() => rng.chance(0.25));
-  const table = [...(TABLES[sh.kind] ?? TABLES.general), ...(FLAVOUR[sh.faction]?.[sh.kind] ?? []), ...bookEntries(sh)];
+  const table = [...(TABLES[sh.kind] ?? TABLES.general), ...(FLAVOUR[sh.faction]?.[sh.kind] ?? []), ...bookEntries(sh), ...surplusEntries(sh)];
   const picks = 8 + Math.round(sh.wealth * 8);
   for (let i = 0; i < picks; i++) {
     const [id, , a, b] = rng.weighted(table.map((e) => [e, e[1]] as const));
@@ -110,9 +123,17 @@ function relMod(faction: string) {
   return r > 50 ? 0.85 : r > 20 ? 0.93 : r < -20 ? 1.25 : 1;
 }
 
+/** Sites by id for the terrain in play: every price looks up a town's market. */
+const sitesById = new WeakMap<object, Map<number, Site>>();
+function siteById(id: number): Site | undefined {
+  let m = sitesById.get(S.T);
+  if (!m) { m = new Map(S.T.sites.map((s) => [s.id, s])); sitesById.set(S.T, m); }
+  return m.get(id);
+}
+
 /** The market of the town a shop stands in, if it has one. */
 export function marketOf(sh: Shop): Market | undefined {
-  const site = sh.site ? S.T.sites.find((s) => s.id === sh.site) : undefined;
+  const site = sh.site ? siteById(sh.site) : undefined;
   return site?.settlement ? MARKETS[site.settlement] : undefined;
 }
 const inList = (list: string[], d: ItemDef) => list.includes(d.id) || list.includes(d.cat);
@@ -132,16 +153,104 @@ export function buyPrice(sh: Shop, it: Item | { id: string; q: number; cond?: nu
 }
 
 /** What the shop pays for an item (per unit). */
-export function sellPrice(sh: Shop, it: Item) {
+export function sellPrice(sh: Shop, it: Item | { id: string; q: number; cond?: number; stolen?: string }) {
   const d = ITEM[it.id];
-  let k = 0.5 / relMod(sh.faction);
-  if (sh.kind === 'tech' && (d.cat === 'artifact' || d.research)) k = 0.8;
-  if (sh.kind === 'robotics' && (d.cat === 'robotics' || d.id === 'machine_parts' || d.id === 'elec_parts')) k = 0.7;
-  const mk = marketFor(sh, d);
-  if (mk === 'cheap') k *= CHEAP_SELL; else if (mk === 'dear') k *= DEAR_SELL;
-  if (it.stolen === sh.faction) k *= 0.3;
   if (d.illegal?.includes(sh.faction)) return 0;
-  return Math.max(1, Math.round(itemValue(d, it.q) * k * worn(it.cond)));
+  // a shop that dislikes you offers less; one that likes you shows it in what it charges, not in what it pays
+  const base = 0.5 / Math.max(1, relMod(sh.faction));
+  // specialists pay more for their own trade, whoever is selling
+  const relics = sh.kind === 'tech' && (d.cat === 'artifact' || !!d.research);
+  const parts = sh.kind === 'robotics' && (d.cat === 'robotics' || d.id === 'machine_parts' || d.id === 'elec_parts');
+  let k = relics ? 0.8 : parts ? 0.7 : base;
+  // a glut cuts every offer; a town short of something pays one going rate for it at any counter,
+  // except that a relic dealer's premium comes on top of a town's hunger for relics (ruins should pay)
+  const mk = marketFor(sh, d);
+  if (mk === 'cheap') k *= CHEAP_SELL;
+  else if (mk === 'dear') k = relics ? k * DEAR_RELICS : Math.max(k, base * DEAR_SELL);
+  if (it.stolen === sh.faction) k *= 0.3;
+  const p = Math.max(1, Math.round(itemValue(d, it.q) * k * worn(it.cond)));
+  // always well under what the counter asks for the same thing: nothing to gain buying and selling back
+  return Math.min(p, Math.max(1, Math.floor(buyPrice(sh, it) * 0.9)));
+}
+
+/** Standing a purchase earns with the shop's faction: a little for a good customer, nothing worth farming with trinkets. */
+export const buyStanding = (cost: number) => Math.min(0.2, cost / 1000);
+
+/**
+ * Settles a purchase of `n` of an item that has just left the shop's stock
+ * for your pack. Every way of buying comes through here.
+ */
+export function payForGoods(sh: Shop, it: Item, n: number): number {
+  const cost = buyPrice(sh, it) * n;
+  S.W.money -= cost;
+  sh.money += cost;
+  it.stolen = undefined; // bought and paid for
+  S.W.rel.add('player', sh.faction, buyStanding(cost));
+  return cost;
+}
+
+/**
+ * Settles a sale of `n` of an item that has just gone onto the shop's shelf.
+ * Every way of selling comes through here. What reached the shelf is the
+ * shop's own now, no longer marked stolen; any of the stack that did not fit
+ * and stayed in your pack keeps its mark.
+ */
+export function payForSale(sh: Shop, it: Item, n: number): number {
+  const val = sellPrice(sh, it) * n;
+  S.W.money += val;
+  sh.money -= val;
+  for (const x of shopGrid(sh)?.items ?? []) if (x.id === it.id) x.stolen = undefined;
+  return val;
+}
+
+/** Puts a stack into the first grid with room, topping up stacks on the way; returns how many went in. */
+export function stow(it: Item, grids: Grid[]): number {
+  const n0 = it.n;
+  for (const g of grids) if (g.put(it)) return n0;
+  return n0 - it.n;
+}
+
+/** Buys as much of a stack on the shelf as fits in these packs; the rest stays on the shelf. Returns how many, and the chits paid. */
+export function buyInto(sh: Shop, it: Item, packs: Grid[]): [number, number] {
+  const stock = shopGrid(sh);
+  if (!stock) return [0, 0];
+  const n0 = it.n;
+  stock.remove(it);
+  it.stolen = undefined; // bought and paid for, so it stacks with what you already carry
+  const k = stow(it, packs);
+  if (k < n0) stock.put(it);
+  return [k, k > 0 ? payForGoods(sh, it, k) : 0];
+}
+
+/** Sells as much of a stack from a pack as fits on the shelf; the rest stays in the pack, as it was. Returns how many, and the chits paid. */
+export function sellInto(sh: Shop, it: Item, from: Grid): [number, number] {
+  const stock = shopGrid(sh);
+  if (!stock) return [0, 0];
+  const n0 = it.n;
+  from.remove(it);
+  const k = stow(it, [stock]);
+  if (k < n0) from.put(it);
+  return [k, k > 0 ? payForSale(sh, it, k) : 0];
+}
+
+/** A town that pays well for something, and what one would fetch at a counter there. */
+export interface MarketTip { site: Site; price: number; dist: number }
+
+/**
+ * The towns that pay well for an item (not `here`), best offer first and
+ * nearest first among equals, at your standing with each.
+ */
+export function dearMarkets(it: Item | { id: string; q: number; cond?: number }, here?: { x: number; z: number; site?: number }): MarketTip[] {
+  const d = ITEM[it.id];
+  const out: MarketTip[] = [];
+  for (const site of S.T.sites) {
+    if (site.kind !== 'town' || !site.settlement || !MARKETS[site.settlement] || site.id === here?.site) continue;
+    const counter: Shop = { id: 0, kind: 'general', faction: site.faction ?? '', site: site.id, keeper: 0, money: 0, restockDay: 0, markup: 0.15, wealth: 1, name: site.name };
+    if (marketFor(counter, d) !== 'dear') continue;
+    const price = sellPrice(counter, { id: it.id, q: it.q, cond: it.cond });
+    if (price > 0) out.push({ site, price, dist: here ? Math.hypot(site.x - here.x, site.z - here.z) : 0 });
+  }
+  return out.sort((a, b) => b.price - a.price || a.dist - b.dist);
 }
 
 /** A dented limb is worth less: a wrecked one is scrap and parts. */

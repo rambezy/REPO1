@@ -37,5 +37,12 @@ export const MARKETS: Record<string, Market> = {
   rivet: { cheap: ['machine_parts', 'iron_plates', 'robotics'], dear: ['food', 'drink', 'medical'] },
 };
 
-export const CHEAP_BUY = 0.72, CHEAP_SELL = 0.7;
-export const DEAR_BUY = 1.3, DEAR_SELL = 1.45;
+// Tuned so that a load bought where it is cheap sells for about a fifth more
+// where it is dear at neutral standing, and under half as much again when both
+// towns like you (tools/economytest.ts holds it there). Bought and sold back at
+// one counter it always loses.
+export const CHEAP_BUY = 0.55, CHEAP_SELL = 0.7;
+export const DEAR_BUY = 1.3, DEAR_SELL = 1.74;
+// A relic dealer's own premium, raised again where relics are wanted: the
+// ruin-diver's payday, untouched by the haul tuning (no town has relics cheap).
+export const DEAR_RELICS = 1.45;

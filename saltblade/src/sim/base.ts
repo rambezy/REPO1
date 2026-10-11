@@ -4,7 +4,7 @@
 import { S } from './ctx';
 import { WObj } from './objects';
 import { Char } from './char';
-import { Grid } from './inventory';
+import { Grid, Item, makeItem } from './inventory';
 import { BUILDABLE, Buildable, RECIPES, TECH, Recipe } from '../content/buildables';
 import { BUILDINGS } from '../content/buildings';
 import { ITEM, GRADES } from '../content/items';
@@ -20,6 +20,7 @@ import { findEnemy, tableBonus } from './ai';
 import { applyDamage, dist, canShoot, shoot } from './combat';
 import { RATE, HOUR } from './clock';
 import { leaveFurniture } from './use';
+import { freeFromCage } from './orders';
 
 const rng = new RNG((Date.now() ^ 777) >>> 0); // a different world story each game
 
@@ -228,14 +229,33 @@ function clearFootprint(o: WObj) {
   }
 }
 
-/** Tears something down, returning half its materials on the ground. */
+/** Lets go of whoever is held by, lying in or sitting on something that is going: a prisoner walks out of a torn-down cage. */
+function release(o: WObj) {
+  for (const c of S.W.chars.values()) {
+    if (c.cage === o.id) freeFromCage(c.id);
+    if (c.bed === o.id || c.mem.using === o.id) { leaveFurniture(c); c.mem.sit = false; }
+    if (c.mem.seat === o.id) c.mem.seat = 0;
+  }
+  o.occupant = 0;
+  o.user = 0;
+}
+
+/** Who sits locked in a cage or chained to a post: this one, or any in a building. */
+export function prisonersIn(o: WObj): Char[] {
+  const held = (f: WObj | undefined) => (f && (f.kind === 'cage' || f.kind === 'shackle_post') ? S.W.char(f.occupant ?? 0) : undefined);
+  const all = [o, ...(o.kind === 'building' ? (o.data.furniture ?? []).map((id: number) => S.W.objs.get(id)) : [])];
+  return all.map(held).filter((c): c is Char => !!c);
+}
+
+/** Tears something down, returning half its materials on the ground and letting go of anyone in or on it. */
 export function deconstruct(o: WObj) {
   const b = BUILDABLE[o.data?.bkey] ?? BUILDABLE[o.def];
   const refund: Record<string, number> = {};
   if (o.kind === 'site') for (const [id, n] of Object.entries(o.data.have as Record<string, number>)) refund[id] = n;
   else if (b) for (const [id, n] of Object.entries(b.cost)) refund[id] = Math.floor(n / 2);
   const items = o.inv ? o.inv.items.slice() : [];
-  if (o.kind === 'building') for (const fid of o.data.furniture ?? []) { const f = S.W.objs.get(fid); if (f) { if (f.inv) items.push(...f.inv.items); S.W.objs.delete(fid); } }
+  release(o);
+  if (o.kind === 'building') for (const fid of o.data.furniture ?? []) { const f = S.W.objs.get(fid); if (f) { release(f); if (f.inv) items.push(...f.inv.items); S.W.objs.delete(fid); } }
   S.W.removeObj(o);
   // out of the building it stood in, so the building redraws without it
   const p = o.parent ? S.W.objs.get(o.parent) : undefined;
@@ -259,27 +279,109 @@ function outputsFull(o: WObj) {
   return o.inv.items.length >= 10;
 }
 
+/** Your storage nearest a workshop that takes an item and still has room for it. */
+function storeFor(it: Item, near: WObj): WObj | null {
+  const d = ITEM[it.id];
+  let best: WObj | null = null, bd = Infinity;
+  for (const s of S.W.objs.values()) {
+    if (s.owner !== 'player' || s.kind !== 'storage' || !s.inv) continue;
+    const accepts = s.data?.accepts as string[] | undefined;
+    if (accepts && !accepts.includes(it.id) && !accepts.includes(d.cat)) continue;
+    if (!s.inv.findSpot(d) && !s.inv.items.some((x) => x.id === it.id && x.q === it.q && x.stolen === it.stolen && x.n < d.stack)) continue;
+    const dd = Math.hypot(s.x - near.x, s.z - near.z);
+    if (dd < bd) { bd = dd; best = s; }
+  }
+  return best;
+}
+
+/** Something told apart from others of its kind (a grade, wear, a stolen mark, a pack's contents): it travels as itself. */
+const oneOfAKind = (it: Item) => !!ITEM[it.id].graded || ITEM[it.id].stack <= 1 || it.cond !== undefined || !!it.stolen || !!it.inv;
+
+/** How many of a kind someone carries unmarked, and taking some of those: plain stock, all alike. */
+function plainCount(c: Char, id: string) {
+  let n = 0;
+  for (const g of [c.inv, c.eq.back?.inv]) for (const it of g?.items ?? []) if (it.id === id && !it.stolen) n += it.n;
+  return n;
+}
+function takePlain(c: Char, id: string, n: number) {
+  let got = 0;
+  for (const g of [c.inv, c.eq.back?.inv]) for (const it of g?.items.slice() ?? []) {
+    if (got >= n || it.id !== id || it.stolen) continue;
+    const k = Math.min(n - got, it.n);
+    it.n -= k; got += k;
+    if (it.n <= 0) g!.remove(it);
+  }
+  return got;
+}
+
+/**
+ * Carries what a workshop has made to storage. A thing with a grade or wear
+ * travels as itself, by its uid, so its grade survives; plain stock (plates,
+ * bandages) goes by kind and count, folded into the hauler's own stacks if need
+ * be. Either way only what was picked up is put down: nothing of the hauler's.
+ */
 function haulOutputs(c: Char, o: WObj): boolean {
-  const r = RECIPES[o.data.recipe];
-  const out = o.inv!.items.find((it) => !r || !r.in[it.id]);
-  if (!out) return false;
-  // carry to a storage that accepts it
-  const st = [...S.W.objs.values()].filter((s) => s.owner === 'player' && s.kind === 'storage' && s.inv && (!s.data?.accepts || s.data.accepts.includes(out.id) || s.data.accepts.includes(ITEM[out.id].cat)))
-    .sort((a, b) => Math.hypot(a.x - o.x, a.z - o.z) - Math.hypot(b.x - o.x, b.z - o.z))[0];
-  if (!st) return false;
-  if (!c.brain.haul) {
+  const job = c.brain.haul as { id: string; uid?: number; n?: number; to: number } | null;
+  if (!job) {
+    const r = RECIPES[o.data.recipe];
+    const out = o.inv!.items.find((it) => !r || !r.in[it.id]);
+    if (!out) return false;
+    const st = storeFor(out, o);
+    if (!st) return false;
     if (!walkTo(c, o.x, o.z, 2)) return true;
+    const d = ITEM[out.id];
+    const packs = [c.inv, d.pack ? undefined : c.eq.back?.inv].filter(Boolean) as Grid[];
+    if (oneOfAKind(out)) {
+      // a cell of its own: folded into a stack of the hauler's it would lose itself
+      const pack = packs.find((g) => g.findSpot(d));
+      if (!pack) return false;
+      const [x, y] = pack.findSpot(d)!;
+      o.inv!.remove(out);
+      pack.put(out, x, y);
+      c.brain.haul = { id: out.id, uid: out.uid, to: st.id };
+      return true;
+    }
+    const n0 = out.n;
     o.inv!.remove(out);
-    if (!c.inv.put(out)) { o.inv!.put(out); return false; }
-    c.brain.haul = { id: out.id, to: st.id };
+    const placed = packs.some((g) => g.put(out));
+    if (!placed) o.inv!.put(out); // what the hauler cannot carry stays in the workshop
+    const k = placed ? n0 : n0 - out.n;
+    if (k <= 0) return false;
+    c.brain.haul = { id: out.id, n: k, to: st.id };
     return true;
   }
-  const dest = S.W.objs.get(c.brain.haul.to);
+  const dest = S.W.objs.get(job.to);
   if (!dest?.inv) { c.brain.haul = null; return false; }
-  if (!walkTo(c, dest.x, dest.z, 2)) return true;
-  const n = c.inv.count(c.brain.haul.id);
-  const moved = n - dest.inv.add(c.brain.haul.id, n);
-  c.inv.take(c.brain.haul.id, moved);
+  let full = false;
+  if (job.uid === undefined) {
+    const n = Math.min(job.n ?? 0, plainCount(c, job.id));
+    if (!n) { c.brain.haul = null; return false; }
+    if (!walkTo(c, dest.x, dest.z, 2)) return true;
+    const left = dest.inv.add(job.id, takePlain(c, job.id, n));
+    if (left) {
+      giveTo(c, job.id, left);
+      // another store with room takes the rest
+      const mine = [c.inv, c.eq.back?.inv].flatMap((g) => g?.items ?? []).find((x) => x.id === job.id && !x.stolen);
+      const next = mine ? storeFor(mine, dest) : null;
+      if (next && next !== dest) { c.brain.haul = { id: job.id, n: left, to: next.id }; return true; }
+      full = true;
+    }
+  } else {
+    const pack = [c.inv, c.eq.back?.inv].find((g) => g?.items.some((x) => x.uid === job.uid));
+    const it = pack?.items.find((x) => x.uid === job.uid);
+    if (!pack || !it) { c.brain.haul = null; return false; }
+    if (!walkTo(c, dest.x, dest.z, 2)) return true;
+    pack.remove(it);
+    if (!dest.inv.put(it)) {
+      pack.put(it);
+      const next = storeFor(it, dest);
+      if (next && next !== dest) { c.brain.haul = { ...job, to: next.id }; return true; }
+      full = true;
+    }
+  }
+  // the store filled up on the way and no other has room: what is left stays with the hauler
+  if (full && !c.mem.warnFull) S.fx.notice(`The ${dest.data?.name ?? 'storage'} is full.`);
+  c.mem.warnFull = full;
   c.brain.haul = null;
   return true;
 }
@@ -312,7 +414,9 @@ function workMachine(c: Char, o: WObj, dt: number, think: boolean, anim: 'craft'
     for (const [id, n] of Object.entries(r.in)) o.inv!.take(id, n);
     for (const [id, n] of Object.entries(r.out)) {
       const q = r.graded ? craftGrade(skill) : 2;
-      if (o.inv!.add(id, n, q)) emit('world:drop', o.x, o.z, [{ uid: 0, id, q, n, x: 0, y: 0 }]);
+      // what will not fit in the workshop goes on the ground beside it: only that, not the whole batch again
+      const left = o.inv!.add(id, n, q);
+      if (left) emit('world:drop', o.x, o.z, [makeItem(id, left, q)]);
     }
     train(c, r.skill as Skill, 1.2, 1);
     S.fx.sound('craft', o.x, o.z, 0.6);
@@ -370,6 +474,54 @@ JOB_HANDLERS.craft = (c, job, o, dt, think) => {
   return res;
 };
 
+// ---------------------------------------------------------------- research
+/** Techs whose relics are spent but which are not learned yet. Kept in the saved flags, so none is ever charged twice. */
+function paidTechs(): string[] {
+  return (S.W.flags.researchPaid ??= []) as string[];
+}
+
+/** Whether a tech's relics are already paid: it costs nothing, it was paid for before, or it is the one under way. */
+export function researchPaid(key: string): boolean {
+  return !TECH[key]?.cost || paidTechs().includes(key) || S.W.research.current === key;
+}
+
+/** How many of an item your people carry and your storage holds. */
+export function countOwned(id: string) {
+  let n = 0;
+  for (const o of S.W.objs.values()) if (o.owner === 'player' && o.inv) n += o.inv.count(id);
+  for (const c of S.W.playerChars()) n += c.inv.count(id) + (c.eq.back?.inv?.count(id) ?? 0);
+  return n;
+}
+function takeOwned(id: string, n: number) {
+  for (const c of S.W.playerChars()) { n -= c.inv.take(id, n); if (n <= 0) return; if (c.eq.back?.inv) n -= c.eq.back.inv.take(id, n); if (n <= 0) return; }
+  for (const o of S.W.objs.values()) if (o.owner === 'player' && o.inv) { n -= o.inv.take(id, n); if (n <= 0) return; }
+}
+
+/**
+ * Sets your researchers on a tech. Its relics come out of your packs and
+ * storage the first time only: switching topics loses the progress made, never
+ * what was paid, and going back to a paid tech costs nothing. Returns why not, or ''.
+ */
+export function startResearch(key: string): string {
+  const R = S.W.research, t = TECH[key];
+  if (!t) return 'There is no such research.';
+  if (R.done.has(key)) return `${t.name} is already known.`;
+  const before = (t.needs ?? []).filter((k) => !R.done.has(k));
+  if (before.length) return `Research ${before.map((k) => TECH[k].name).join(' and ')} first.`;
+  if (R.current === key) return '';
+  if (!researchPaid(key)) {
+    for (const [id, n] of Object.entries(t.cost!)) if (countOwned(id) < n) return `You need ${n} ${ITEM[id].name} in storage to research this.`;
+    for (const [id, n] of Object.entries(t.cost!)) takeOwned(id, n);
+    paidTechs().push(key);
+  }
+  // the topic being dropped keeps its relics paid (in an older save it was paid for when it started)
+  if (R.current && TECH[R.current]?.cost && !paidTechs().includes(R.current)) paidTechs().push(R.current);
+  R.current = key;
+  R.progress = 0;
+  emit('research');
+  return '';
+}
+
 JOB_HANDLERS.research = (c, job, o, dt, think) => {
   const R = S.W.research;
   const tech = TECH[R.current];
@@ -383,6 +535,7 @@ JOB_HANDLERS.research = (c, job, o, dt, think) => {
   if (rng.chance(dt * 0.1)) train(c, 'science', 1, tech.tier);
   if (R.progress >= tech.time) {
     R.done.add(tech.key);
+    S.W.flags.researchPaid = paidTechs().filter((k) => k !== tech.key);
     R.current = '';
     R.progress = 0;
     S.fx.notice(`Research complete: ${tech.name}.`, 'good');
@@ -404,7 +557,7 @@ JOB_HANDLERS.farm = (c, job, o, dt, think) => {
       const yieldN = Math.round((d.w * d.d) / 8 * (0.5 + c.skill('farming') * 0.012) * (S.T.regionAt(o.x, o.z).fertility * 0.7 + 0.3));
       const got = giveTo(c, d.crop, yieldN);
       c.brain.reaped = (c.brain.reaped ?? 0) + got;
-      if (got < yieldN) emit('world:drop', c.x, c.z, [{ uid: 0, id: d.crop, q: 2, n: yieldN - got, x: 0, y: 0 }]);
+      if (got < yieldN) emit('world:drop', c.x, c.z, [makeItem(d.crop, yieldN - got)]);
       d.growth = 0;
       train(c, 'farming', 2, 1);
       S.fx.notice(`${c.name} harvested ${yieldN} ${ITEM[d.crop].name}.`, 'good');

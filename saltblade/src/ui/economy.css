@@ -1,0 +1,22 @@
+/* Trade and research windows (imported by trade.ts and build.ts). */
+
+/* ---------------- trade ---------------- */
+/* price tags stay inside their own item, on a dark tab, so a row of them never runs together */
+.tradewin .item .price { left: 0; top: 0; max-width: 100%; overflow: hidden; white-space: nowrap; padding: 0 2px; font-size: 9.5px; line-height: 11px; background: rgba(14,11,8,.82); border-radius: 0 0 3px 0; }
+.tradewin .item .cnt { padding: 0 2px; line-height: 12px; background: rgba(14,11,8,.6); border-radius: 3px 0 0 0; right: 0; }
+.haul-line { font-size: 12.5px; color: var(--ink-dim); margin-top: 1px; }
+.haul-line b { color: #9cd070; }
+
+/* ---------------- research ---------------- */
+/* compact cards, so four tiers fit a 1280 x 760 screen with little scrolling */
+.reswin .rescols { gap: 8px; }
+.reswin .rescol { gap: 3px; }
+.reswin .tech { padding: 4px 7px; }
+.reswin .tech .bname { font-size: 14px; line-height: 1.15; }
+.reswin .tech .bdesc { font-size: 11.5px; line-height: 1.25; }
+.reswin .tech .bcost { font-size: 11.5px; line-height: 1.25; }
+.reswin .tech .paid { color: var(--good); }
+.reswin .reshead { margin-bottom: 6px; gap: 12px; flex-wrap: wrap; }
+@media (max-width: 760px) {
+  .reswin .rescols { grid-template-columns: repeat(2, 1fr); }
+}

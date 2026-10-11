@@ -1,11 +1,12 @@
 // The build menu, placement with a ghost preview, the research window, and
 // windows for machines, benches, storage and fields.
+import './economy.css';
 import { h, openWindow, isOpen, closeWindow, getWindow, esc, ask } from './dom';
 import { G } from '../state';
 import { S } from '../sim/ctx';
 import { BUILDABLES, BUILDABLE, Buildable, RECIPES, TECHS, TECH, BuildCat } from '../content/buildables';
 import { ITEM } from '../content/items';
-import { canPlace, placeSite, unlocked, deconstruct, FUEL_REACH, cropFitness } from '../sim/base';
+import { canPlace, placeSite, unlocked, deconstruct, FUEL_REACH, cropFitness, startResearch, researchPaid, prisonersIn } from '../sim/base';
 import { on, emit } from '../core/events';
 import { input } from '../core/input';
 import { groundAt, selected } from '../game/control';
@@ -32,7 +33,13 @@ export function setupBuild() {
   on('ui:research', () => { if (isOpen('research')) closeWindow('research'); else openResearch(); });
   on('ui:object', (_c: number, id: number) => openObject(id));
   on('build:cancel', () => stopPlacing());
-  on('build:deconstruct', (id: number) => { const o = S.W.objs.get(id); if (o) ask(`Tear down the ${o.data?.name ?? o.def}? Half the materials are returned.`, 'Tear it down', () => deconstruct(o), 'Cancel', true); });
+  on('build:deconstruct', (id: number) => {
+    const o = S.W.objs.get(id);
+    if (!o) return;
+    const held = prisonersIn(o).map((c) => c.name);
+    const free = held.length ? ` ${held.length > 1 ? held.slice(0, -1).join(', ') + ' and ' + held[held.length - 1] + ' go' : held[0] + ' goes'} free.` : '';
+    ask(`Tear down the ${o.data?.name ?? o.def}? Half the materials are returned.${free}`, 'Tear it down', () => deconstruct(o), 'Cancel', true);
+  });
   on('build:click', (x: number, y: number) => {
     if (!placing) return;
     const g = groundAt(x, y);
@@ -122,9 +129,12 @@ function openBuild() {
 }
 
 function openResearch() {
-  const w = openWindow('research', 'Research', { w: 760, x: 60, y: 70, cls: 'reswin' });
+  // wide enough on a laptop screen that the four tiers rarely wrap, never wider than the screen
+  const w = openWindow('research', 'Research', { w: Math.max(320, Math.min(940, window.innerWidth - 24)), x: 60, y: 70, cls: 'reswin' });
   const R = S.W.research;
   const render = () => {
+    // all of it on screen, below wherever the window sits: the tiers scroll inside it
+    w.el.style.maxHeight = `calc(100vh - ${Math.max(0, w.el.offsetTop) + 10}px)`;
     w.body.innerHTML = '';
     const benches = [...S.W.objs.values()].filter((o) => o.owner === 'player' && o.kind === 'research').length;
     const cur = TECH[R.current];
@@ -138,25 +148,21 @@ function openResearch() {
       for (const t of TECHS.filter((x) => x.tier === tier)) {
         const done = R.done.has(t.key);
         const ready = !done && (t.needs ?? []).every((n) => R.done.has(n));
-        const b = h('button', { class: 'tech' + (done ? ' done' : ready ? '' : ' locked') + (R.current === t.key ? ' cur' : '') },
-          h('div', { class: 'bname' }, t.name),
-          h('div', { class: 'bdesc' }, t.desc),
-          !done && t.cost ? h('div', { class: 'bcost' }, costStr(t.cost)) : '',
-          !done && t.needs?.length ? h('div', { class: 'bcost dim' }, 'After: ' + t.needs.map((n) => TECH[n].name).join(', ')) : '',
+        // known techs shrink to their name (the rest on hover); what a tech waits for shows only while it waits
+        const b = h('button', { class: 'tech' + (done ? ' done' : ready ? '' : ' locked') + (R.current === t.key ? ' cur' : ''), title: done ? t.desc : undefined },
+          h('div', { class: 'bname' }, t.name, done ? h('span', { class: 'good' }, ' ✓') : ''),
+          done ? '' : h('div', { class: 'bdesc' }, t.desc),
+          !done && t.cost ? h('div', { class: 'bcost' }, costStr(t.cost), researchPaid(t.key) ? h('span', { class: 'paid' }, ' · paid') : '') : '',
+          !done && !ready && t.needs?.length ? h('div', { class: 'bcost dim' }, 'After: ' + t.needs.filter((n) => !R.done.has(n)).map((n) => TECH[n].name).join(', ')) : '',
         );
         const start = () => {
-          if (t.cost && R.current !== t.key) {
-            // relics are consumed from storage or inventories when research starts
-            for (const [id, n] of Object.entries(t.cost)) if (countOwned(id) < n) { emit('notice', `You need ${n} ${ITEM[id].name} in storage to research this.`); return; }
-            for (const [id, n] of Object.entries(t.cost)) takeOwned(id, n);
-          }
-          if (R.current !== t.key) R.progress = 0;
-          R.current = t.key;
+          const err = startResearch(t.key);
+          if (err) emit('notice', err);
           render();
         };
         b.onclick = () => {
-          if (done || !ready) return;
-          if (R.current && R.current !== t.key) ask('Switch research? Progress on the current topic is lost.', 'Switch', start);
+          if (done || !ready || R.current === t.key) return;
+          if (cur) ask(switchWarning(cur.key, t.key), 'Switch', start);
           else start();
         };
         col.appendChild(b);
@@ -169,15 +175,14 @@ function openResearch() {
   const off = on('research', () => { if (getWindow('research')) render(); else off(); });
 }
 
-function countOwned(id: string) {
-  let n = 0;
-  for (const o of S.W.objs.values()) if (o.owner === 'player' && o.inv) n += o.inv.count(id);
-  for (const c of S.W.playerChars()) n += c.inv.count(id) + (c.eq.back?.inv?.count(id) ?? 0);
-  return n;
-}
-function takeOwned(id: string, n: number) {
-  for (const c of S.W.playerChars()) { n -= c.inv.take(id, n); if (n <= 0) return; if (c.eq.back?.inv) n -= c.eq.back.inv.take(id, n); if (n <= 0) return; }
-  for (const o of S.W.objs.values()) if (o.owner === 'player' && o.inv) { n -= o.inv.take(id, n); if (n <= 0) return; }
+/** What switching topics costs, and what it does not. */
+function switchWarning(from: string, to: string): string {
+  const a = TECH[from], b = TECH[to], R = S.W.research;
+  const pct = Math.floor((R.progress / a.time) * 100);
+  let s = `Switch research from ${a.name} to ${b.name}? ${pct > 0 ? `The ${pct}% done on ${a.name} is lost.` : `Nothing is done on ${a.name} yet.`}`;
+  if (a.cost) s += ` Its ${costStr(a.cost)} stays paid: going back to it costs nothing more.`;
+  if (b.cost) s += researchPaid(to) ? ` ${b.name} is already paid for.` : ` ${b.name} takes ${costStr(b.cost)} from your storage now.`;
+  return s;
 }
 
 let objViews: GridView[] = [];

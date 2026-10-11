@@ -95,6 +95,7 @@ export interface GridHooks {
   moved?: (it: Item, src: Source, dst: Source) => void; // after a successful move
   rclick?: (it: Item, e: MouseEvent) => void;
   price?: (it: Item) => number | undefined;
+  note?: (it: Item) => string | undefined; // more tooltip rows (HTML), e.g. where it sells for more
   label?: string;
 }
 
@@ -125,9 +126,11 @@ export class GridView {
       if (d.graded) e.style.borderColor = GRADES[it.q].col;
       if (it.n > 1) e.appendChild(h('span', { class: 'cnt' }, String(it.n)));
       const price = this.hooks.price?.(it);
-      if (price !== undefined) e.appendChild(h('span', { class: 'price' }, price + 'c'));
-      e.onmouseenter = (ev) => showTip(itemTip(it, price), ev.clientX, ev.clientY);
-      e.onmousemove = (ev) => showTip(itemTip(it, price), ev.clientX, ev.clientY);
+      // short enough for a single cell: exact up to 9,999, then in thousands (the tooltip has it exact)
+      if (price !== undefined) e.appendChild(h('span', { class: 'price' }, price >= 10000 ? Math.round(price / 1000) + 'k' : price + 'c'));
+      let html = '';
+      e.onmouseenter = (ev) => { html = itemTip(it, price) + (this.hooks.note?.(it) ?? ''); showTip(html, ev.clientX, ev.clientY); };
+      e.onmousemove = (ev) => showTip(html || itemTip(it, price), ev.clientX, ev.clientY);
       e.onmouseleave = hideTip;
       e.oncontextmenu = (ev) => { ev.preventDefault(); ev.stopPropagation(); hideTip(); this.hooks.rclick?.(it, ev); };
       e.onmousedown = (ev) => {
@@ -233,8 +236,11 @@ function finishDrop(dg: Drag, gx: number, gy: number, mx: number, my: number) {
       if (!t.hooks.set(it)) { restore(dg); return; }
       // swap the previous item back into the source if possible
       if (prev) {
-        if (dg.src.kind === 'grid') { if (!dg.src.grid.put(prev, it.x, it.y) && !dg.src.grid.put(prev)) t.hooks.set(prev); }
-        else if (dg.src.view.hooks.accept(prev)) dg.src.view.hooks.set(prev);
+        const back = dg.src.kind === 'grid'
+          ? dg.src.grid.put(prev, it.x, it.y) || dg.src.grid.put(prev)
+          : dg.src.view.hooks.accept(prev) && dg.src.view.hooks.set(prev);
+        // nowhere for what was there to go: undo the swap rather than lose either of them
+        if (!back) { t.hooks.set(prev); restore(dg); return; }
       }
       t.hooks.moved?.();
       dg.src.view.render();

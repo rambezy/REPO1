@@ -157,7 +157,7 @@ const TREES: Record<string, Tree> = {
     start: {
       t: (c) => wanted(c) ? `You! You're wanted by the ${FACTION[c.n.faction].short} — ${c.p.bounty[c.n.faction]} chits on your head. Pay it now or come quietly.` : greeting(c.n, c.p),
       ch: [
-        { t: (c) => `Pay the ${c.p.bounty[c.n.faction]} chits.`, if: (c) => wanted(c) && S.W.money >= (c.p.bounty[c.n.faction] ?? 0), fx: (c) => { S.W.money -= c.p.bounty[c.n.faction]; c.p.bounty[c.n.faction] = 0; S.W.rel.add('player', c.n.faction, 3); }, next: 'paid' },
+        { t: (c) => `Pay the ${c.p.bounty[c.n.faction]} chits.`, if: (c) => wanted(c) && S.W.money >= (c.p.bounty[c.n.faction] ?? 0), fx: (c) => { payBounty(c); }, next: 'paid' },
         { t: 'I surrender.', if: wanted, fx: (c) => { knockOut(c.p, 'surrendered'); c.p.body.koT = -30; c.n.brain.task = { k: 'arrest', id: c.p.id, t: 0 }; return 'end'; } },
         { t: (c) => `I've brought in ${S.W.char(c.p.carrying)?.name}. (Collect ${claimValue(c.p, c.n.faction)} chits)`, if: (c) => !wanted(c) && claimValue(c.p, c.n.faction) > 0, fx: (c) => { c.vars.paid = claimBounty(c.p, c.n.faction); }, next: 'claimed' },
         { t: 'You\'ll have to take me. (Fight)', if: wanted, fx: (c) => { fightNow(c); return 'end'; } },
@@ -276,6 +276,19 @@ const TREES: Record<string, Tree> = {
     done: { t: 'Pleasure. The Chainhouse thanks you.', ch: [BYE] },
   },
 };
+
+/**
+ * Paying off a bounty wins back some of the standing the crimes cost, never
+ * more: a crime costs up to a point per 100 chits of bounty (see crime()), and
+ * paying earns back half a point per 100, at most 3.
+ */
+const bountyStanding = (bounty: number) => Math.min(3, bounty / 200);
+function payBounty(c: DCtx) {
+  const owed = c.p.bounty[c.n.faction] ?? 0;
+  S.W.money -= owed;
+  c.p.bounty[c.n.faction] = 0;
+  S.W.rel.add('player', c.n.faction, bountyStanding(owed));
+}
 
 function tribute(c: DCtx) { return Math.max(50, Math.round(Math.min(S.W.money * 0.25, 2000) / 10) * 10); }
 function strongerThan(c: DCtx) {
@@ -415,11 +428,16 @@ export const UNIQUE_TREES: Record<string, Tree> = {
   },
 };
 
-/** Runs a choice's effect; returns the next node key or null to end. */
+/**
+ * Runs a choice's effect; returns the next node key or null to end. An effect
+ * may pick the next node itself by returning its key (an officer who takes the
+ * bribe goes to 'bribed', not to the search), or return 'end' to close.
+ */
 export function choose(tree: Tree, ch: DChoice, c: DCtx): string | null {
-  let r: void | string = undefined;
-  if (ch.fx) r = ch.fx(c);
-  if (r === 'end' || ch.end) return null;
+  const r = ch.fx?.(c);
+  if (r === 'end') return null;
+  if (r && tree[r]) return r;
+  if (ch.end) return null;
   return ch.next ?? null;
 }
 

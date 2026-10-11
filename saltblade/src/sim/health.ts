@@ -138,7 +138,9 @@ export function tickHealth(c: Char, dt: number) {
   }
   // a limp right arm drops its weapon's use; a lost arm drops it entirely
   if (c.eq.weapon && !b.has(LI.rarm) && !b.has(LI.larm) && !b.prost[LI.rarm] && !b.prost[LI.larm]) {
-    if (!ITEM[c.eq.weapon.id].builtin) c.inv.add(c.eq.weapon.id, 1, c.eq.weapon.q); // a machine's fist goes with its arm
+    // into the pack, the same blade, or at their feet when the pack is full; a machine's fist goes with its arm
+    const w = c.eq.weapon;
+    if (!ITEM[w.id].builtin && !c.inv.put(w) && !c.eq.back?.inv?.put(w)) emit('world:drop', c.x, c.z, [w]);
     c.eq.weapon = null;
     c.dirty = true;
   }

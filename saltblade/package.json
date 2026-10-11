@@ -21,6 +21,7 @@
     "test:drugs": "tsx tools/drugtest.ts",
     "test:captive": "tsx tools/captivetest.ts",
     "test:balance": "tsx tools/balancetest.ts",
+    "test:economy": "tsx tools/economytest.ts",
     "map": "tsx tools/mapshot.ts",
     "artifact": "node tools/make-artifact.mjs"
   },
