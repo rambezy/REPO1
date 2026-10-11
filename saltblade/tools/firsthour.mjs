@@ -136,7 +136,9 @@ if (what === 'windows' || what === 'all') {
       check(`${w}x${hgt}: no hint card over the ${name} window`, r.wins > 0 && r.hits === 0, `${r.wins} open, card ${r.visible ? 'visible' : 'hidden'}, ${r.hits} overlapping`);
       // close it again: windows by their close, the conversation and menu by Escape
       if (name === 'dialogue' || name === 'menu') await page.keyboard.press('Escape');
-      else await page.evaluate(async () => { const d = await import('/src/ui/dom.ts'); while (d.closeTop()) { /* all */ } });
+      // Escape closes the top window (and only opens the game menu when none is left, so stop before that);
+      // importing the module into the page could get a second copy of it under a dev server that has seen edits
+      else for (let i = 0; i < 12 && await page.evaluate(() => !!document.querySelector('.win')); i++) { await page.keyboard.press('Escape'); await page.waitForTimeout(150); }
       await page.waitForTimeout(300);
       await stepped();
     }
