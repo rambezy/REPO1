@@ -11,11 +11,13 @@ import { playerBase } from './base';
 import { HOUR, DAY } from './clock';
 import { WORLD } from '../world/consts';
 import { Char } from './char';
+import { fitAgainst, playerBand, trimTo, levelUnder } from './worldsim';
+import { loadoutFor } from '../content/loadouts';
 
 const rng = new RNG((Date.now() ^ 8181) >>> 0); // a different world story each game
 let t = 0;
 
-interface RaidKind { faction: string; role: 'bandit' | 'patrol'; demand: 'tribute' | 'food' | 'tax' | 'fight'; n: [number, number]; name: string; }
+export interface RaidKind { faction: string; role: 'bandit' | 'patrol'; demand: 'tribute' | 'food' | 'tax' | 'fight'; n: [number, number]; name: string; }
 
 /** Who comes for a base, by the region it stands in and who rules near it. */
 function raidFor(x: number, z: number): RaidKind {
@@ -39,9 +41,33 @@ function activeRaid() {
   return null;
 }
 
-export function spawnRaid(bx: number, bz: number, size: number) {
+/**
+ * Makes the people of a raid of `kind` on a base `size` buildings big, into `sq`. The first raid a base
+ * draws is sized to the band that holds it, as the roads' bands are (see fitAgainst; the Concord's
+ * collectors are what they are, only fewer); later ones grow with the base and the days.
+ */
+export function raidParty(sq: Squad, kind: RaidKind, size: number, first: boolean, r: RNG = rng): Char[] {
   const W = S.W;
-  const kind = raidFor(bx, bz);
+  const law = kind.faction === 'concord';
+  const fit = first ? fitAgainst(playerBand(), kind.faction, S.clock.day, r) : undefined;
+  let n = Math.min(18, r.int(kind.n[0], kind.n[1]) + Math.floor(size / 8));
+  if (fit) n = Math.min(n, fit.n + 1);
+  const lvlBoost = fit ? 0 : Math.min(20, (S.clock.day - 1) * 0.6);
+  const loadout = fit && !law ? fit.loadout : undefined;
+  for (let i = 0; i < n; i++) {
+    const level = law ? 36 : fit?.level !== undefined ? levelUnder(loadout ?? loadoutFor(kind.faction, kind.role), fit.level, r) : undefined;
+    const c = makePerson(W, { faction: kind.faction, role: kind.role, level, loadout }, r);
+    if (lvlBoost > 0) for (let k = 0; k < c.sk.length; k++) c.sk[k] = Math.min(100, c.sk[k] + lvlBoost * 0.5);
+    W.moveToSquad(c, sq);
+  }
+  // (a raid comes whatever: even one of them too many for the band is still one)
+  if (fit) trimTo(sq, { ...fit, budget: fit.budget * 1.25 });
+  return sq.members.map((id) => W.char(id)).filter((c): c is Char => !!c);
+}
+
+/** Sends a raid on the base at (bx, bz), `size` buildings big: who the land sends, unless `kind` says. */
+export function spawnRaid(bx: number, bz: number, size: number, kind = raidFor(bx, bz)): Squad | null {
+  const W = S.W;
   // come in from beyond sight
   let sx = 0, sz = 0, ok = false;
   for (let i = 0; i < 40 && !ok; i++) {
@@ -51,7 +77,7 @@ export function spawnRaid(bx: number, bz: number, size: number) {
     if (S.T.heightAt(sx, sz) < 0.4 || S.T.slopeAt(sx, sz) > 0.6) continue;
     ok = !!S.nav.nearestOpen(sx, sz, 10);
   }
-  if (!ok) return;
+  if (!ok) return null;
   const sq = new Squad();
   sq.faction = kind.faction;
   sq.kind = 'raid';
@@ -66,12 +92,9 @@ export function spawnRaid(bx: number, bz: number, size: number) {
   sq.flags.baseRaid = true;
   sq.flags.demand = kind.demand;
   W.addSquad(sq);
-  const n = Math.min(18, rng.int(kind.n[0], kind.n[1]) + Math.floor(size / 8));
-  const lvlBoost = Math.min(20, (S.clock.day - 1) * 0.6);
-  for (let i = 0; i < n; i++) {
-    const c = makePerson(W, { faction: kind.faction, role: kind.role, level: kind.faction === 'concord' ? 36 : undefined }, rng);
-    if (lvlBoost > 0) for (let k = 0; k < c.sk.length; k++) c.sk[k] = Math.min(100, c.sk[k] + lvlBoost * 0.5);
-    W.moveToSquad(c, sq);
+  const people = raidParty(sq, kind, size, !W.flags.lastRaid);
+  const n = people.length;
+  for (const c of people) {
     const spot = S.nav.nearestOpen(sx + rng.range(-5, 5), sz + rng.range(-5, 5), 10) ?? [sx, sz];
     c.x = spot[0]; c.z = spot[1]; c.y = S.T.heightAt(c.x, c.z);
     c.homeX = c.x; c.homeZ = c.z;
@@ -85,6 +108,7 @@ export function spawnRaid(bx: number, bz: number, size: number) {
   S.W.say(`Scouts report ${n} ${kind.name} ${what}.`, 'bad', S.clock.t);
   S.fx.notice(`${n} ${kind.name} are ${what}!`, 'bad');
   S.fx.sound('alarm', bx, bz, 1);
+  return sq;
 }
 
 /** Raids that have made their point, or lost, go home. */

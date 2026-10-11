@@ -114,7 +114,10 @@ export class Nav {
   }
 
   private stampRect(cells: Uint8Array, x0: number, z0: number, p: StructPrim, v: number) {
-    const hx = p.hx!, hz = p.hz!, rot = p.rot ?? 0;
+    // a thin wall must block every cell it crosses, even when it runs between their centres, or it leaks
+    let hx = p.hx!, hz = p.hz!;
+    const rot = p.rot ?? 0;
+    if (v === F_BLOCK) { if (hz >= 0.9) hx = Math.max(hx, 0.45); if (hx >= 0.9) hz = Math.max(hz, 0.45); }
     const c = Math.cos(rot), s = Math.sin(rot);
     const ext = Math.abs(hx * c) + Math.abs(hz * s), ezt = Math.abs(hx * s) + Math.abs(hz * c);
     const i0 = Math.max(0, Math.floor(p.x - ext - x0)), i1 = Math.min(TILE - 1, Math.floor(p.x + ext - x0));
@@ -368,15 +371,32 @@ export function routeWalls(pts: number[], ax: number, az: number, bx: number, bz
   return { pts: out, pins };
 }
 
+/** A straight walk from (x, z) to (tx, tz) if nothing is in the way, else nowhere to go. */
+function straight(nav: Nav, x: number, z: number, tx: number, tz: number): number[] {
+  return nav.clearLine(x, z, tx, tz) ? [x, z, tx, tz] : [x, z];
+}
+
+/**
+ * Fine waypoints for one stretch. The grid cannot see a step that ends in the
+ * cell it starts in (its path is that one cell), so such a step, or a search
+ * that gets no further than where it began, is walked in a straight line: a
+ * fighter half a metre out of reach must still be able to close in.
+ */
+function stretch(nav: Nav, x: number, z: number, tx: number, tz: number, margin: number, maxNodes: number): number[] | null {
+  if (Math.floor(x) === Math.floor(tx) && Math.floor(z) === Math.floor(tz)) return straight(nav, x, z, tx, tz);
+  const f = nav.fine(x, z, tx, tz, margin, maxNodes, true);
+  return f && f.length <= 2 ? straight(nav, x, z, tx, tz) : f;
+}
+
 /** Plans a path from a to b. Short trips are planned fine immediately. */
 export function planPath(nav: Nav, ax: number, az: number, bx: number, bz: number): Path | null {
   const p = new Path(bx, bz);
   const d = Math.hypot(bx - ax, bz - az);
-  if (d < 0.6) return p;
+  if (d < 0.6) { p.pts = straight(nav, ax, az, bx, bz); p.idx = 1; return p; }
   const rings = nav.rings();
   const crosses = rings.some((w) => inside(w, ax, az) !== inside(w, bx, bz));
   if (d < FINE_DIRECT && !crosses) {
-    const f = nav.fine(ax, az, bx, bz, 24, 30000, true);
+    const f = stretch(nav, ax, az, bx, bz, 24, 30000);
     if (f) { p.pts = f; p.idx = 1; return p; }
   }
   const c = nav.coarsePath(ax, az, bx, bz);
@@ -399,7 +419,7 @@ export function refine(nav: Nav, p: Path, x: number, z: number): boolean {
   let k = p.cidx;
   while (k < n - 1 && !p.pins?.has(k) && Math.hypot(p.coarse[k * 2] - x, p.coarse[k * 2 + 1] - z) < 60) k++;
   const tx = p.coarse[k * 2], tz = p.coarse[k * 2 + 1];
-  const f = nav.fine(x, z, tx, tz, 16, 20000, true);
+  const f = stretch(nav, x, z, tx, tz, 16, 20000);
   p.cidx = k + 1;
   if (!f) {
     // fall back to walking straight at the coarse point

@@ -20,6 +20,7 @@
     "test:limbs": "tsx tools/limbtest.ts",
     "test:drugs": "tsx tools/drugtest.ts",
     "test:captive": "tsx tools/captivetest.ts",
+    "test:balance": "tsx tools/balancetest.ts",
     "map": "tsx tools/mapshot.ts",
     "artifact": "node tools/make-artifact.mjs"
   },

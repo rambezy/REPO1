@@ -1,14 +1,15 @@
 // Headless checks of the body and combat model, somewhere quiet in the
-// waste: a duel to the knockout, wounds that bleed, blood loss, a limb cut
-// off, a knockout slept off, crossbow fire, skills that grow from use, a
-// faction that sours when its people are beaten, and bandits that go for
-// the player's people on sight.
+// waste: a duel to the knockout (the shorter reach stepping in), wounds that
+// bleed, blood loss, a limb cut off, a knockout slept off, crossbow fire,
+// skills that grow from use (toughness from a beating, not from beatings
+// back to back), a faction that sours when its people are beaten, and
+// bandits that go for the player's people on sight.
 // Usage: npx tsx tools/combattest.ts
 import { generateWorld } from '../src/world/gen';
 import { Nav } from '../src/world/nav';
 import { World } from '../src/sim/world';
 import { S } from '../src/sim/ctx';
-import { Clock, HOUR } from '../src/sim/clock';
+import { Clock, HOUR, DAY } from '../src/sim/clock';
 import { RNG } from '../src/core/rng';
 import { Weather } from '../src/sim/weather';
 import { simStep } from '../src/sim/sim';
@@ -19,6 +20,7 @@ import { LI } from '../src/sim/body';
 import { SK } from '../src/sim/skills';
 import { Squad } from '../src/sim/squad';
 import { makePerson } from '../src/sim/spawn';
+import { makeItem } from '../src/sim/inventory';
 import type { Char } from '../src/sim/char';
 
 const T = await generateWorld(1337, () => {});
@@ -58,18 +60,55 @@ const check = (label: string, ok: boolean, info = '') => { results.push([label, 
 const hurt = (c: Char) => [...c.body.max].reduce((n, m, i) => n + Math.max(0, m - c.body.hp[i]), 0);
 const clearArena = () => { for (const c of [...W.chars.values()]) if (c.faction !== 'player' || c.squad === player.id) W.removeChar(c); player.members.length = 0; };
 
-// 1. a duel to the knockout, and what the fighters learn from it
+/** Puts a weapon in someone's hand, with the skill to use it (as their gear would have come with). */
+function arm(c: Char, id: string) {
+  if (c.eq.weapon?.id === id) return;
+  c.eq.weapon = makeItem(id, 1, 2);
+  const s = SK[c.weaponStats().skill];
+  c.sk[s] = Math.max(c.sk[s], c.sk[SK.melee_atk]);
+}
+
+// 1. a duel to the knockout, and what the fighters learn from it: a slab against a spear, the slab
+// half a metre out of its reach, so it has to step in (it once stood there and took every blow)
 {
   const a = person('player', 'player', 0, 0, { loadout: 'merc' });
   const b = person('reavers', 'bandit', 2.5, 0);
+  arm(a, 'slab');
+  arm(b, 'spear');
   const before = [SK.melee_atk, SK.melee_def, SK.toughness].map((k) => a.sk[k]);
-  let bled = 0, t = 0;
-  while (a.up && b.up && t < 600) { step(1); t++; bled = Math.max(bled, a.body.bleeding(), b.body.bleeding()); }
+  let bled = 0, t = 0, first = -1;
+  const swings = [0, 0], was = [false, false];
+  while (a.up && b.up && t < 600) {
+    simStep(dt, { x: ax, z: az }); tickSquads(dt); t += dt;
+    [a, b].forEach((c, i) => { if (c.atk && !was[i]) swings[i]++; was[i] = !!c.atk; });
+    if (swings[0] && first < 0) first = t;
+    bled = Math.max(bled, a.body.bleeding(), b.body.bleeding());
+  }
   const loser = a.up ? b : a;
   check('a melee duel ends in a knockout or a death', !a.up || !b.up, `${Math.round(t)} s; ${loser.name} ${loser.status}, ${hurt(loser).toFixed(0)} damage taken`);
+  check('the shorter reach steps in and swings within 5 s', first >= 0 && first <= 5, `${a.name}'s slab first swung at ${first < 0 ? 'never' : `${first.toFixed(1)} s`}`);
+  check('both fighters swing', swings[0] > 0 && swings[1] > 0, `slab ${swings[0]}, spear ${swings[1]}`);
   check('blows land on the body parts and open bleeding wounds', hurt(a) + hurt(b) > 40 && bled > 0, `worst bleeding ${bled.toFixed(2)}/s`);
   const after = [SK.melee_atk, SK.melee_def, SK.toughness].map((k) => a.sk[k]);
-  check('fighting trains attack, defence and toughness', after.some((v, i) => v > before[i]), `atk ${before[0].toFixed(1)} -> ${after[0].toFixed(1)}, def ${before[1].toFixed(1)} -> ${after[1].toFixed(1)}, tough ${before[2].toFixed(1)} -> ${after[2].toFixed(1)}`);
+  check('fighting trains attack, defence and toughness, all three', after.every((v, i) => v > before[i]), `atk ${before[0].toFixed(1)} -> ${after[0].toFixed(1)}, def ${before[1].toFixed(1)} -> ${after[1].toFixed(1)}, tough ${before[2].toFixed(1)} -> ${after[2].toFixed(1)}`);
+  clearArena();
+}
+
+// ...and toughness comes from a beating, not from one beating after another
+{
+  const v = person('player', 'player', 0, 0);
+  const by = person('reavers', 'bandit', 40, 0);
+  const limbs = [LI.larm, LI.rarm, LI.lleg, LI.rleg];
+  const beating = () => {
+    const t0 = v.sk[SK.toughness];
+    for (let i = 0; i < 40; i++) { const l = limbs[i % 4]; v.body.hp[l] = v.body.max[l]; applyDamage(v, l, 0, 10, by, 0, false); }
+    return v.sk[SK.toughness] - t0;
+  };
+  const once = beating(), again = beating();
+  S.clock.t += DAY;
+  const rested = beating();
+  check('a beating toughens, one straight after much less, and the next day more again', once > 0.5 && again < once * 0.6 && rested > again * 1.2,
+    `+${once.toFixed(2)}, then +${again.toFixed(2)} straight after, +${rested.toFixed(2)} a day later`);
   clearArena();
 }
 
@@ -122,13 +161,18 @@ const clearArena = () => { for (const c of [...W.chars.values()]) if (c.faction 
 {
   const s = person('player', 'player', 0, 0, { loadout: 'merc' });
   s.eq.ranged = { uid: 9001, id: 'bolt_thrower', q: 2, n: 1, x: 0, y: 0 } as any;
-  s.inv.add('bolts', 30);
+  s.inv.add('bolts', 40);
   const target = person('drifters', 'resident', 0, 22);
   target.combatMode = 'passive';
   const bolts0 = s.inv.count('bolts'), prec0 = s.sk[SK.precision], hp0 = hurt(target);
-  let shots = 0, t = 0;
-  while (shots < 8 && target.up && t < 400) { if (s.reload <= 0 && shoot(s, target)) shots++; step(0.5); t += 0.5; }
-  check('a crossbow shoots, spends bolts and wounds its target', shots > 0 && s.inv.count('bolts') === bolts0 - shots && hurt(target) > hp0, `${shots} shots, ${(hurt(target) - hp0).toFixed(0)} damage`);
+  // every shot costs a bolt, ordered here or loosed by the shooter's own sense (at a target that fights back, then runs)
+  let shots = 0, fired = 0, t = 0;
+  const shot = S.fx.shot;
+  S.fx.shot = (from, ...rest) => { if (from === s) fired++; shot(from, ...rest); };
+  // (eight shots, or more until one lands: a middling shot misses a good deal at 22 m)
+  while ((shots < 8 || hurt(target) === hp0) && shots < 24 && target.up && t < 600) { if (s.reload <= 0 && shoot(s, target)) shots++; step(0.5); t += 0.5; }
+  S.fx.shot = shot;
+  check('a crossbow shoots, spends bolts and wounds its target', shots > 0 && s.inv.count('bolts') === bolts0 - fired && hurt(target) > hp0, `${fired} shots, ${bolts0 - s.inv.count('bolts')} bolts spent, ${(hurt(target) - hp0).toFixed(0)} damage`);
   check('shooting trains precision', s.sk[SK.precision] > prec0, `${prec0.toFixed(1)} -> ${s.sk[SK.precision].toFixed(1)}`);
   clearArena();
 }

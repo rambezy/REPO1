@@ -3,6 +3,7 @@ import { Char } from './char';
 import { SK, Skill, rateAt, SKILL_INFO } from './skills';
 import { RACE } from '../content/races';
 import { S } from './ctx';
+import { HOUR } from './clock';
 
 export function train(c: Char, s: Skill, effort: number, difficulty = 1) {
   if (c.animal) return;
@@ -23,4 +24,25 @@ export function train(c: Char, s: Skill, effort: number, difficulty = 1) {
 /** Difficulty of an opposed action: how much stronger the other side is. */
 export function versus(mine: number, theirs: number) {
   return Math.max(0.2, Math.min(3, (theirs + 5) / (mine + 5)));
+}
+
+/** Toughness learned from blows lately (points) at which the next blow teaches about a third as much (and less beyond)... */
+const BRUISE = 1.5;
+/** ...and how long what was learned lately takes to fade to about a third (game seconds). */
+const BRUISE_FADE = 12 * HOUR;
+
+/**
+ * Toughness grows from punishment, but from a real beating, not from one
+ * after another: what a body has learned from blows lately (fading over a
+ * day or so) leaves less for the next blow to teach. A hard fight lost is
+ * worth a few points; losing it again straight away, very little more.
+ */
+export function toughen(c: Char, effort: number, difficulty: number) {
+  if (c.animal) return;
+  const now = S.clock.t;
+  const [v0, t0] = (c.mem.bruise as [number, number] | undefined) ?? [0, now];
+  const v = v0 * Math.exp(-Math.max(0, now - t0) / BRUISE_FADE);
+  const before = c.sk[SK.toughness];
+  train(c, 'toughness', effort * Math.exp(-v / BRUISE), difficulty);
+  c.mem.bruise = [v + c.sk[SK.toughness] - before, now];
 }

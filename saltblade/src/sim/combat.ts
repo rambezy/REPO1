@@ -8,7 +8,7 @@ import { RACE, isHuman } from '../content/races';
 import { ITEM, GRADES } from '../content/items';
 import { FACTION, MACHINE_KIN } from '../content/factions';
 import { S } from './ctx';
-import { train, versus } from './train';
+import { train, versus, toughen } from './train';
 import { severLimb, isKOCondition, knockOut } from './health';
 import { angleTo, wrapAngle, clamp } from '../core/math';
 import { buildingAt } from './structures';
@@ -161,6 +161,8 @@ export function resolveBlow(a: Char, d: Char, variant: number, kick = false) {
       if (w.knock && S.rng.chance(w.knock * 0.3 * (a.skill('strength') / Math.max(10, d.skill('strength'))))) d.stagger = 0.5;
       return;
     }
+    // a parry that comes too late still teaches something
+    train(d, 'melee_def', 0.3, versus(def, att));
   }
   // dodge
   if (!downed) {
@@ -247,8 +249,8 @@ export function applyDamage(d: Char, limb: number, cut: number, blunt: number, b
   b.hp[limb] -= dmg;
   // wounds on one part run together: past a point more cuts there tear the same flesh, not new veins
   if (!b.robotic && !prost) b.bleed[limb] = Math.min(BLEED_CAP, b.bleed[limb] + ct * 0.013 * bleedMul * (RACE[d.look.race]?.bleed ?? 1) * (d.animal ? ANIMAL[d.animal].bleedMul ?? 1 : 1));
-  // toughness grows from punishment
-  if (!d.animal && dmg > 2) train(d, 'toughness', dmg / 14 * (prost ? 0.5 : 1), by ? versus(d.skill('toughness'), by.skill('strength') + 10) : 1);
+  // toughness grows from punishment (see toughen: a beating teaches, a second one straight after hardly more)
+  if (!d.animal && dmg > 2) toughen(d, dmg / 14 * (prost ? 0.5 : 1), by ? versus(d.skill('toughness'), by.skill('strength') + 10) : 1);
   if (prost) {
     // metal does not come off: it buckles, seizes and stops until someone mends it
     b.hp[limb] = Math.max(b.hp[limb], -b.max[limb]);

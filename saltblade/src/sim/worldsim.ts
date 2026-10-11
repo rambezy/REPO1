@@ -19,6 +19,9 @@ import { tickShops } from './shops';
 import { kill, knockOut } from './health';
 import { WORLD } from '../world/consts';
 import { HOUR } from './clock';
+import { LOADOUTS, loadoutFor } from '../content/loadouts';
+import { SK } from './skills';
+import { clamp } from '../core/math';
 
 const rng = new RNG((Date.now() ^ 4242) >>> 0); // a different world story each game
 let t = 0;
@@ -111,8 +114,11 @@ function randomPointIn(reg: string): [number, number] | null {
   return null;
 }
 
-/** Sends a squad of a kind into the world: on its roads or in its lands, or (`at`) from a given place along a given route. */
-function spawn(spec: Spec, at?: { x: number; z: number; route: number[]; cap?: number }): Squad | null {
+/**
+ * Sends a squad of a kind into the world: on its roads or in its lands, or (`at`) from a given place along a given route,
+ * at most `cap` strong, its people no higher than `level` and dressed from `loadout` (see fitAgainst).
+ */
+function spawn(spec: Spec, at?: { x: number; z: number; route: number[]; cap?: number; level?: number; loadout?: string }): Squad | null {
   const W = S.W;
   let x = 0, z = 0;
   let route: number[] | null = null;
@@ -155,8 +161,10 @@ function spawn(spec: Spec, at?: { x: number; z: number; route: number[]; cap?: n
   sq.flags.spec = spec.key;
   W.addSquad(sq);
   const n = Math.min(rng.int(spec.n[0], spec.n[1]), at?.cap ?? 99);
+  const loadout = at?.loadout;
   for (let i = 0; i < n; i++) {
-    const c: Char = spec.species ? makeAnimal(W, spec.species, rng, 1 + REGIONS[S.T.regionIdAt(x, z)].danger * 0.07) : makePerson(W, { faction: spec.faction, role: spec.role }, rng);
+    const level = at?.level === undefined || spec.species ? undefined : levelUnder(loadout ?? loadoutFor(spec.faction, spec.role), at.level);
+    const c: Char = spec.species ? makeAnimal(W, spec.species, rng, 1 + REGIONS[S.T.regionIdAt(x, z)].danger * 0.07) : makePerson(W, { faction: spec.faction, role: spec.role, level, loadout }, rng);
     W.moveToSquad(c, sq);
     const spot = S.nav.nearestOpen(x + rng.range(-4, 4), z + rng.range(-4, 4), 10) ?? [x, z];
     c.x = spot[0]; c.z = spot[1]; c.y = S.T.heightAt(c.x, c.z);
@@ -183,6 +191,87 @@ function spawn(spec: Spec, at?: { x: number; z: number; route: number[]; cap?: n
     beast.x = x - 3; beast.z = z; beast.y = S.T.heightAt(beast.x, beast.z);
   }
   return sq;
+}
+
+// ---------------------------------------------------------------- a fair fight
+// A new band's first days are hard enough without the worst of the waste
+// coming for it. Whoever means it harm comes fitted to it: in numbers and at
+// a level it can beat if it fights well (the Reavers working the roads by the
+// towns are the gang's new blood then, light on gear and on the red stuff),
+// and a little harder every day after.
+
+/** For how many days the roads go easy on a new band. */
+export const EARLY_DAYS = 3;
+
+/** The player's people as a fighting force. */
+export interface Band {
+  /** how many there are to fight */
+  n: number;
+  /** their strength, as squads weigh each other up (see strengthOf) */
+  power: number;
+  /** how practised they are: their fighting skills, on the scale of a fighter's level */
+  level: number;
+}
+
+export function playerBand(): Band {
+  let n = 0, power = 0, people = 0, skill = 0;
+  for (const c of S.W.playerChars()) {
+    if (!c.alive || c.cage || c.carriedBy) continue;
+    n++;
+    power += c.power();
+    if (c.animal) continue;
+    people++;
+    skill += (c.sk[SK.melee_atk] + c.sk[SK.melee_def] + c.sk[SK.toughness] + c.sk[SK.strength] + c.sk[SK.dexterity]) / 5;
+  }
+  return { n, power, level: people ? skill / people : 0 };
+}
+
+/**
+ * What a band that means harm brings against the player's: how many at most, how high their people's
+ * levels go, what they wear (undefined: as they come), the strength they may add up to between them
+ * (see threat), and how far over it one of them alone may go.
+ */
+export interface Fit { n: number; level?: number; loadout?: string; budget: number; slack: number }
+
+/** What a people's fighters carry while the roads are easy, where it differs from their own. */
+const EARLY_GEAR: Record<string, string> = { reavers: 'reavers_young' };
+
+export function fitAgainst(band: Band, faction: string, day: number, r: RNG = rng): Fit {
+  const later = Math.max(0, day - EARLY_DAYS);
+  // early on they come at about the band's own level, from 8 for a beginner to 14 for old hands; then two levels harder a day
+  const level = clamp(8 + (band.level - 4) * 0.4, 8, 14) + later * 2;
+  // the young ones give way to the gang's regulars over the days after
+  const young = r.chance(1 - later / 4);
+  return {
+    // two or three, as many as the band and one more (and fewer if they would be too strong: see trimTo); then one more every other day
+    n: Math.min(band.n + (later ? 2 : 1), 3 + Math.floor(later / 2)),
+    level: level < 40 ? level : undefined,
+    loadout: young ? EARLY_GEAR[faction] : undefined,
+    budget: Math.max(30, band.power * Math.min(4, 1.5 + later * 0.2)),
+    slack: later ? 2 : 1.25,
+  };
+}
+
+/** A level for one of a people's fighters dressed from `loadout`: as they come, but no higher than `max`. */
+export function levelUnder(loadout: string, max: number, r: RNG = rng) {
+  const L = LOADOUTS[loadout]?.level ?? [10, 10];
+  return Math.min(r.range(L[0], L[1]), max);
+}
+
+/** How much of a fight someone is, to fit a band: their strength, and for a beast its hide (a beast's rating leaves out how much beating it takes). */
+const threat = (c: Char) => c.power() * (c.animal ? Math.max(1, ANIMAL[c.animal].hp) : 1);
+
+/** Sends home whoever a new squad has over its fit's budget, the last to join first. False if even one of them alone is too much. */
+export function trimTo(sq: Squad, fit: Fit): boolean {
+  const members = sq.members.map((id) => S.W.char(id)).filter((c): c is Char => !!c);
+  let total = 0;
+  for (const c of members) total += threat(c);
+  while (members.length > 1 && total > fit.budget) {
+    const c = members.pop()!;
+    total -= threat(c);
+    S.W.removeChar(c);
+  }
+  return total <= fit.budget * fit.slack;
 }
 
 // ---------------------------------------------------------------- passers-by
@@ -252,9 +341,11 @@ function tickPassers() {
     const side = rng.range(hostileKind(spec) ? 5 : 14, hostileKind(spec) ? 22 : 40) * (rng.chance(0.5) ? 1 : -1);
     const off: [number, number] = [-dz * side, dx * side];
     const mx = lead.x + off[0], mz = lead.z + off[1];
-    // those who mean harm come in numbers a small band can stand up to
-    const cap = hostileKind(spec) ? W.playerChars().filter((c) => c.alive).length + 2 : undefined;
-    const sq = spawn(spec, { x: open[0], z: open[1], route: [mx, mz, mx + dx * 800, mz + dz * 800], cap });
+    // those who mean harm come in numbers, and at levels, the band can stand up to (see fitAgainst)
+    const fit = hostileKind(spec) ? fitAgainst(playerBand(), spec.faction, S.clock.day) : undefined;
+    const sq = spawn(spec, { x: open[0], z: open[1], route: [mx, mz, mx + dx * 800, mz + dz * 800], cap: fit?.n, level: fit?.level, loadout: fit?.loadout });
+    // (too much for them even alone: someone else comes by instead, within the hour)
+    if (sq && fit && !trimTo(sq, fit)) { despawn(sq); return; }
     if (sq) { sq.flags.passer = lead.id; sq.flags.passOff = off; W.flags.lastPasser = spec.key; W.flags.nextPasser = S.clock.t + rng.range(1.5, 3.5) * HOUR; }
     return;
   }
