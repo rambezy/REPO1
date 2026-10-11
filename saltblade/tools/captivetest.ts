@@ -92,6 +92,14 @@ check('within the day they are working a field', farmed, `farming after ${farmed
 check('the camp\'s own people leave their chained slave be', p.status === 'up' && p.lastHitBy === 0, `hit by ${p.lastHitBy}`);
 const cs = captivity(p);
 check('the card knows a slave can act for themselves', cs.kind === 'slave' && cs.order?.k === 'free' && (cs.order as any).id === p.id, cs.text);
+// a chained slave who falls in the fields (hunger, a beating) is left to come round, not taken again and again
+const takenBefore = notices.filter((n) => /taken by slavers/.test(n)).length;
+p.body.hp[1] = -20; knockOut(p);
+let retaken = false;
+for (let i = 0; i < 600 && !retaken; i++) { simStep(0.1, focus); tickSquads(0.1); tickRunaways(0.1); retaken = !!p.carriedBy; }
+check('a chained slave who falls in the fields is left to come round, not taken again', !retaken && notices.filter((n) => /taken by slavers/.test(n)).length === takenBefore, retaken ? 'picked up again' : 'left lying');
+p.body.hp[1] = p.body.max[1];
+until(() => p.status === 'up', 900);
 
 // ---------------------------------------------------------------- someone else's fallen: one more of the camp's chained, in no squad of another colour
 S.clock.t = Math.floor(S.clock.t / DAY) * DAY + 10 * HOUR;
@@ -142,6 +150,7 @@ p.body.blood = p.body.bloodMax; p.status = 'up'; p.body.koT = 0;
 S.clock.t = Math.floor(S.clock.t / DAY) * DAY + DAY + 1 * HOUR; // 01:00: the overseers are abed
 step(5);
 const lp0 = p.sk[SK.lockpicking];
+const runT0 = S.clock.t;
 p.order = { k: 'free', id: p.id };
 const tFree = until(() => !p.shackled, 1800);
 check('a slave can pick their own shackles', tFree >= 0 && !p.order, `${tFree} s, lockpicking ${lp0.toFixed(1)}`);
@@ -150,7 +159,9 @@ const away = nav.nearestOpen(cf.x - cf.r - 980, cf.z, 80)!;
 p.order = { k: 'move', x: away[0], z: away[1] }; p.move = 'run';
 const tGone = until(() => !p.mem.slaveSite, 1500);
 check('...and walk away from Chainfield for good', tGone >= 0 && !p.mem.slaveSite, `${tGone} s, ${Math.round(Math.hypot(p.x - cf.x, p.z - cf.z))} m out, bounty ${p.bounty.chainhouse ?? 0}`);
-check('a runaway seen leaving is reported once, not every second in sight', (p.bounty.chainhouse ?? 0) <= 1000, `bounty ${p.bounty.chainhouse ?? 0}`);
+// seen again an hour later they may be reported again; what must not happen is a report every second in sight
+const hoursLoose = 1 + Math.floor((S.clock.t - runT0) / HOUR);
+check('a runaway seen leaving is reported at most once an hour, not every second in sight', (p.bounty.chainhouse ?? 0) <= 1000 * hoursLoose, `bounty ${p.bounty.chainhouse ?? 0} over ${hoursLoose} hour(s) loose`);
 check('nobody is caged for slavery', !p.cage && !cages.some((c) => c.occupant === p.id));
 
 // ---------------------------------------------------------------- a caged prisoner works the lock from inside

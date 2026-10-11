@@ -373,6 +373,8 @@ function postFight(c: Char): boolean {
       if (o.faction === c.faction && o.body.needsAid() && findMedkit(c, o.robot, o) && d2 < bd) { best = o; bd = d2; kind = 'aid'; return; }
       if (o.status !== 'ko') return;
       if (o.faction !== c.faction && !o.animal) {
+        // their own chained slaves are already theirs: a runaway is another matter
+        if (o.shackled && o.mem.enslavedBy === c.faction && !((o.bounty[c.faction] ?? 0) > 0)) return;
         if (f?.captures === 'slavery' && c.role !== 'resident' && d2 < bd && !o.robot) { best = o; bd = d2; kind = 'capture'; }
         else if (f?.captures === 'prison' && (o.bounty[c.faction] ?? 0) > 0 && !(o.mem.grace?.[c.faction] > S.clock.t) && (c.role === 'guard' || c.role === 'patrol') && d2 < bd) { best = o; bd = d2; kind = 'arrest'; }
         else if (f?.captures === 'eat' && d2 < bd) { best = o; bd = d2; kind = 'eat'; }
