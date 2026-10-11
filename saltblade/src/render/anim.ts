@@ -2,6 +2,7 @@
 // lying down, carrying and being carried. Poses blend smoothly each frame.
 import * as THREE from 'three';
 import { B, BONE_COUNT } from './charModel';
+import { LI } from '../sim/body';
 import type { WeaponKind } from '../sim/look';
 
 export type Stance =
@@ -26,9 +27,15 @@ export interface AnimIn {
   armL: boolean; // has left arm
   armR: boolean;
   swim: boolean;
+  /** the last blow's body part (see sim/body LI; -1 or missing for a general flinch) */
+  hitLimb?: number;
+  /** where the last blow came from, as an angle off the facing (0 in front, positive from the left) */
+  hitDir?: number;
 }
 
 const N = BONE_COUNT;
+/** How long the knees give before the body tips, going down. */
+const BUCKLE = 0.22;
 
 export class Animator {
   rx = new Float32Array(N);
@@ -48,11 +55,17 @@ export class Animator {
   private tHipDrop = 0;
   private hipBase = 0;
   idleT = Math.random() * 10;
+  /** seconds since going down (a knockdown, a knock-out, a death): the fall is played off this */
+  private fallT = 9;
+  private wasDown = false;
+  private first = true;
   constructor(public bones: THREE.Bone[]) {
     this.hipBase = bones[B.hips].position.y;
   }
 
   private set(b: number, x: number, y = 0, z = 0) { this.tx[b] = x; this.ty[b] = y; this.tz[b] = z; }
+  /** Adds to a bone's target: the hit reactions layer over whatever the body was doing. */
+  private add(b: number, x: number, y = 0, z = 0) { this.tx[b] += x; this.ty[b] += y; this.tz[b] += z; }
 
   update(dt: number, a: AnimIn, distMoved: number) {
     dt = dt > 0 ? Math.min(dt, 0.25) : 0;
@@ -64,6 +77,12 @@ export class Animator {
     const ph = this.phase;
     const moving = a.speed > 0.25;
     let blend = 10;
+    // going down from standing starts a fall; a body first seen down, or already lying (asleep, carried, crawling), is simply down
+    const down = a.stance === 'down' || a.stance === 'dead' || a.stance === 'playdead';
+    if (down && !this.wasDown) this.fallT = this.first || Math.abs(this.rootX) > 0.6 ? 9 : 0;
+    this.wasDown = down;
+    if (down) this.fallT += dt;
+    const falling = down && this.fallT < 1;
 
     switch (a.stance) {
       case 'down':
@@ -71,8 +90,8 @@ export class Animator {
       case 'playdead':
       case 'sleep':
       case 'carried':
-        this.lying(a);
-        blend = a.stance === 'carried' ? 30 : 5;
+        if (down && this.fallT < BUCKLE) { this.buckle(a); blend = 22; }
+        else { this.lying(a); blend = a.stance === 'carried' ? 30 : falling ? 9 : 5; }
         break;
       case 'crawl':
         this.tRootX = 1.35; this.tRootY = 0.22;
@@ -114,8 +133,8 @@ export class Animator {
     if (!a.armL) { this.set(B.uaL, 0); this.set(B.laL, 0); }
     if (!a.armR) { this.set(B.uaR, 0); this.set(B.laR, 0); }
 
-    // blend toward targets
-    const k = 1 - Math.exp(-dt * (a.action === 'attack' || a.action === 'hit' || a.action === 'dodge' ? 26 : blend));
+    // blend toward targets (snapping straight there on the first frame, so nobody is seen rising into their pose)
+    const k = this.first ? 1 : 1 - Math.exp(-dt * (a.action === 'attack' || a.action === 'hit' || a.action === 'dodge' ? 26 : blend));
     const bones = this.bones;
     for (let i = 1; i < N; i++) {
       this.rx[i] += (this.tx[i] - this.rx[i]) * k;
@@ -123,7 +142,9 @@ export class Animator {
       this.rz[i] += (this.tz[i] - this.rz[i]) * k;
       bones[i].rotation.set(this.rx[i], this.ry[i], this.rz[i]);
     }
-    const kr = 1 - Math.exp(-dt * (a.stance === 'carried' ? 30 : 6));
+    // the topple comes quick once the legs have gone
+    const kr = this.first ? 1 : 1 - Math.exp(-dt * (a.stance === 'carried' ? 30 : falling && this.fallT >= BUCKLE ? 11 : 6));
+    this.first = false;
     this.rootX += (this.tRootX - this.rootX) * kr;
     this.rootY += (this.tRootY - this.rootY) * kr;
     this.rootZ += (this.tRootZ - this.rootZ) * kr;
@@ -225,6 +246,21 @@ export class Animator {
     this.set(B.uaL, -0.3 * k, 0, 0.35); this.set(B.laL, -0.9 * k);
   }
 
+  /** The first beat of a fall: the knees go, the body folds, and it starts to tip. */
+  private buckle(a: AnimIn) {
+    const face = a.face >= 0 ? 1 : -1;
+    const k = Math.min(1, this.fallT / BUCKLE);
+    this.tHipDrop = -0.5 * k;
+    this.tRootX = (face > 0 ? -0.3 : 0.45) * k;
+    this.tRootY = 0.02 * k;
+    this.set(B.ulL, -0.9, 0, 0.12); this.set(B.ulR, -0.75, 0, -0.1);
+    this.set(B.llL, 1.7); this.set(B.llR, 1.5);
+    this.set(B.spine, face > 0 ? -0.15 : 0.5); this.set(B.chest, face > 0 ? -0.1 : 0.2);
+    this.set(B.head, face > 0 ? -0.35 : 0.55, 0.2);
+    this.set(B.uaL, 0.3, 0, 0.35); this.set(B.uaR, 0.3, 0, -0.3);
+    this.set(B.laL, -0.3); this.set(B.laR, -0.25);
+  }
+
   private lying(a: AnimIn) {
     const face = a.face >= 0 ? 1 : -1;
     this.tRootX = face > 0 ? -Math.PI / 2 : Math.PI / 2;
@@ -268,13 +304,7 @@ export class Animator {
         this.set(B.uaL, -0.4, 0, 0.6); this.set(B.uaR, -0.4, 0, -0.6);
         return;
       }
-      case 'hit': {
-        const s = Math.sin(Math.min(1, t) * Math.PI);
-        this.set(B.spine, this.tx[B.spine] - 0.35 * s, this.ty[B.spine] + 0.2 * s);
-        this.set(B.head, this.tx[B.head] - 0.4 * s);
-        this.set(B.uaL, this.tx[B.uaL] + 0.3 * s, 0, 0.4 * s + this.tz[B.uaL]);
-        return;
-      }
+      case 'hit': return this.hitReaction(a);
       case 'block': {
         // weapon held across, braced
         this.set(B.uaR, -1.3, 0.5, -0.4); this.set(B.laR, -1.2, 0.4);
@@ -361,6 +391,62 @@ export class Animator {
         this.set(B.uaR, -2.8, 0, -0.3 * s); this.set(B.laR, -0.4);
         return;
       }
+    }
+  }
+
+  /**
+   * Taking a blow, by the part struck: the head snaps away, the chest is
+   * knocked back, a gut hit doubles you over, an arm is flung out, a leg
+   * buckles. Quick in, slow to recover, and pushed away from where it came.
+   */
+  private hitReaction(a: AnimIn) {
+    const t = Math.min(1, a.t);
+    const s = t < 0.22 ? Math.sin((t / 0.22) * Math.PI * 0.5) : Math.cos(((t - 0.22) / 0.78) * Math.PI * 0.5);
+    const dir = a.hitDir ?? 0;
+    const front = Math.cos(dir); // +1 struck from the front, -1 from behind
+    const side = Math.sin(dir); // +1 from the left
+    const back = front >= 0 ? 1 : -0.7; // knocked backward, or folded forward from behind
+    switch (a.hitLimb ?? -1) {
+      case LI.head:
+        // the face turns away from the blow
+        this.add(B.head, -0.55 * s * back, -0.5 * s * side, 0.2 * s * side);
+        this.add(B.neck, -0.2 * s * back);
+        this.add(B.chest, -0.12 * s * back, -0.1 * s * side);
+        break;
+      case LI.chest:
+        this.add(B.spine, -0.42 * s * back, 0.15 * s * side);
+        this.add(B.chest, -0.2 * s * back);
+        this.add(B.head, -0.2 * s * back);
+        this.add(B.uaL, 0.25 * s, 0, 0.35 * s); this.add(B.uaR, 0.25 * s, 0, -0.35 * s);
+        break;
+      case LI.stomach:
+        this.add(B.spine, 0.5 * s); this.add(B.chest, 0.25 * s); this.add(B.head, 0.3 * s);
+        this.tHipDrop -= 0.12 * s;
+        this.add(B.uaL, -0.4 * s, 0, 0.2 * s); this.add(B.uaR, -0.4 * s, 0, -0.2 * s);
+        break;
+      case LI.larm:
+      case LI.rarm: {
+        const L = a.hitLimb === LI.larm, sg = L ? 1 : -1;
+        const ua = L ? B.uaL : B.uaR, la = L ? B.laL : B.laR;
+        this.add(ua, -0.5 * s, 0.4 * s * sg, 0.9 * s * sg);
+        this.tx[la] *= 1 - 0.7 * s; // the forearm straightens as the arm is thrown
+        this.add(B.spine, 0, 0.25 * s * sg); this.add(B.chest, 0, 0.15 * s * sg);
+        break;
+      }
+      case LI.lleg:
+      case LI.rleg: {
+        const L = a.hitLimb === LI.lleg, sg = L ? 1 : -1;
+        this.add(L ? B.ulL : B.ulR, -0.45 * s); this.add(L ? B.llL : B.llR, 1.1 * s);
+        this.tHipDrop -= 0.28 * s;
+        this.tRootZ += 0.1 * s * sg;
+        this.add(B.spine, 0.25 * s, 0, -0.1 * s * sg);
+        this.add(B.uaL, 0, 0, 0.3 * s); this.add(B.uaR, 0, 0, -0.3 * s);
+        break;
+      }
+      default:
+        this.add(B.spine, -0.35 * s * back, 0.2 * s);
+        this.add(B.head, -0.4 * s * back);
+        this.add(B.uaL, 0.3 * s, 0, 0.4 * s);
     }
   }
 

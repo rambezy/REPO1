@@ -1,5 +1,6 @@
 // Scene objects for characters: a skinned body per person or beast, weapons
-// in hand or sheathed, selection rings, and per-frame pose updates.
+// in hand or sheathed, ground rings (selection, hover, hostiles and the
+// target of the selected), weapon trails, and per-frame pose updates.
 import * as THREE from 'three';
 import { Char } from '../sim/char';
 import { World } from '../sim/world';
@@ -13,17 +14,39 @@ import { buildAnimal, AnimalRig, AnimalAnimator } from './animalModel';
 import { ANIMAL } from '../content/animals';
 import { LI } from '../sim/body';
 import { ITEM } from '../content/items';
+import { hostile } from '../sim/combat';
+import { S } from '../sim/ctx';
+import { angleTo, wrapAngle } from '../core/math';
+import { Trails } from './trails';
+import type { WeaponKind } from '../sim/look';
 
 const bodyMat = charMaterial();
 const animalMat = bodyMat;
 const weaponMat = bodyMat;
 
 const ringGeo = new THREE.RingGeometry(0.55, 0.7, 28).rotateX(-Math.PI / 2);
+// (no fog on the rings: their colours must read at night and in a dust storm)
 const ringMats = {
-  sel: new THREE.MeshBasicMaterial({ color: 0x9ce07a, transparent: true, opacity: 0.85, depthWrite: false }),
-  hover: new THREE.MeshBasicMaterial({ color: 0xe8e0c8, transparent: true, opacity: 0.5, depthWrite: false }),
-  enemy: new THREE.MeshBasicMaterial({ color: 0xe0503a, transparent: true, opacity: 0.8, depthWrite: false }),
+  sel: new THREE.MeshBasicMaterial({ color: 0x9ce07a, transparent: true, opacity: 0.85, depthWrite: false, fog: false }),
+  hover: new THREE.MeshBasicMaterial({ color: 0xe8e0c8, transparent: true, opacity: 0.5, depthWrite: false, fog: false }),
+  enemy: new THREE.MeshBasicMaterial({ color: 0xe0503a, transparent: true, opacity: 0.6, depthWrite: false, fog: false }),
+  target: new THREE.MeshBasicMaterial({ color: 0xff7a48, transparent: true, opacity: 0.95, depthWrite: false, fog: false }),
 };
+export type RingKind = keyof typeof ringMats | 'none';
+
+/** How far from your people a hostile gets a ring without a fight on. */
+const THREAT_R = 32;
+const tA = new THREE.Vector3(), tB = new THREE.Vector3();
+
+/** Where a weapon's business end runs, up its +Y: the stretch of blade (or the club's head) that leaves a trail. */
+function bladeSpan(kind: WeaponKind, L: number): [number, number] {
+  switch (kind) {
+    case 'heavy': return [0.1 + L * 0.3, 0.1 + L];
+    case 'blunt': return [L - 0.15, L + 0.12];
+    case 'polearm': return [0.45 * L - 0.04, 0.45 * L + 0.67];
+    default: return [0.08 + L * 0.35, 0.08 + L];
+  }
+}
 
 const weaponGeoCache = new Map<string, THREE.BufferGeometry>();
 function weaponGeo(key: string, make: () => THREE.BufferGeometry) {
@@ -43,10 +66,26 @@ export class CharView {
   weaponKey = '';
   rangedKey = '';
   ring: THREE.Mesh;
+  ringKind: RingKind = 'none';
   key = '';
   rigKey = '';
   animal = false;
   lastSeen = 0;
+  /** the last blow: which body part, where it came from (angle from the facing), who, and when (sim time) */
+  hitLimb = -1;
+  hitDir = 0;
+  hitBy = 0;
+  hitAt = -1e9;
+  /** which way to fall when knocked down: 1 on the back, -1 face down, 0 not decided (by id) */
+  fallFace = 0;
+  /** the pose this frame, so a fall is only chosen when going down from standing */
+  stance: Stance = 'idle';
+  /** where the overlay put this person's name tag this frame (its top edge), so their numbers can be stacked clear of it */
+  tagTop = 0;
+  tagFrame = -1;
+  /** is this a hostile the player should see a ring on (refreshed a few times a second) */
+  threat = false;
+  private threatT = 0;
   /** this person's own material, with their face, while seen close */
   private faceMat: THREE.MeshStandardMaterial | null = null;
 
@@ -173,6 +212,8 @@ export class CharView {
     else if (!c.body.canWalk() && !c.animal) stance = 'crawl';
     else if (c.mem.sit && c.speed < 0.2) stance = c.mem.using ? 'sit' : 'sitground';
     else if (c.drawn) stance = 'combat';
+    if (this.stance === 'carried' && (stance === 'down' || stance === 'dead')) this.fallFace = -1; // dropped from, or dying in, a carry: face down as carried, no roll
+    this.stance = stance;
     if (this.animal && this.aanim) {
       this.aanim.update(dt, { speed: c.speed, run: c.move === 'run', stance, attacking: !!c.atk, atkT: c.atk?.t ?? 0, hit: c.act === 'hit', actT: c.actT, variant: c.id % 4 }, moved);
       if (carrier) {
@@ -194,10 +235,12 @@ export class CharView {
       drawn: c.drawn,
       limp: c.body.limp(),
       twoHanded: !!w.twoHanded,
-      face: c.id % 3 === 0 ? -1 : 1,
+      face: this.fallFace || (c.id % 3 === 0 ? -1 : 1),
       armL: c.body.has(LI.larm) || !!c.body.prost[LI.larm],
       armR: c.body.has(LI.rarm) || !!c.body.prost[LI.rarm],
       swim: c.swim,
+      hitLimb: this.hitLimb,
+      hitDir: this.hitDir,
     };
     this.anim!.update(dt, a, moved);
     if (carrier) {
@@ -214,9 +257,73 @@ export class CharView {
     }
   }
 
-  setRing(kind: 'none' | 'sel' | 'hover' | 'enemy') {
+  setRing(kind: RingKind) {
+    this.ringKind = kind;
     this.ring.visible = kind !== 'none';
     if (kind !== 'none') this.ring.material = ringMats[kind];
+  }
+
+  /** A blow has landed: remember the part, the side it came from and who, for the reaction and the fall. */
+  hit(limb: number, by: Char) {
+    this.hitLimb = limb;
+    const c = this.c;
+    this.hitDir = by === c ? 0 : wrapAngle(angleTo(c.x, c.z, by.x, by.z) - c.dir);
+    this.hitBy = by.id;
+    this.hitAt = S.time;
+  }
+
+  /**
+   * Going down. The direction is chosen once, from standing: knocked from the
+   * front you land on your back, from behind on your face; a bleed-out falls
+   * however it falls. A body already lying (knocked out, asleep, carried)
+   * stays as it is when it dies.
+   */
+  fall() {
+    const st = this.stance;
+    if (st === 'down' || st === 'dead' || st === 'playdead' || st === 'sleep' || st === 'carried' || st === 'caged') return;
+    if (st === 'crawl') { this.fallFace = -1; return; }
+    this.fallFace = S.time - this.hitAt < 0.5 ? (Math.abs(this.hitDir) < Math.PI / 2 ? 1 : -1) : 0;
+  }
+
+  /**
+   * Refreshes whether this is a hostile worth a ring: someone who would fight
+   * your people, and either fighting now or close to them.
+   */
+  updateThreat(dt: number, players: Char[], W: World) {
+    const c = this.c;
+    if (c.faction === 'player' || !c.alive) { this.threat = false; return; }
+    this.threatT -= dt;
+    if (this.threatT > 0) return;
+    this.threatT = 0.2 + (c.id % 5) * 0.03;
+    let near: Char | null = null, bd = 80 * 80;
+    for (const p of players) {
+      if (!p.alive) continue;
+      const d2 = (p.x - c.x) ** 2 + (p.z - c.z) ** 2;
+      if (d2 < bd) { bd = d2; near = p; }
+    }
+    if (!near || !c.up) { this.threat = false; return; }
+    const target = c.target ? W.char(c.target) : null;
+    const onYours = !!target && target.faction === 'player';
+    const fighting = c.drawn || !!c.atk || !!c.target;
+    this.threat = onYours || ((fighting || bd < THREAT_R * THREAT_R) && hostile(c, near));
+  }
+
+  /** Leaves a ribbon behind a heavy weapon through the strike. */
+  sampleTrail(trails: Trails) {
+    const c = this.c;
+    const a = c.atk;
+    if (!a || a.kick || !this.weapon || !this.weaponKey.endsWith('d')) return;
+    if (a.t < 0.3 || a.t > 0.78) return;
+    const w = c.weaponStats();
+    if (!(w.weight >= 9 || w.kind === 'heavy' || w.kind === 'polearm')) return;
+    const wv = c.weaponVis();
+    if (!wv) return;
+    const [b, t] = bladeSpan(wv.kind, wv.length);
+    // the weapon hangs off the hand: bring its chain of matrices up to date for this frame's pose
+    this.weapon.updateWorldMatrix(true, false);
+    this.weapon.localToWorld(tA.set(0, b, 0));
+    this.weapon.localToWorld(tB.set(0, t, 0));
+    trails.push(c.id, tA.x, tA.y, tA.z, tB.x, tB.y, tB.z);
   }
 
   dispose() {
@@ -231,19 +338,33 @@ export class CharViews {
   group = new THREE.Group();
   rings = new THREE.Group();
   views = new Map<number, CharView>();
+  trails = new Trails();
   range = 420;
   /** At most this many bodies built a frame, and no more once this many milliseconds have gone on it. */
   buildBudget = 6;
   buildMs = 7;
   /** Within this distance of the camera people get the detailed body (a little further before they lose it). */
   nearLod = 42;
+  /** rings drawn last frame, for the debug readout and tests */
+  ringStats = { enemy: 0, target: 0 };
   private want: { c: Char; d: number; v?: CharView }[] = [];
+  private targets = new Set<number>(); // whoever the selected are fighting
+  private players: Char[] = [];
+
+  constructor() {
+    this.group.add(this.trails.mesh);
+  }
 
   update(dt: number, W: World, cam: THREE.Vector3, focus: THREE.Vector3, sel: Set<number>, hover: number) {
     const r2 = this.range * this.range, near2 = this.nearLod * this.nearLod;
     const seen = new Set<number>();
     const want = this.want;
     want.length = 0;
+    this.players = W.playerChars();
+    const targets = this.targets;
+    targets.clear();
+    for (const id of sel) { const c = W.char(id); if (c && c.target && (c.drawn || c.atk)) targets.add(c.target); }
+    this.ringStats.enemy = 0; this.ringStats.target = 0;
     for (const c of W.active) {
       const dx = c.x - focus.x, dz = c.z - focus.z;
       const inRange = dx * dx + dz * dz < r2 || c.faction === 'player';
@@ -282,14 +403,19 @@ export class CharViews {
         v.c.view = null;
       }
     }
+    this.trails.update(dt);
   }
 
   private tick(v: CharView, dt: number, W: World, sel: Set<number>, hover: number) {
     const c = v.c;
     v.update(dt, W);
-    v.setRing(sel.has(c.id) ? 'sel' : hover === c.id ? 'hover' : 'none');
+    v.updateThreat(dt, this.players, W);
+    v.sampleTrail(this.trails);
+    const kind: RingKind = sel.has(c.id) ? 'sel' : hover === c.id ? 'hover' : this.targets.has(c.id) && c.alive ? 'target' : v.threat ? 'enemy' : 'none';
+    v.setRing(kind);
     if (v.ring.visible) {
-      const s = c.animal ? ANIMAL[c.animal].size * 1.1 : c.look.bulk;
+      if (kind === 'enemy') this.ringStats.enemy++; else if (kind === 'target') this.ringStats.target++;
+      const s = (c.animal ? ANIMAL[c.animal].size * 1.1 : c.look.bulk) * (kind === 'target' ? 1.15 : 1);
       v.ring.scale.setScalar(s);
       v.ring.position.set(c.x, c.y + 0.06, c.z);
     }

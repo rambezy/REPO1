@@ -265,7 +265,7 @@ export function applyDamage(d: Char, limb: number, cut: number, blunt: number, b
     // severing: a limb beaten past its maximum can come off
     b.hp[limb] = -b.max[limb];
     const heavy = by && (by.weaponStats().weight > 12 || (by.animal && ANIMAL[by.animal].power > 80));
-    if (S.rng.chance(heavy ? 0.35 : ct > 20 ? 0.18 : 0.04)) severLimb(d, limb);
+    if (S.rng.chance(heavy ? 0.35 : ct > 20 ? 0.18 : 0.04)) severLimb(d, limb, by);
   }
   if (limb < 3) b.hp[limb] = Math.max(b.hp[limb], -b.max[limb] * 1.05);
   if (fx) {

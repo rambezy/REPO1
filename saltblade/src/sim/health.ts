@@ -146,7 +146,7 @@ export function tickHealth(c: Char, dt: number) {
   }
 }
 
-export function severLimb(c: Char, l: number) {
+export function severLimb(c: Char, l: number, by?: Char | null) {
   const b = c.body;
   if (l < 3 || !b.has(l)) return;
   b.lost |= 1 << l;
@@ -155,6 +155,7 @@ export function severLimb(c: Char, l: number) {
   c.dirty = true;
   S.fx.notice(`${c.name} lost their ${LIMB_NAMES[l].toLowerCase()}!`, c.faction === 'player' ? 'bad' : 'combat');
   S.fx.sound('sever', c.x, c.z);
+  S.fx.limbLost?.(c, l, by);
 }
 
 /** Treats one limb using a medical item's points. Returns points used. */

@@ -30,12 +30,14 @@ export interface SimCtx {
     notice(text: string, kind?: string): void;
     died(c: Char): void;
     ko(c: Char): void;
+    /** a limb has just come off, to `by`'s blow if there was one (optional: older hooks need not provide it) */
+    limbLost?(c: Char, limb: number, by?: Char | null): void;
   };
 }
 
 export const S = {
   fx: {
-    hit() {}, say() {}, sound() {}, shot() {}, burst() {}, notice() {}, died() {}, ko() {},
+    hit() {}, say() {}, sound() {}, shot() {}, burst() {}, notice() {}, died() {}, ko() {}, limbLost() {},
   },
   rng: new RNG(12345),
   time: 0,

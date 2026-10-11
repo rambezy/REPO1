@@ -7,6 +7,10 @@ import { launchCampaign } from './sim/worldevents';
 import { playerBase } from './sim/base';
 import { chatNow } from './sim/chatter';
 import { dispatchHunters } from './sim/hunters';
+import { on } from './core/events';
+import { applySettings } from './game/settings';
+import { impact, impactState, reducedMotion, resetImpact } from './render/impact';
+import { applyDamage } from './sim/combat';
 
 export function attachDebug() {
   const w = window as unknown as Record<string, unknown>;
@@ -77,6 +81,13 @@ export function attachDebug() {
     log() { return G.W.log.slice(-15).map((l: any) => l.text); },
     save: (slot = '1') => saveGame(slot),
     emit(...args: any[]) { import('./core/events').then((e) => (e.emit as any)(...args)); return true; },
+    on(ev: string, fn: (...a: any[]) => void) { return on(ev, fn); },
+    /** Changes settings and applies them. */
+    settings(patch: Record<string, unknown>) { Object.assign(G.settings, patch); applySettings(); return G.settings; },
+    /** Lands a blunt blow of `dmg` on one of a character's body parts, from `by` (for testing hooks). */
+    hurt(id: number, limb: number, dmg: number, by?: number) { const c = G.W.chars.get(id); if (!c) return false; applyDamage(c, limb, 0, dmg, (by && G.W.chars.get(by)) || null); return c.status; },
+    /** The impact hold's state (and fires one with a strength, after forgetting the cooldown if asked). */
+    feel(k?: number, reset = false) { if (reset) resetImpact(); if (k !== undefined) impact(k); return { ...impactState(), reduced: reducedMotion(), shake: G.cam.shake }; },
     select(ids: number[]) { import('./game/control').then((m) => { m.sel.clear(); for (const i of ids) m.sel.add(i); import('./core/events').then((e) => e.emit('sel')); }); return ids.length; },
     campaign(key: string) { launchCampaign(key); const sq = [...G.W.squads.values()].filter((s: any) => s.flags.townRaid).pop(); return sq ? { name: sq.name, n: sq.members.length, target: G.T.sites.find((s: any) => s.id === sq.flags.townRaid)?.name } : null; },
     raid() { const b = playerBase(); if (!b) return 'no base'; spawnRaid(b.x, b.z, b.n); return b; },
@@ -170,6 +181,48 @@ export function attachDebug() {
       };
       cam.target.x = c.x; cam.target.z = c.z;
       return c.name + ' ' + c.race;
+    },
+    /**
+     * A scripted brawl for looking at fights: fills your squad up to `mine`
+     * mercenaries, stands `foes` Reavers a few metres off, selects your people
+     * and frames the lot from `dist` metres. Returns the ids on each side.
+     */
+    async brawl(mine = 3, foes = 4, dist = 26) {
+      const { makePerson } = await import('./sim/spawn');
+      const { Squad } = await import('./sim/squad');
+      const { RNG } = await import('./core/rng');
+      const ctl = await import('./game/control');
+      const ev = await import('./core/events');
+      const W = G.W as any;
+      const p = W.playerChars()[0];
+      const home = W.squads.get(p.squad);
+      const rng = new RNG(777);
+      const ours: number[] = W.playerChars().map((c: any) => c.id);
+      for (let i = ours.length; i < mine; i++) {
+        const c: any = makePerson(W, { faction: 'drifters', role: 'merc', level: 32, whole: true }, rng);
+        c.faction = 'player'; c.role = 'player';
+        W.moveToSquad(c, home);
+        c.x = p.x + (i - 1) * 1.6; c.z = p.z + 1.2; c.y = G.T.heightAt(c.x, c.z);
+        c.homeX = c.x; c.homeZ = c.z; c.hunger = 300;
+        ours.push(c.id);
+      }
+      const sq = new Squad(); sq.faction = 'reavers'; sq.kind = 'raid'; sq.name = 'Brawl'; sq.x = p.x; sq.z = p.z - 12; sq.task = { k: 'hold' } as any;
+      sq.spoke = true; // past talking: straight to blows
+      W.addSquad(sq);
+      const theirs: number[] = [];
+      for (let i = 0; i < foes; i++) {
+        const c: any = makePerson(W, { faction: 'reavers', role: 'bandit', level: 18 }, rng);
+        W.moveToSquad(c, sq);
+        const spot = G.nav.nearestOpen(p.x + (i - (foes - 1) / 2) * 1.8, p.z - 12, 6) ?? [p.x, p.z - 12];
+        c.x = spot[0]; c.z = spot[1]; c.y = G.T.heightAt(c.x, c.z);
+        c.homeX = c.x; c.homeZ = c.z; c.dir = Math.PI; c.hunger = 300;
+        theirs.push(c.id);
+      }
+      ctl.sel.clear(); for (const id of ours) ctl.sel.add(id); ev.emit('sel');
+      G.cam.follow = null;
+      G.cam.lookAt(p.x, p.z - 5, dist); G.cam.dist = dist; G.cam.target.x = p.x; G.cam.target.z = p.z - 5;
+      G.cam.yaw = G.cam.wantYaw = 0; G.cam.pitch = G.cam.wantPitch = 0.75;
+      return { ours, theirs };
     },
     /** Sends bounty hunters after the first of your people with a price on their head. */
     hunt() { const c = G.W.playerChars().find((p: any) => Object.values(p.bounty).some((v: any) => v > 0)); if (!c) return 'nobody is wanted'; const f = Object.keys(c.bounty).find((k) => c.bounty[k] > 0)!; const sq = dispatchHunters(c, f); return sq ? { name: sq.name, n: sq.members.length, d: Math.round(Math.hypot(sq.x - c.x, sq.z - c.z)) } : 'no start'; },

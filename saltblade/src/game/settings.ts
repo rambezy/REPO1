@@ -11,7 +11,10 @@ export interface Settings {
   edgeScroll: boolean;
   uiScale: number;
   names: 'always' | 'hover';
-  pauseOnKO: boolean;
+  pauseOnKO: boolean; // auto-pause: one of yours is knocked out
+  pauseOnAttacked: boolean; // auto-pause: one of yours is hit while not fighting
+  pauseOnLimbLost: boolean; // auto-pause: one of yours loses a limb
+  reducedMotion: boolean; // no impact hold, camera kick or pulsing
   hints: boolean;
   chatter: boolean;
   master: number;
@@ -21,7 +24,7 @@ export interface Settings {
 }
 
 export const DEFAULTS: Settings = {
-  quality: 'high', shadows: true, viewDist: 1, autosave: 8, edgeScroll: false, uiScale: 1, names: 'hover', pauseOnKO: true, hints: true, chatter: true,
+  quality: 'high', shadows: true, viewDist: 1, autosave: 8, edgeScroll: false, uiScale: 1, names: 'hover', pauseOnKO: true, pauseOnAttacked: false, pauseOnLimbLost: false, reducedMotion: false, hints: true, chatter: true,
   master: 0.8, music: 0.5, sfx: 0.8, ambience: 0.6,
 };
 

@@ -19,6 +19,8 @@
     "test:robots": "tsx tools/robottest.ts",
     "test:limbs": "tsx tools/limbtest.ts",
     "test:drugs": "tsx tools/drugtest.ts",
+    "test:labels": "tsx tools/labeltest.ts",
+    "test:feel": "tsx tools/feeltest.ts",
     "test:captive": "tsx tools/captivetest.ts",
     "test:balance": "tsx tools/balancetest.ts",
     "test:economy": "tsx tools/economytest.ts",

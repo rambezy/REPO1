@@ -52,6 +52,7 @@ import { Particles } from './render/particles';
 import { highLevel } from './sim/drugs';
 import { takeReloadStash } from './sim/save';
 import { installErrorHandlers, hasWebGL2, noWebGL, showFatal, watchGraphics, system, guard, report, injectFailure, systemReport, System } from './game/errors';
+import { impactScale } from './render/impact';
 
 function loadingScreen() {
   const el = document.createElement('div');
@@ -223,7 +224,7 @@ function step(dt: number) {
   const t0 = performance.now();
   G.perf = perf;
   G.realTime += dt;
-  const simDt = dt * G.speed;
+  const simDt = dt * G.speed * impactScale(dt); // a big hit holds the world for a few frames
   G.simTime += simDt;
   // the sim runs in small steps so fast-forward stays stable
   let left = simDt;
