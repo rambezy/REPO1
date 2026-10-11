@@ -14,7 +14,7 @@ import { Char } from '../sim/char';
 import { Look } from '../sim/look';
 import { makePlayerPerson, NewGameSetup } from '../game/newgame';
 import { startNewGame, loadSlot, loadData, backdropWorld } from '../game/session';
-import { listSaves, deleteSave, importSaveFile, importText, SaveMeta, fitsWorld } from '../sim/save';
+import { listSaves, deleteSave, importSaveFile, importText, SaveMeta, fitsWorld, slotLabel, safeToResume } from '../sim/save';
 import { input } from '../core/input';
 import { DAY, HOUR } from '../sim/clock';
 import { SK, SKILL_INFO, SKILLS } from '../sim/skills';
@@ -119,7 +119,7 @@ function btn(label: string, run: () => void, cls = '') {
 async function mainMenu() {
   screen = 'main';
   const saves = await listSaves().catch(() => [] as SaveMeta[]);
-  const latest = saves[0];
+  const latest = saves.find(safeToResume) ?? saves.find(fitsWorld);
   const menu = h('div', { class: 'tmenu' });
   if (latest) {
     const cont = btn('Continue', () => void doLoad(latest.slot), 'primary');
@@ -187,7 +187,7 @@ function newGameScreen() {
     );
   };
   for (const sc of SCENARIOS) {
-    if (sc.hidden && !location.hash.includes('debug')) continue;
+    if (sc.hidden && !(import.meta.env.DEV && location.hash.includes('debug'))) continue;
     const card = h('div', { class: 'sccard', 'data-k': sc.key },
       h('div', { class: 'scname' }, sc.name),
       h('span', { class: 'chip ' + diffClass(sc.diff) }, sc.diff),
@@ -344,7 +344,7 @@ function creatorScreen(sc: Scenario) {
   );
   preview = new Preview(view, 300, 420);
   preview.show(drafts[0].char);
-  if (location.hash.includes('debug')) (window as any).__preview = preview;
+  if (import.meta.env.DEV && location.hash.includes('debug')) (window as any).__preview = preview;
   refreshTabs();
   refreshEdit();
   if (drafts.length === 1) { tabs.style.display = 'none'; tabs.parentElement!.classList.add('single'); }
@@ -375,7 +375,7 @@ export async function renderLoadList(el: HTMLElement, onLoad: (slot: string) => 
   for (const m of saves) {
     const when = new Date(m.savedAt);
     const rowEl = h('div', { class: 'saverow' },
-      h('div', { class: 'svslot' }, m.slot === 'auto' ? 'Auto' : m.slot === 'quick' ? 'Quick' : 'Slot ' + m.slot),
+      h('div', { class: 'svslot', 'data-slot': m.slot }, slotLabel(m.slot)),
       h('div', { class: 'svinfo' }, h('b', {}, m.name), h('div', { class: 'dim' }, fitsWorld(m) ? `Day ${m.day} · ${m.chars} ${m.chars === 1 ? 'person' : 'people'} · ${m.money.toLocaleString()} chits · ${m.place}` : `Day ${m.day} · made before the waste changed shape; it can no longer be loaded`)),
       h('div', { class: 'svwhen dim' }, when.toLocaleDateString() + ' ' + when.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })),
     );

@@ -1,0 +1,31 @@
+/* The error card, the lost-picture note and the cannot-run screen (see errors.ts). */
+.errcard { position: absolute; left: 50%; top: 104px; transform: translateX(-50%); z-index: 700; width: min(500px, calc(100vw - 32px));
+  max-height: calc(100vh - 120px); overflow: auto; background: rgba(24,21,17,.97); border: 1px solid var(--bad); border-left: 3px solid var(--bad);
+  border-radius: 5px; padding: 14px 16px; box-shadow: 0 16px 50px rgba(0,0,0,.6); font: 15px/1.45 var(--font); color: var(--ink); }
+.errcard.glcard { border-color: var(--edge-hi); border-left-color: var(--accent); }
+.errtitle { font: 600 21px/1.2 var(--title); color: #e08a68; letter-spacing: .03em; margin-bottom: 6px; }
+.glcard .errtitle { color: var(--accent); }
+.errcard p, .fatalcard p { margin: 0 0 8px; }
+.errcard i { color: #f0c8b0; overflow-wrap: anywhere; }
+.erroff { color: var(--warn); }
+.errsave { color: var(--ink-dim); font-size: 14px; }
+.errsave:empty { display: none; }
+.errbtns { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+.errbtns .tbtn small { font-size: 12px; }
+.errbtns [hidden] { display: none; }
+.errbtns .tbtn:disabled, .errbtns .tbtn:disabled:hover { background: rgba(38,33,26,.86); border-color: var(--edge); color: var(--ink-faint); cursor: default; }
+.errmore { margin-top: 10px; font-size: 14px; color: var(--ink-dim); }
+.errmore summary { cursor: pointer; }
+.errmore summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.errtext { display: block; width: 100%; margin: 8px 0; resize: vertical; background: #14110d; color: var(--ink-dim); border: 1px solid var(--edge);
+  border-radius: 3px; padding: 6px 8px; font: 12px/1.4 ui-monospace, Consolas, monospace; white-space: pre; overflow: auto; }
+/* (the load list's slot column is narrow) */
+.svslot[data-slot="emergency"] { font-size: 11px; letter-spacing: 0; }
+/* a lost canvas shows as a blank grey sheet: the dark page behind looks less broken */
+.gl-lost #view, .gl-lost #overlay { visibility: hidden; }
+.fatal { position: absolute; inset: 0; z-index: 800; display: flex; align-items: center; justify-content: center; padding: 16px; background: #14110d; }
+.fatalcard { width: min(540px, 100%); font: 16px/1.5 var(--font); color: var(--ink); }
+.fatalcard .errtitle { font-size: clamp(22px, 4vw, 30px); color: var(--accent); margin-bottom: 12px; }
+@media (max-width: 560px) {
+  .errcard { top: 64px; max-height: calc(100vh - 80px); }
+}

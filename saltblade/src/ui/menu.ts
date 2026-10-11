@@ -3,17 +3,20 @@ import { h, ui, ask } from './dom';
 import { G } from '../state';
 import { S } from '../sim/ctx';
 import { input } from '../core/input';
-import { saveGame, loadSlot, loadData, saveMeta, sessionExtra } from '../game/session';
-import { listSaves, exportSave, exportText, SaveMeta } from '../sim/save';
+import { saveGame, autosave, loadSlot, loadData, saveMeta, sessionExtra, unsavedTime } from '../game/session';
+import { listSaves, exportSave, exportText, SaveMeta, saveWhen, slotLabel } from '../sim/save';
 import { renderLoadList, renderOptions, renderHelp, showTitle } from './title';
 import { setSpeed } from '../game/control';
 import { uiSound } from '../audio';
+import { on } from '../core/events';
 
 let root: HTMLDivElement | null = null;
 let unKey: (() => void) | null = null;
 let resume = 1;
 
 export const menuOpen = () => !!root;
+// another world put in place (a load, a new game, the title) closes the menu over the old one
+on('world:reset', () => closeMenu(true));
 
 export function openMenu() {
   if (root || G.mode !== 'play') return;
@@ -54,7 +57,7 @@ export function openMenu() {
       const yes = h('button', { class: 'tbtn primary' }, 'Quit to the title');
       yes.onclick = () => { closeMenu(true); showTitle(); };
       const saveQuit = h('button', { class: 'tbtn' }, 'Save, then quit');
-      saveQuit.onclick = async () => { await saveGame('auto'); closeMenu(true); showTitle(); };
+      saveQuit.onclick = async () => { await autosave(); closeMenu(true); showTitle(); };
       body.append(h('h2', {}, 'Quit to the title?'), h('p', { class: 'dim' }, 'Anything since your last save will be lost.'), h('div', { class: 'gmrow' }, saveQuit, yes));
     }),
   );
@@ -66,6 +69,21 @@ export function closeMenu(keepPaused = false) {
   root.remove(); root = null;
   unKey?.(); unKey = null;
   if (!keepPaused && G.mode === 'play') setSpeed(resume);
+}
+
+/** '"Nameless", day 3, 14:20, saved 11/10/26, 09:15': enough to know which game a slot holds. */
+const describe = (m: SaveMeta) => `"${m.name}", ${saveWhen(m)}, saved ${new Date(m.savedAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}`;
+
+/** F9: back to the quick save, asking first when more than a minute of play would be lost. */
+export async function quickLoad() {
+  if (G.mode !== 'play' || document.querySelector('.askback')) return; // (already asking)
+  const m = (await listSaves().catch(() => [] as SaveMeta[])).find((x) => x.slot === 'quick');
+  if (!m) { S.fx.notice('There is no quick save yet. F5 makes one.', 'bad'); return; }
+  const go = () => void loadSlot('quick').then((err) => { if (err) S.fx.notice(err, 'bad'); });
+  const lost = unsavedTime();
+  if (lost <= 60) { go(); return; }
+  const mins = Math.round(lost / 60);
+  ask(`Load the quick save (${describe(m)})? About ${mins === 1 ? 'a minute' : mins + ' minutes'} of play since you last saved will be lost.`, 'Load it', go);
 }
 
 function warn(body: HTMLElement, text: string) {
@@ -83,8 +101,8 @@ async function savePanel(body: HTMLElement) {
   for (const slot of ['1', '2', '3', '4', '5', 'quick']) {
     const m = by.get(slot);
     const row = h('div', { class: 'saverow' },
-      h('div', { class: 'svslot' }, slot === 'quick' ? 'Quick' : 'Slot ' + slot),
-      m ? h('div', { class: 'svinfo' }, h('b', {}, m.name), h('div', { class: 'dim' }, `Day ${m.day} · ${m.place} · ${new Date(m.savedAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}`)) : h('div', { class: 'svinfo dim' }, 'Empty'),
+      h('div', { class: 'svslot' }, slotLabel(slot)),
+      m ? h('div', { class: 'svinfo' }, h('b', {}, m.name), h('div', { class: 'dim' }, `${saveWhen(m).replace(/^d/, 'D')} · ${m.place} · ${new Date(m.savedAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}`)) : h('div', { class: 'svinfo dim' }, 'Empty'),
     );
     const b = h('button', { class: 'tbtn small primary' }, m ? 'Overwrite' : 'Save here');
     const doSave = async () => {
@@ -94,7 +112,7 @@ async function savePanel(body: HTMLElement) {
       savePanel(body);
     };
     b.onclick = () => {
-      if (m && m.name !== meta.name) ask(`Overwrite "${m.name}, day ${m.day}"?`, 'Overwrite', () => void doSave());
+      if (m) ask(`Overwrite ${slotLabel(slot)}? It holds ${describe(m)}.`, 'Overwrite', () => void doSave());
       else void doSave();
     };
     row.appendChild(b);

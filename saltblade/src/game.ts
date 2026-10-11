@@ -39,7 +39,7 @@ import { tickDeeds } from './sim/deeds';
 import { tickChatter } from './sim/chatter';
 import { tickHunters } from './sim/hunters';
 import { tickPersonal } from './sim/personal';
-import { tickAutosave, startNewGame } from './game/session';
+import { tickAutosave, startNewGame, loadData } from './game/session';
 import { showTitle, tickTitle } from './ui/title';
 import { tickHints } from './ui/hints';
 import { tickGameOver } from './ui/gameover';
@@ -50,6 +50,8 @@ import { WeatherFx } from './render/weatherFx';
 import { Decals } from './render/decals';
 import { Particles } from './render/particles';
 import { highLevel } from './sim/drugs';
+import { takeReloadStash } from './sim/save';
+import { installErrorHandlers, hasWebGL2, noWebGL, showFatal, watchGraphics, system, guard, report, injectFailure, systemReport, System } from './game/errors';
 
 function loadingScreen() {
   const el = document.createElement('div');
@@ -70,6 +72,19 @@ function loadingScreen() {
 }
 
 export async function boot() {
+  installErrorHandlers();
+  // nothing to be done without WebGL: say so now, not after the world is made
+  if (!hasWebGL2()) { noWebGL(); return; }
+  try {
+    await start();
+  } catch (e) {
+    console.error(e);
+    const err = e instanceof Error ? e : new Error(String(e));
+    showFatal('Saltblade could not start', ['Something went wrong while the world was being made. Trying again often helps.'], err.stack ?? err.message);
+  }
+}
+
+async function start() {
   const canvas = document.getElementById('view') as HTMLCanvasElement;
   input.attach(canvas);
   G.mode = 'loading';
@@ -81,7 +96,9 @@ export async function boot() {
     ls.set(s, (k + f) / stages.length);
   });
   G.field = new RegionField(G.seed);
-  G.R = new Renderer(canvas);
+  try { G.R = new Renderer(canvas); }
+  catch (e) { console.error(e); ls.done(); noWebGL(); return; } // (WebGL 2 is there, but would not draw for us)
+  watchGraphics(canvas);
   G.cam = new RTSCamera();
   G.waterMat = makeWaterMaterial();
   G.terrainR = new TerrainRenderer(G.T, G.field, G.waterMat);
@@ -122,19 +139,28 @@ export async function boot() {
   applySettings();
   const cr = SETTLEMENT.crossroad;
   G.cam.lookAt(cr.u * WORLD, cr.v * WORLD, 120);
-  // #fight, #play or #start=<scenario> skip the title (for testing)
-  const hash = location.hash;
+  // a game handed across a reload (the graphics device went away) carries on;
+  // otherwise, in development builds, #fight, #play or #start=<scenario> skip the title (for testing)
+  const stash = await takeReloadStash().catch(() => null);
+  const resumed = !!stash && !loadData(stash);
+  const hash = import.meta.env.DEV ? location.hash : '';
   const quick = hash.includes('fight') ? 'fight' : hash.match(/start=(\w+)/)?.[1] ?? (hash.includes('play') ? 'wanderer' : '');
-  if (quick) startNewGame({ scenario: quick, faction: '', people: [] });
+  if (resumed) { /* back where they were */ }
+  else if (quick) startNewGame({ scenario: quick, faction: '', people: [] });
   else showTitle();
   ls.done();
-  if (import.meta.env.DEV || location.hash.includes('debug')) (await import('./debug')).attachDebug();
+  // the play-testing handle exists only in development builds
+  if (import.meta.env.DEV) {
+    (await import('./debug')).attachDebug();
+    Object.assign((window as any).__sb, { fail: injectFailure, failures: systemReport });
+  }
   let last = performance.now();
+  // the next frame is asked for before this one runs, so no error can stop the loop
   const frame = (now: number) => {
+    requestAnimationFrame(frame);
     const dt = Math.max(0, Math.min(0.1, (now - last) / 1000));
     last = now;
-    step(dt);
-    requestAnimationFrame(frame);
+    try { step(dt); } catch (e) { report(e, 'The main loop'); }
   };
   requestAnimationFrame(frame);
 }
@@ -156,6 +182,43 @@ function drips(dt: number) {
 const perf = { sim: 0, views: 0, render: 0, frame: 0, fps: 60, pop: 0, chars: 0, structs: 0, terrain: 0, props: 0, misc: 0 };
 const ema = (a: number, b: number) => a + (b - a) * 0.05;
 
+/** Where the sim keeps detailed time this frame: the camera's focus. */
+let focus = { x: 0, z: 0 };
+/** Each sim step, part by part: one that throws is counted, and switched off if it keeps at it. */
+const SIM_PARTS: [System, (h: number) => void][] = [
+  [system('Simulation', true), (h) => simStep(h, focus)],
+  [system('Squads'), tickSquads],
+  [system('Encounters'), tickEncounters],
+  [system('The wider world'), tickWorld],
+  [system('Your base'), tickBase],
+  [system('Crime'), (h) => { tickRunaways(h); tickStealth(h); }],
+  [system('Raids'), (h) => { if (G.mode === 'play') tickRaids(h); }],
+  [system('World events'), tickWorldEvents],
+  [system('The fighting pit'), tickArena],
+  [system('Deeds'), (h) => { if (G.mode === 'play') tickDeeds(h); }],
+  [system('Bounty hunters'), (h) => { if (G.mode === 'play') tickHunters(h); }],
+  [system('Personal stories'), (h) => { if (G.mode === 'play') tickPersonal(h); }],
+  [system('Chatter'), tickChatter],
+  [system('Weather'), (h) => S.weather.tick(h)],
+];
+const PART = {
+  pop: system('Towns coming into view'),
+  autosave: system('Autosave'),
+  title: system('Title screen'),
+  audio: system('Sound'),
+  hints: system('Hints'),
+  gameOver: system('Game over'),
+  camera: system('Camera', true),
+  sky: system('Sky and weather'),
+  chars: system('People and beasts'),
+  structs: system('Buildings'),
+  terrain: system('Terrain'),
+  props: system('Rocks and plants'),
+  effects: system('Effects'),
+  render: system('Drawing', true),
+  labels: system('Names and health bars'),
+};
+
 function step(dt: number) {
   const t0 = performance.now();
   G.perf = perf;
@@ -164,37 +227,59 @@ function step(dt: number) {
   G.simTime += simDt;
   // the sim runs in small steps so fast-forward stays stable
   let left = simDt;
-  const focus = { x: G.cam.target.x, z: G.cam.target.z };
+  focus = { x: G.cam.target.x, z: G.cam.target.z };
   while (left > 1e-6) {
     const h = Math.min(left, 0.05);
-    simStep(h, focus);
-    tickSquads(h);
-    tickEncounters(h);
-    tickWorld(h);
-    tickBase(h);
-    tickRunaways(h);
-    tickStealth(h);
-    if (G.mode === 'play') tickRaids(h);
-    tickWorldEvents(h);
-    tickArena(h);
-    if (G.mode === 'play') { tickDeeds(h); tickHunters(h); tickPersonal(h); }
-    tickChatter(h);
-    S.weather.tick(h);
+    for (let i = 0; i < SIM_PARTS.length; i++) guard(SIM_PARTS[i][0], SIM_PARTS[i][1], h);
     left -= h;
   }
   const t1 = performance.now();
   perf.sim = ema(perf.sim, t1 - t0);
   let tp = performance.now();
   const lap = (k: 'pop' | 'chars' | 'structs' | 'terrain' | 'props' | 'misc') => { const n = performance.now(); perf[k] = ema(perf[k], n - tp); tp = n; };
-  tickPopulation(dt);
+  guard(PART.pop, tickPopulation, dt);
   lap('pop');
-  tickAutosave(dt);
-  if (G.mode === 'title') tickTitle(dt);
-  tickAudio(dt);
-  tickHints(dt);
-  tickGameOver(dt);
+  guard(PART.autosave, tickAutosave, dt);
+  if (G.mode === 'title') guard(PART.title, tickTitle, dt);
+  guard(PART.audio, tickAudio, dt);
+  guard(PART.hints, tickHints, dt);
+  guard(PART.gameOver, tickGameOver, dt);
+  guard(PART.camera, moveCamera, dt);
+  guard(PART.sky, skyAndWeather, dt);
+  lap('misc');
+  guard(PART.chars, charViews, dt);
+  lap('chars');
+  guard(PART.structs, structViews, dt);
+  lap('structs');
+  guard(PART.terrain, terrain, dt);
+  lap('terrain');
+  guard(PART.props, props, dt);
+  lap('props');
+  guard(PART.effects, effects, dt);
+  const t2 = performance.now();
+  perf.views = ema(perf.views, t2 - t1);
+  // (with the graphics device gone there is nothing to draw on)
+  if (!G.glLost) guard(PART.render, render, dt);
+  const t3 = performance.now();
+  perf.render = ema(perf.render, t3 - t2);
+  if (!G.glLost) guard(PART.labels, labels, dt);
+  perf.frame = ema(perf.frame, performance.now() - t0);
+  if (dt > 0) perf.fps = ema(perf.fps, 1 / dt);
+}
+
+const charViews = (dt: number) => G.charViews.update(dt * (G.speed ? 1 : 0.0001), G.W, G.R.camera.position, G.cam.target, sel, hoverId);
+const structViews = (dt: number) => G.structViews.update(dt, G.R.camera.position, G.cam.target, [...sel].map((id) => G.W.char(id)).filter(Boolean) as any, G.daylight.night);
+const terrain = () => G.terrainR.update(G.R.camera.position);
+const props = () => G.props.update(G.R.camera.position);
+const render = () => G.R.render();
+const labels = (dt: number) => G.overlay.draw(G.W, G.R.camera, sel, hoverId, dt);
+
+function moveCamera(dt: number) {
   G.cam.update(dt, G.T);
   G.cam.apply(G.R.camera, G.T);
+}
+
+function skyAndWeather(dt: number) {
   const t = G.cam.target;
   const reg = G.T.regionAt(t.x, t.z);
   G.daylight.setRegion(reg.haze, reg.fog);
@@ -212,15 +297,9 @@ function step(dt: number) {
   G.R.shadowFocus.copy(t);
   G.R.shadowSize = Math.min(160, Math.max(40, G.cam.dist * 1.2));
   G.R.shadowsOn = (G.settings?.shadows ?? true) && G.cam.dist < 400;
-  lap('misc');
-  G.charViews.update(dt * (G.speed ? 1 : 0.0001), G.W, G.R.camera.position, G.cam.target, sel, hoverId);
-  lap('chars');
-  G.structViews.update(dt, G.R.camera.position, G.cam.target, [...sel].map((id) => G.W.char(id)).filter(Boolean) as any, G.daylight.night);
-  lap('structs');
-  G.terrainR.update(G.R.camera.position);
-  lap('terrain');
-  G.props.update(G.R.camera.position);
-  lap('props');
+}
+
+function effects(dt: number) {
   windUniform.value = G.realTime;
   // sparks and smoke move in real time, slowed with the game
   G.particles.setScreen(G.R.height, G.R.camera.fov);
@@ -242,12 +321,4 @@ function step(dt: number) {
   // and the colours swim when they're high
   const highT = watched && watched.up && watched.mem.high ? highLevel(watched) : 0;
   G.R.high += (highT - G.R.high) * Math.min(1, dt * 0.8);
-  const t2 = performance.now();
-  perf.views = ema(perf.views, t2 - t1);
-  G.R.render();
-  const t3 = performance.now();
-  perf.render = ema(perf.render, t3 - t2);
-  G.overlay.draw(G.W, G.R.camera, sel, hoverId, dt);
-  perf.frame = ema(perf.frame, performance.now() - t0);
-  if (dt > 0) perf.fps = ema(perf.fps, 1 / dt);
 }

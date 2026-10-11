@@ -3,28 +3,43 @@ import { h, ui } from './dom';
 import { G } from '../state';
 import { S } from '../sim/ctx';
 import { loadSlot } from '../game/session';
-import { listSaves } from '../sim/save';
+import { listSaves, safeToResume, saveWhen, slotLabel } from '../sim/save';
 import { showTitle } from './title';
 import { setSpeed } from '../game/control';
+import { on } from '../core/events';
 
 let shown = false;
 let t = 0;
+/** Bumped on every new game and load, so a game over still on its way from the last one never lands. */
+let gen = 0;
 
-export function resetGameOver() { shown = false; }
+export function resetGameOver() {
+  shown = false;
+  t = 0;
+  gen++;
+  document.getElementById('gameover')?.remove();
+}
+on('game:start', resetGameOver);
 
 export function tickGameOver(dt: number) {
   if (G.mode !== 'play' || shown) return;
   t -= dt;
   if (t > 0) return;
   t = 1;
-  const people = S.W.playerChars();
-  if (!people.length || people.some((c) => c.alive)) return;
+  if (!wiped()) return;
   shown = true;
-  setTimeout(show, 2500); // let the last blow land
+  const g = gen;
+  setTimeout(() => { if (g === gen) void show(); }, 2500); // let the last blow land
+}
+
+function wiped() {
+  const people = S.W.playerChars();
+  return people.length > 0 && !people.some((c) => c.alive);
 }
 
 async function show() {
-  if (G.mode !== 'play') return;
+  if (G.mode !== 'play' || !wiped()) { shown = false; return; }
+  const g = gen;
   setSpeed(0);
   const W = S.W;
   const people = W.playerChars();
@@ -32,10 +47,13 @@ async function show() {
   const kos = people.reduce((a, c) => a + c.stats.kos, 0);
   const km = people.reduce((a, c) => a + c.stats.dist, 0) / 1000;
   const towns = S.T.sites.filter((s) => s.kind === 'town' && W.discovered.has(s.id)).length;
+  // the newest save from a quiet moment: never one made as the end came
   const saves = await listSaves().catch(() => []);
+  if (g !== gen) return;
+  const best = saves.find(safeToResume);
   const back = h('div', { id: 'gameover' });
-  const load = saves[0] ? h('button', { class: 'tbtn primary' }, `Load ${saves[0].name}, day ${saves[0].day}`) : null;
-  if (load) load.onclick = async () => { const err = await loadSlot(saves[0].slot); if (!err) { back.remove(); shown = false; } };
+  const load = best ? h('button', { class: 'tbtn primary' }, `Load ${best.name}, ${saveWhen(best)}`, h('small', {}, slotLabel(best.slot))) : null;
+  if (load) load.onclick = async () => { const err = await loadSlot(best!.slot); if (err) S.fx.notice(err, 'bad'); };
   const title = h('button', { class: 'tbtn' }, 'Back to the title');
   title.onclick = () => { back.remove(); shown = false; showTitle(); };
   const stay = h('button', { class: 'tbtn' }, 'Look around');

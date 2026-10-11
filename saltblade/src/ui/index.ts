@@ -16,7 +16,7 @@ import { Clock } from '../sim/clock';
 import { openDialogue } from './dialogue';
 import { openTrade } from './trade';
 import { setupBuild } from './build';
-import { openMenu as openGameMenu } from './menu';
+import { openMenu as openGameMenu, quickLoad } from './menu';
 import { toggleMap } from './map';
 import { toggleFactions } from './factions';
 import { fitProsthetic, removeProsthetic } from '../sim/health';
@@ -25,7 +25,7 @@ import { setupCaptive } from './captive';
 import { openBook } from './read';
 import { DEEDS } from '../sim/deeds';
 import { setupCodex, toggleCodex } from './codex';
-import { saveGame, loadSlot } from '../game/session';
+import { saveGame } from '../game/session';
 import { G } from '../state';
 
 export function setupUI() {
@@ -92,7 +92,7 @@ export function setupUI() {
         if (G.mode === 'play') void saveGame('quick');
         return true;
       case 'F9':
-        if (G.mode === 'play') void loadSlot('quick').then((err) => { if (err) S.fx.notice(err, 'bad'); });
+        void quickLoad();
         return true;
     }
     return false;

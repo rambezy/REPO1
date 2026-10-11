@@ -131,9 +131,10 @@ npm run build        # type-check, then dist/index.html (one file, about 1.3 MB)
 node tools/make-artifact.mjs   # dist/artifact.html for publishing as an artifact
 ```
 
-Adding `#play`, `#fight` or `#start=freeholders` (any start's key) to the
-URL skips the title screen. `#debug` exposes `window.__sb` helpers for
-testing.
+In development builds (`npm run dev`) only, adding `#play`, `#fight` or
+`#start=freeholders` (any start's key) to the URL skips the title screen, and
+`window.__sb` holds helpers for testing (`#debug` also lists the hidden
+start). The production build ignores these and contains no debug helpers.
 
 ## How it is built
 
