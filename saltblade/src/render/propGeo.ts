@@ -1,23 +1,41 @@
-// Low-poly geometry for every vegetation and rock kind, a few variants each.
+// Low-poly geometry for every vegetation and rock kind, a few variants each,
+// with the surface each part is made of (bark, leaves, rock...) for the shader.
 import * as THREE from 'three';
-import { GeoBuilder, geoRand } from './geo';
+import { geoRand } from './geo';
+import { KitBuilder } from './kit';
+import { SURF } from './surface';
 
-type Maker = (b: GeoBuilder, r: () => number) => void;
+/** `far`: the cheap version seen from a distance (same random draws, so the same shape, without the fine parts). */
+type Maker = (b: KitBuilder, r: () => number, far?: boolean) => void;
 
 const MAKERS: Record<string, Maker> = {
-  shrub(b, r) {
-    const n = 3 + Math.floor(r() * 3);
+  shrub(b, r, far) {
+    const n = 5 + Math.floor(r() * 3);
     const base = [0x6e6a3e, 0x7a6e44, 0x5e603a][Math.floor(r() * 3)];
+    if (!far) b.S(SURF.bark).setColor(0x4a3e2e).cyl(0.03, 0.05, 0.3, 4);
+    for (let i = 0; i < 4; i++) {
+      const ry = r() * 6.28, rz = 0.5 + r() * 0.4, l = 0.55 + r() * 0.3;
+      if (!far) b.push().rotateY(ry).rotateZ(rz).blade(0.025, l, 0.05, { color: 0x5a4a3a }).pop();
+    }
+    b.S(SURF.leaf);
     for (let i = 0; i < n; i++) {
-      const a = r() * 6.28, d = r() * 0.45;
-      b.push().translate(Math.cos(a) * d, 0.25 + r() * 0.3, Math.sin(a) * d).scale(1, 0.75, 1);
-      b.ico(0.32 + r() * 0.25, 0, { color: base, jitter: 0.12, seed: 1 + i, grad: 0.35 });
+      const a = r() * 6.28, d = 0.12 + r() * 0.4, y = 0.22 + r() * 0.35, rr = 0.2 + r() * 0.17;
+      // from afar four bigger clumps stand for them all
+      if (far && i >= 4) continue;
+      b.push().translate(Math.cos(a) * d, y, Math.sin(a) * d).scale(1, 0.72, 1);
+      b.ico(far ? rr * 1.2 : rr, 0, { color: base, jitter: 0.1, seed: 1 + i, grad: 0.4 });
       b.pop();
     }
-    b.setColor(0x4a3e2e).cyl(0.03, 0.05, 0.3, 4);
+    if (far) return;
+    for (let i = 0; i < 9; i++) {
+      const a = r() * 6.28;
+      b.push().translate(Math.cos(a) * 0.38, 0.12 + r() * 0.35, Math.sin(a) * 0.38).rotateY(-a).rotateX(0.6 + r() * 0.5);
+      b.blade(0.16, 0.32 + r() * 0.15, 0.06, { color: base });
+      b.pop();
+    }
   },
   deadtree(b, r) {
-    b.setColor(0x6a5a48);
+    b.S(SURF.bark).setColor(0x6a5a48);
     const h = 3 + r() * 2.5;
     b.cyl(0.08, 0.2, h, 5);
     const branches = 3 + Math.floor(r() * 3);
@@ -29,6 +47,7 @@ const MAKERS: Record<string, Maker> = {
     }
   },
   cactus(b, r) {
+    b.S(SURF.cactus);
     const g = [0x5a7a3a, 0x6a8440, 0x4e6a36][Math.floor(r() * 3)];
     const h = 1.6 + r() * 1.6;
     b.setColor(g).cyl(0.2, 0.24, h, 8, { grad: 0.3 });
@@ -40,7 +59,7 @@ const MAKERS: Record<string, Maker> = {
       b.limb(side * len, y - 0.05, 0, side * len, y + up, 0, 0.13, 0.12, 6);
       b.push().translate(side * len, y + up, 0).sphere(0.12, 6, 3).pop();
     }
-    if (r() < 0.4) b.push().translate(0, h + 0.15, 0).setColor(0xd8a0c0).sphere(0.08, 5, 3).pop();
+    if (r() < 0.4) b.S(SURF.plain).push().translate(0, h + 0.15, 0).setColor(0xd8a0c0).sphere(0.08, 5, 3).pop();
   },
   grassdry(b, r) { tuft(b, r, [0xa8985e, 0xb4a26a, 0x968a58], 7, 0.55); },
   grass(b, r) { tuft(b, r, [0x6f8a42, 0x7e9848, 0x5e7a3a], 9, 0.6); },
@@ -48,6 +67,7 @@ const MAKERS: Record<string, Maker> = {
   ashgrass(b, r) { tuft(b, r, [0x6a6660, 0x7a7670, 0x5a5652], 6, 0.45); },
   seagrass(b, r) { tuft(b, r, [0x7a8a6a, 0x8a9474, 0x6e7c60], 8, 0.7); },
   reeds(b, r) {
+    b.S(SURF.grass);
     const n = 7 + Math.floor(r() * 5);
     for (let i = 0; i < n; i++) {
       const a = r() * 6.28, d = r() * 0.35;
@@ -60,30 +80,45 @@ const MAKERS: Record<string, Maker> = {
   },
   flowers(b, r) {
     tuft(b, r, [0x6f8a42, 0x7e9848], 5, 0.4);
+    b.S(SURF.plain);
     const pc = [0xd8c050, 0xc86a8a, 0xe8e0d0, 0x9a70c8][Math.floor(r() * 4)];
     for (let i = 0; i < 5; i++) {
       const a = r() * 6.28, d = r() * 0.3;
       b.push().translate(Math.cos(a) * d, 0.35 + r() * 0.15, Math.sin(a) * d).setColor(pc).octa(0.05).pop();
     }
   },
-  tree(b, r) {
+  tree(b, r, far) {
     const h = 3.2 + r() * 1.8;
-    b.setColor(0x5e4a36).cyl(0.14, 0.24, h, 6);
-    const crowns = 3 + Math.floor(r() * 2);
+    b.S(SURF.bark).setColor(0x5e4a36).cyl(0.14, 0.24, h, far ? 4 : 6);
+    for (let i = 0; i < 3; i++) { const a = r() * 6.28; if (!far) b.limb(0, h * 0.7, 0, Math.cos(a) * 0.9, h + 0.3, Math.sin(a) * 0.9, 0.08, 0.04, 4); }
+    const crowns = 4 + Math.floor(r() * 2);
     const gc = [0x5a7a38, 0x4e6e32, 0x66843e][Math.floor(r() * 3)];
+    b.S(SURF.leaf);
     for (let i = 0; i < crowns; i++) {
-      const a = r() * 6.28, d = i === 0 ? 0 : 0.6 + r() * 0.5;
-      b.push().translate(Math.cos(a) * d, h + (i === 0 ? 0.6 : r() * 0.8 - 0.2), Math.sin(a) * d).scale(1, 0.85, 1);
-      b.ico(1.1 + r() * 0.6, 0, { color: gc, jitter: 0.35, seed: 3 + i, grad: 0.4 });
+      const a = r() * 6.28, d = i === 0 ? 0 : 0.7 + r() * 0.5;
+      const y = h + (i === 0 ? 0.7 : r() * 0.9 - 0.2), cr = 0.85 + r() * 0.5;
+      // from afar three crowns, a little fuller, stand for them all
+      if (far && i >= 3) continue;
+      b.push().translate(Math.cos(a) * d, y, Math.sin(a) * d).scale(1, 0.8, 1);
+      b.ico(far ? cr * 1.12 : cr, 0, { color: gc, jitter: 0.3, seed: 3 + i, grad: 0.45 });
+      b.pop();
+    }
+    if (far) return;
+    // leafy sprays round the crown, so its edge is ragged rather than round
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * 6.28 + r() * 0.4;
+      b.push().translate(Math.cos(a) * 1.35, h + 0.1 + r() * 1.1, Math.sin(a) * 1.35).rotateY(-a + 1.57).rotateZ(-0.9 + r() * 0.5);
+      b.blade(0.55, 0.75 + r() * 0.3, 0.1, { color: gc });
       b.pop();
     }
   },
   olive(b, r) {
-    b.setColor(0x6a5c4a);
+    b.S(SURF.bark).setColor(0x6a5c4a);
     const h = 1.8 + r() * 0.8;
     b.limb(0, 0, 0, 0.3, h * 0.6, 0.1, 0.22, 0.14, 5);
     b.limb(0.3, h * 0.6, 0.1, -0.1, h, 0, 0.14, 0.1, 5);
     const gc = 0x7a8660;
+    b.S(SURF.leaf);
     for (let i = 0; i < 4; i++) {
       const a = (i / 4) * 6.28 + r(), d = 0.7 + r() * 0.4;
       b.push().translate(Math.cos(a) * d, h + r() * 0.3, Math.sin(a) * d).scale(1.2, 0.55, 1.2);
@@ -92,7 +127,7 @@ const MAKERS: Record<string, Maker> = {
     }
   },
   blacktree(b, r) {
-    b.setColor(0x2a2624);
+    b.S(SURF.bark).setColor(0x2a2624);
     const h = 3.5 + r() * 3;
     b.limb(0, 0, 0, 0.4 - r() * 0.8, h, 0.3 - r() * 0.6, 0.26, 0.06, 5);
     for (let i = 0; i < 4; i++) {
@@ -102,13 +137,14 @@ const MAKERS: Record<string, Maker> = {
   },
   swamptree(b, r) {
     const h = 5 + r() * 3;
-    b.setColor(0x4a4232);
+    b.S(SURF.bark).setColor(0x4a4232);
     for (let i = 0; i < 5; i++) {
       const a = (i / 5) * 6.28 + r() * 0.5;
       b.limb(Math.cos(a) * 1.1, -0.2, Math.sin(a) * 1.1, 0, 1.4, 0, 0.12, 0.3, 4);
     }
     b.cyl(0.3, 0.45, h, 7);
     const gc = [0x3e4a2a, 0x46522e][Math.floor(r() * 2)];
+    b.S(SURF.leaf);
     for (let i = 0; i < 5; i++) {
       const a = r() * 6.28, d = 0.8 + r() * 1.6;
       b.push().translate(Math.cos(a) * d, h - 0.5 + r() * 1.2, Math.sin(a) * d).scale(1.3, 0.6, 1.3);
@@ -116,6 +152,7 @@ const MAKERS: Record<string, Maker> = {
       b.pop();
     }
     // hanging moss
+    b.S(SURF.grass);
     for (let i = 0; i < 6; i++) {
       const a = r() * 6.28, d = 1 + r() * 1.8;
       b.push().translate(Math.cos(a) * d, h - 2.2, Math.sin(a) * d).rotateY(r() * 3);
@@ -124,6 +161,7 @@ const MAKERS: Record<string, Maker> = {
     }
   },
   stalk(b, r) {
+    b.S(SURF.bark);
     const h = 11 + r() * 8;
     const segs = 4;
     const col = [0x8a7a3a, 0x9a8440, 0x7a6e38][Math.floor(r() * 3)];
@@ -136,6 +174,7 @@ const MAKERS: Record<string, Maker> = {
       x = nx; z = nz;
     }
     // bulb crown
+    b.S(SURF.leaf);
     b.push().translate(x, h, z).scale(1, 0.7, 1);
     b.ico(1.8 + r() * 0.8, 1, { color: [0xc89a3a, 0xb88a34, 0xd6a844][Math.floor(r() * 3)], jitter: 0.3, seed: 17, grad: 0.4 });
     b.pop();
@@ -148,6 +187,7 @@ const MAKERS: Record<string, Maker> = {
     }
   },
   fungus(b, r) {
+    b.S(SURF.bone);
     const col = [0xc86a3a, 0x9a6ab0, 0xd8c8a0, 0xb84a4a][Math.floor(r() * 4)];
     const n = 1 + Math.floor(r() * 3);
     for (let i = 0; i < n; i++) {
@@ -162,6 +202,7 @@ const MAKERS: Record<string, Maker> = {
     }
   },
   saltcrystal(b, r) {
+    b.S(SURF.glass);
     const n = 3 + Math.floor(r() * 4);
     for (let i = 0; i < n; i++) {
       const a = r() * 6.28, d = r() * 0.5;
@@ -173,6 +214,7 @@ const MAKERS: Record<string, Maker> = {
     }
   },
   crystal(b, r) {
+    b.S(SURF.glass);
     const n = 3 + Math.floor(r() * 4);
     for (let i = 0; i < n; i++) {
       const a = r() * 6.28, d = r() * 0.6;
@@ -183,6 +225,7 @@ const MAKERS: Record<string, Maker> = {
   },
   bones(b, r) {
     // a giant ribcage arching out of the sand
+    b.S(SURF.bone);
     const n = 4 + Math.floor(r() * 4);
     const col = 0xe0d6c0;
     const len = n * 1.6;
@@ -203,6 +246,7 @@ const MAKERS: Record<string, Maker> = {
     }
   },
   scrap(b, r) {
+    b.S(SURF.metal);
     const n = 2 + Math.floor(r() * 3);
     for (let i = 0; i < n; i++) {
       b.push().translate((r() - 0.5) * 1.5, 0.2, (r() - 0.5) * 1.5).rotateY(r() * 3).rotateZ((r() - 0.5) * 0.8).rotateX((r() - 0.5) * 0.6);
@@ -212,11 +256,12 @@ const MAKERS: Record<string, Maker> = {
     }
   },
   driftwood(b, r) {
-    b.setColor(0x9a8e7a);
+    b.S(SURF.bark).setColor(0x9a8e7a);
     b.limb(-1.2, 0.12, 0, 1.2, 0.18, (r() - 0.5) * 0.6, 0.16, 0.1, 5);
     if (r() < 0.6) b.limb(0.3, 0.15, 0, 0.9, 0.5, 0.6, 0.06, 0.03, 4);
   },
   boulder(b, r) {
+    b.S(SURF.rock);
     b.push().translate(0, 0.35, 0).scale(1, 0.7 + r() * 0.3, 0.9 + r() * 0.3);
     b.dodeca(1, { color: 0xffffff, jitter: 0.5, seed: Math.floor(r() * 1000) + 1, grad: 0.35 });
     b.pop();
@@ -228,7 +273,8 @@ const MAKERS: Record<string, Maker> = {
   },
 };
 
-function tuft(b: GeoBuilder, r: () => number, cols: number[], n: number, h: number) {
+function tuft(b: KitBuilder, r: () => number, cols: number[], n: number, h: number) {
+  b.S(SURF.grass);
   for (let i = 0; i < n; i++) {
     const a = r() * 6.28, d = r() * 0.28;
     b.push().translate(Math.cos(a) * d, 0, Math.sin(a) * d).rotateY(r() * 3.14);
@@ -237,19 +283,23 @@ function tuft(b: GeoBuilder, r: () => number, cols: number[], n: number, h: numb
   }
 }
 
+/** Kinds with a cheaper version for far away, and how far that is (m). */
+export const PROP_LOD: Record<string, number> = { tree: 190, shrub: 140 };
 const variantCache = new Map<string, THREE.BufferGeometry[]>();
-/** Geometry variants for a prop kind. */
-export function propVariants(kind: string): THREE.BufferGeometry[] {
-  let v = variantCache.get(kind);
+/** Geometry variants for a prop kind (`far`: the distant versions, the same ones where a kind has none). */
+export function propVariants(kind: string, far = false): THREE.BufferGeometry[] {
+  if (far && !PROP_LOD[kind]) return propVariants(kind);
+  const key = far ? kind + '~' : kind;
+  let v = variantCache.get(key);
   if (v) return v;
   const mk = MAKERS[kind];
   const count = kind === 'boulder' ? 4 : kind.includes('grass') || kind === 'flowers' ? 2 : 3;
   v = [];
   for (let i = 0; i < count; i++) {
-    const b = new GeoBuilder();
-    mk(b, geoRand(1000 + i * 77 + kind.length * 13));
+    const b = new KitBuilder();
+    mk(b, geoRand(1000 + i * 77 + kind.length * 13), far);
     v.push(b.build());
   }
-  variantCache.set(kind, v);
+  variantCache.set(key, v);
   return v;
 }
