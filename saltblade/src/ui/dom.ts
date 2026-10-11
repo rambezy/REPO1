@@ -53,28 +53,36 @@ export function openWindow(key: string, title: string, opts: { w?: number; x?: n
   if (opts.w) el.style.width = opts.w + 'px';
   ui().appendChild(el);
   shield(el);
-  const r = el.getBoundingClientRect();
   const saved = winPos[key];
-  el.style.left = Math.max(4, Math.min(window.innerWidth - r.width - 4, saved?.[0] ?? opts.x ?? (window.innerWidth - r.width) / 2)) + 'px';
-  el.style.top = Math.max(4, Math.min(window.innerHeight - 80, saved?.[1] ?? opts.y ?? 90)) + 'px';
-  el.addEventListener('mousedown', () => { el.style.zIndex = String(++zTop); });
-  // drag by title
-  t.addEventListener('mousedown', (e) => {
+  const r = el.getBoundingClientRect();
+  el.style.left = (saved?.[0] ?? opts.x ?? (window.innerWidth - r.width) / 2) + 'px';
+  el.style.top = (saved?.[1] ?? opts.y ?? 90) + 'px';
+  fit(el);
+  // a window that grows (another tab, more rows) is pulled back on screen
+  const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => fit(el)) : null;
+  ro?.observe(el);
+  el.addEventListener('pointerdown', () => { el.style.zIndex = String(++zTop); });
+  // drag by title: pointer events, so a finger or a pen moves it as well as a mouse
+  t.addEventListener('pointerdown', (e) => {
     if (e.target === x) return;
-    const sx = e.clientX, sy = e.clientY;
-    const ox = el.offsetLeft, oy = el.offsetTop;
-    const mv = (ev: MouseEvent) => {
-      el.style.left = Math.max(0, Math.min(window.innerWidth - 60, ox + ev.clientX - sx)) + 'px';
-      el.style.top = Math.max(0, Math.min(window.innerHeight - 30, oy + ev.clientY - sy)) + 'px';
+    e.preventDefault();
+    const sx = e.clientX, sy = e.clientY, ox = el.offsetLeft, oy = el.offsetTop, id = e.pointerId;
+    const mv = (ev: PointerEvent) => {
+      if (ev.pointerId !== id) return;
+      const r = el.getBoundingClientRect();
+      el.style.left = Math.max(0, Math.min(window.innerWidth - r.width, ox + ev.clientX - sx)) + 'px';
+      el.style.top = Math.max(0, Math.min(window.innerHeight - r.height, oy + ev.clientY - sy)) + 'px';
     };
-    const up = () => { window.removeEventListener('mousemove', mv, true); window.removeEventListener('mouseup', up, true); winPos[key] = [el.offsetLeft, el.offsetTop]; };
+    const off = () => { window.removeEventListener('pointermove', mv, true); window.removeEventListener('pointerup', up, true); window.removeEventListener('pointercancel', up, true); };
+    const up = (ev: PointerEvent) => { if (ev.pointerId !== id) return; off(); winPos[key] = [el.offsetLeft, el.offsetTop]; };
     // capture: the button comes up over this window, which shields its events from bubbling
-    window.addEventListener('mousemove', mv, true);
-    window.addEventListener('mouseup', up, true);
+    window.addEventListener('pointermove', mv, true);
+    window.addEventListener('pointerup', up, true);
+    window.addEventListener('pointercancel', up, true);
   });
   const w: Win = {
     el, body, title: t, key,
-    close() { el.remove(); openWins.delete(key); w.onClose?.(); },
+    close() { ro?.disconnect(); el.remove(); openWins.delete(key); w.onClose?.(); },
   };
   x.onclick = () => { uiSound('close'); w.close(); };
   openWins.set(key, w);
@@ -82,6 +90,15 @@ export function openWindow(key: string, title: string, opts: { w?: number; x?: n
   return w;
 }
 const winPos: Record<string, [number, number]> = {};
+
+/** Keeps a window inside the viewport; one taller than the screen is capped by its max-height and scrolls inside. */
+function fit(el: HTMLElement) {
+  const r = el.getBoundingClientRect();
+  el.style.left = Math.max(4, Math.min(window.innerWidth - r.width - 4, el.offsetLeft)) + 'px';
+  el.style.top = Math.max(4, Math.min(window.innerHeight - r.height - 4, el.offsetTop)) + 'px';
+}
+// (headless tests import this module without a window)
+if (typeof window !== 'undefined') window.addEventListener('resize', () => { for (const w of openWins.values()) fit(w.el); });
 
 export function closeWindow(key: string) { openWins.get(key)?.close(); }
 export function isOpen(key: string) { return openWins.has(key); }

@@ -443,7 +443,7 @@ export function renderOptions(el: HTMLElement) {
     h('h3', {}, 'Sound'),
     opt('Master', vol('master')), opt('Music', vol('music')), opt('Effects', vol('sfx')), opt('Ambience', vol('ambience')),
     h('h3', {}, 'Graphics'),
-    opt('Quality', choice<Settings['quality']>([['low', 'Low'], ['medium', 'Medium'], ['high', 'High']], s.quality, (v) => change({ quality: v })), 'resolution and shadow detail'),
+    opt('Quality', choice<Settings['quality']>([['auto', 'Auto'], ['low', 'Low'], ['medium', 'Medium'], ['high', 'High']], s.quality, (v) => change({ quality: v })), 'resolution and shadow detail; Auto follows the frame rate'),
     opt('Shadows', choice<boolean>([[true, 'On'], [false, 'Off']], s.shadows, (v) => change({ shadows: v }))),
     opt('Draw distance', range('viewDist', 0.6, 1.5, (v) => Math.round(v * 100) + '%'), 'plants, rocks and people'),
     h('h3', {}, 'Game'),

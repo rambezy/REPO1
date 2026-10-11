@@ -4,7 +4,7 @@ import { setVolumes, getVolumes } from '../audio';
 import { chatter } from '../sim/chatter';
 
 export interface Settings {
-  quality: 'low' | 'medium' | 'high';
+  quality: 'auto' | 'low' | 'medium' | 'high'; // auto: picked from measured frame times
   shadows: boolean;
   viewDist: number; // multiplier on vegetation and character draw ranges
   autosave: number; // minutes, 0 = off
@@ -21,18 +21,24 @@ export interface Settings {
   music: number;
   sfx: number;
   ambience: number;
+  rev: number; // of the settings format: 1 since Auto quality replaced High as the default
 }
 
 export const DEFAULTS: Settings = {
-  quality: 'high', shadows: true, viewDist: 1, autosave: 8, edgeScroll: false, uiScale: 1, names: 'hover', pauseOnKO: true, pauseOnAttacked: false, pauseOnLimbLost: false, reducedMotion: false, hints: true, chatter: true,
-  master: 0.8, music: 0.5, sfx: 0.8, ambience: 0.6,
+  quality: 'auto', shadows: true, viewDist: 1, autosave: 8, edgeScroll: false, uiScale: 1, names: 'hover', pauseOnKO: true, pauseOnAttacked: false, pauseOnLimbLost: false, reducedMotion: false, hints: true, chatter: true,
+  master: 0.8, music: 0.5, sfx: 0.8, ambience: 0.6, rev: 1,
 };
+const QUALITIES = ['auto', 'low', 'medium', 'high'];
 
 export function loadSettings(): Settings {
   let s: Partial<Settings> = {};
   try { s = JSON.parse(localStorage.getItem('sb-settings') ?? '{}'); } catch { s = {}; }
+  if (!s || typeof s !== 'object') s = {}; // 'null', or a number: a store that was cleared or written by hand
+  // settings saved before Auto existed hold the old default, High, without anyone having chosen it: once
+  if (!s.rev && s.quality === 'high') s.quality = 'auto';
+  if (s.quality !== undefined && !QUALITIES.includes(s.quality)) delete s.quality;
   const v = getVolumes();
-  G.settings = { ...DEFAULTS, master: v.master, music: v.music, sfx: v.sfx, ambience: v.ambience, ...s };
+  G.settings = { ...DEFAULTS, master: v.master, music: v.music, sfx: v.sfx, ambience: v.ambience, ...s, rev: DEFAULTS.rev };
   return G.settings;
 }
 

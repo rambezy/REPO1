@@ -18,6 +18,20 @@ const DAY_ZEN = C(0x6f93b8), SET_ZEN = C(0x4a5878), NIGHT_ZEN = C(0x060a14);
 const SET_HOR = C(0xe39a62), NIGHT_HOR = C(0x141c2a);
 const SUN_DAY = C(0xfff1dc), SUN_SET = C(0xffa060), MOON = C(0x8a9ac0);
 const tmp = new THREE.Color(), tmp2 = new THREE.Color(), hazeC = new THREE.Color();
+/**
+ * Shadows are never cast from lower than this (about 11 degrees): at a grazing
+ * angle a wall's shadow stretches across the whole town as a blocky wedge, since
+ * each shadow texel covers many metres of ground. The light that casts them is
+ * lifted to this height while the sun itself keeps setting, and the shadows
+ * fade as it goes.
+ */
+const SHADOW_MIN_EL = 0.2;
+const castDir = new THREE.Vector3();
+function shadowDir(d: THREE.Vector3) {
+  castDir.copy(d);
+  if (castDir.y < SHADOW_MIN_EL) { castDir.y = SHADOW_MIN_EL; castDir.normalize(); }
+  return castDir;
+}
 
 export class Daylight {
   sunDir = new THREE.Vector3();
@@ -72,11 +86,13 @@ export class Daylight {
     if (sunI >= moonI) {
       R.sun.color.copy(sunCol);
       R.sun.intensity = sunI + 0.001;
-      R.placeSun(this.sunDir);
+      R.placeSun(shadowDir(this.sunDir));
+      R.sun.shadow.intensity = 0.3 + 0.7 * smoothstep(0, SHADOW_MIN_EL, e);
     } else {
       R.sun.color.copy(MOON);
       R.sun.intensity = moonI;
-      R.placeSun(this.moonDir);
+      R.placeSun(shadowDir(this.moonDir));
+      R.sun.shadow.intensity = 0.7;
     }
     R.hemi.color.copy(zen).lerp(C(0xffffff), 0.35).multiplyScalar(0.5 + 0.9 * dayT);
     R.hemi.groundColor.copy(hazeC).multiplyScalar(0.35 + 0.5 * dayT);

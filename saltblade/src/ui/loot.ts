@@ -1,6 +1,6 @@
 // Looting bodies and containers, and stealing from them.
 import { h, openWindow, getWindow } from './dom';
-import { GridView, SlotView, acceptsSlot, hideTip, Source } from './grid';
+import { GridView, SlotView, acceptsSlot, hideTip, Source, heldItem } from './grid';
 import { S } from '../sim/ctx';
 import { Char, EQUIP_SLOTS } from '../sim/char';
 import { WObj } from '../sim/objects';
@@ -35,6 +35,25 @@ export function openLoot(looterId: number, target: { char?: number; obj?: number
       if (!stealing) return true;
       return attemptTheft(c, it, owner, t);
     };
+    const there = t ? t.name : objName(o!);
+    // the action sheet's one-tap moves: take something from the other side, or put something there
+    // (an item already being carried was rolled for when it was picked up: it is not rolled for twice)
+    const take = (it: Item, from: Grid | EquipSlot, rolled = false) => {
+      if (stealing && !rolled && !attemptTheft(c, it, owner, t)) { render(); return; }
+      if (from instanceof Grid) from.remove(it); else { t!.eq[from] = null; t!.dirty = true; }
+      if (!c.inv.put(it) && !c.eq.back?.inv?.put(it)) {
+        if (from instanceof Grid) from.put(it); else t!.eq[from] = it;
+        emit('notice', 'No room in the pack.');
+      } else if (stealing) it.stolen = owner;
+      render();
+    };
+    const give = (it: Item, from: Grid) => {
+      const dst = grids[0];
+      if (!dst) return;
+      from.remove(it);
+      if (!dst.put(it)) { from.put(it); emit('notice', `No room in ${there}.`); }
+      render();
+    };
     // looter side
     const left = h('div', { class: 'lootside' }, h('div', { class: 'lhead' }, c.name));
     const mk = (g: Grid, label: string) => {
@@ -44,6 +63,7 @@ export function openLoot(looterId: number, target: { char?: number; obj?: number
           if (dst.kind === 'grid' && (dst.grid === c.inv || dst.grid === c.eq.back?.inv) && stealing) it.stolen = owner;
           setTimeout(render, 0);
         },
+        actions: (it) => (stealing ? [] : [{ label: `Put in ${there}`, run: () => give(it, g) }]),
       });
       views.push(v);
       left.appendChild(v.el);
@@ -66,6 +86,7 @@ export function openLoot(looterId: number, target: { char?: number; obj?: number
             set: (it) => { t.eq[slot] = it; t.dirty = true; return true; },
             accept: acceptsSlot(slot as EquipSlot),
             moved: () => setTimeout(render, 0),
+            actions: (it) => { const rolled = heldItem() === it; return [{ label: 'Take', run: () => take(it, slot as EquipSlot, rolled) }]; },
           }, 2, 2);
           views.push(sv);
           eq.appendChild(sv.el);
@@ -106,6 +127,7 @@ export function openLoot(looterId: number, target: { char?: number; obj?: number
         canTake: (it) => onTake(it),
         accept: () => !stealing,
         moved: () => setTimeout(render, 0),
+        actions: (it) => { const rolled = heldItem() === it; return [{ label: 'Take', run: () => take(it, g, rolled) }]; },
       });
       views.push(v);
       right.appendChild(v.el);

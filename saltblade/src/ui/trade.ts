@@ -85,6 +85,7 @@ export function openTrade(pid: number, nid: number) {
         accept: (it, src) => (g === p.inv || !ITEM[it.id].pack) && (!(src.kind === 'grid' && src.grid === stock) || afford(it)),
         moved: () => setTimeout(render, 0),
         rclick: (it) => sell(it, g),
+        rclickLabel: 'Sell',
       });
       views.push(v);
       mine.appendChild(v.el);
@@ -124,6 +125,7 @@ export function openTrade(pid: number, nid: number) {
         setTimeout(render, 0);
       },
       rclick: (it) => buy(it),
+      rclickLabel: 'Buy',
     });
     views.push(sv);
     shopSide.appendChild(sv.el);

@@ -89,7 +89,7 @@ function tickHUD() {
   if (!G.W) return;
   if (perfEl && G.perf) {
     const p = G.perf, r = G.R.gl.info.render;
-    perfEl.textContent = `${Math.round(p.fps)} fps · frame ${p.frame.toFixed(1)} ms (sim ${p.sim.toFixed(1)} · world ${p.views.toFixed(1)} · draw ${p.render.toFixed(1)}) · ${r.calls} calls · ${Math.round(r.triangles / 1000)}k tris · ${S.W.active.length}/${S.W.chars.size} people`;
+    perfEl.textContent = `${Math.round(p.fps)} fps · frame ${p.frame.toFixed(1)} ms (sim ${p.sim.toFixed(1)} · world ${p.views.toFixed(1)} · draw ${p.render.toFixed(1)}) · ${r.calls} calls · ${Math.round(r.triangles / 1000)}k tris · ${S.W.active.length}/${S.W.chars.size} people · quality ${G.R.describe()}`;
   }
   const reg = G.T.regionAt(G.cam.target.x, G.cam.target.z);
   const site = G.T.siteAt(G.cam.target.x, G.cam.target.z, 30);

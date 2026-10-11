@@ -16,6 +16,8 @@ export interface Item {
 let nextUid = 1;
 export const setNextUid = (n: number) => { nextUid = Math.max(nextUid, n); };
 export const peekUid = () => nextUid;
+/** A fresh id for an item made by hand (a split stack, say) rather than by makeItem. */
+export const newUid = () => nextUid++;
 
 export function makeItem(id: string, n = 1, q = 2): Item {
   const d = ITEM[id];

@@ -237,7 +237,7 @@ export function attachDebug() {
     },
     info() {
       const r = G.R.gl.info.render;
-      return { calls: r.calls, tris: r.triangles, geos: G.R.gl.info.memory.geometries, time: G.clock.str() };
+      return { calls: r.calls, tris: r.triangles, geos: G.R.gl.info.memory.geometries, time: G.clock.str(), quality: G.R.describe(), pixelRatio: G.R.pixelRatio };
     },
   };
 }

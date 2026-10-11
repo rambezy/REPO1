@@ -1,6 +1,6 @@
 // The character window: gear and inventory, skills, health and background.
 import { h, openWindow, esc, bar, getWindow, isOpen } from './dom';
-import { GridView, SlotView, acceptsSlot, hideTip } from './grid';
+import { GridView, SlotView, acceptsSlot, hideTip, ItemAction } from './grid';
 import { Char, EQUIP_SLOTS } from '../sim/char';
 import { S } from '../sim/ctx';
 import { ITEM, EquipSlot, slotFor } from '../content/items';
@@ -9,7 +9,7 @@ import { FACTION } from '../content/factions';
 import { SKILLS, SKILL_INFO, SK, rateAt } from '../sim/skills';
 import { LIMB_NAMES } from '../sim/body';
 import { portrait } from '../render/portrait';
-import { Item } from '../sim/inventory';
+import { Item, Grid, newUid } from '../sim/inventory';
 import { emit } from '../core/events';
 import { koThreshold } from '../sim/health';
 import { DRUG, takeDrug, drugStatus, habitList } from '../sim/drugs';
@@ -85,16 +85,17 @@ function gearTab(c: Char, el: HTMLElement) {
       },
       accept: (it) => mine && acceptsSlot(slot)(it),
       moved: afterChange,
+      actions: (it) => mine ? [{ label: 'Take off', run: () => { c.eq[slot] = null; if (!c.inv.put(it) && !c.eq.back?.inv?.put(it)) dropItem(c, it); afterChange(); } }] : [],
     }, sw, sh);
     views.push(sv);
     slots.appendChild(h('div', { class: 'slotbox s-' + slot }, h('div', { class: 'slotname' }, SLOT_LABEL[slot]), sv.el));
   }
   const grids = h('div', { class: 'grids' });
-  const inv = new GridView(c.inv, { label: 'Inventory', canTake: () => mine, accept: () => mine, rclick: (it) => itemMenu(c, it, c.inv), moved: afterChange });
+  const inv = new GridView(c.inv, { label: 'Inventory', canTake: () => mine, accept: () => mine, rclick: (it) => itemMenu(c, it, c.inv), actions: (it) => (mine ? itemActions(c, it, c.inv) : []), moved: afterChange });
   views.push(inv);
   grids.appendChild(inv.el);
   if (c.eq.back?.inv) {
-    const pv = new GridView(c.eq.back.inv, { label: ITEM[c.eq.back.id].name, canTake: () => mine, accept: (it) => mine && it !== c.eq.back && !ITEM[it.id].pack, rclick: (it) => itemMenu(c, it, c.eq.back!.inv!), moved: afterChange });
+    const pv = new GridView(c.eq.back.inv, { label: ITEM[c.eq.back.id].name, canTake: () => mine, accept: (it) => mine && it !== c.eq.back && !ITEM[it.id].pack, rclick: (it) => itemMenu(c, it, c.eq.back!.inv!), actions: (it) => (mine ? itemActions(c, it, c.eq.back!.inv!) : []), moved: afterChange });
     views.push(pv);
     grids.appendChild(pv.el);
   }
@@ -107,38 +108,45 @@ function gearTab(c: Char, el: HTMLElement) {
   el.append(h('div', { class: 'gear' }, slots, grids), foot);
 }
 
-function itemMenu(c: Char, it: Item, grid: import('../sim/inventory').Grid) {
+/** What can be done with an item in a character's grid: the right-click menu and the touch action sheet share it. */
+export function itemActions(c: Char, it: Item, grid: Grid): ItemAction[] {
   const d = ITEM[it.id];
-  const acts: [string, () => void][] = [];
+  const acts: ItemAction[] = [];
+  const act = (label: string, fn: () => void, danger = false) => acts.push({ label, danger, run: () => { fn(); render(); } });
   const slot = slotFor(d);
-  if (slot) acts.push(['Equip', () => {
+  if (slot) act('Equip', () => {
     grid.remove(it);
     const prev = c.eq[slot];
     c.eq[slot] = it;
     if (prev) { if (!grid.put(prev)) c.inv.put(prev) || dropItem(c, prev); }
     c.dirty = true;
-  }]);
-  if (d.food && d.cat !== 'drug') acts.push(['Eat', () => {
+    emit('gear', c);
+  });
+  if (d.food && d.cat !== 'drug') act('Eat', () => {
     c.hunger = Math.min(300, c.hunger + d.food!);
     it.n--; if (it.n <= 0) grid.remove(it);
     if (d.drink) c.mood += d.drink.mood;
-  }]);
-  if (d.drug && DRUG[d.drug] && c.faction === 'player') acts.push([DRUG[d.drug].act, () => { const err = takeDrug(c, grid, it); if (err) emit('notice', err); }]);
-  if (d.med) acts.push(['Treat self', () => { emit('order', c, { k: 'aid', id: c.id }); }]);
-  if (d.limb) acts.push(['Fit prosthetic', () => emit('ui:prosthetic', c.id, it.uid)]);
-  if (d.book) acts.push(['Read', () => emit('ui:read', d.book, c.id)]);
-  if (it.n > 1) acts.push(['Split stack', () => {
+  });
+  if (d.drug && DRUG[d.drug] && c.faction === 'player') act(DRUG[d.drug].act, () => { const err = takeDrug(c, grid, it); if (err) emit('notice', err); });
+  if (d.med) act('Treat self', () => { emit('order', c, { k: 'aid', id: c.id }); });
+  if (d.limb) act('Fit prosthetic', () => emit('ui:prosthetic', c.id, it.uid));
+  if (d.book) act('Read', () => emit('ui:read', d.book, c.id));
+  if (it.n > 1) act('Split stack', () => {
     const half = Math.floor(it.n / 2);
     const spot = grid.findSpot(d);
     if (!spot) return;
     it.n -= half;
-    grid.items.push({ ...it, uid: Date.now() % 1e9 + Math.floor(Math.random() * 1000), n: half, x: spot[0], y: spot[1] });
-  }]);
-  acts.push(['Drop', () => { grid.remove(it); dropItem(c, it); }]);
-  const m = h('div', { class: 'ctxmenu' }, h('div', { class: 'ctxtitle' }, d.name));
-  for (const [label, fn] of acts) {
-    const b = h('button', { class: 'ctxitem' }, label);
-    b.onclick = () => { m.remove(); fn(); render(); };
+    grid.items.push({ ...it, uid: newUid(), n: half, x: spot[0], y: spot[1] });
+  });
+  act('Drop', () => { grid.remove(it); dropItem(c, it); }, true);
+  return acts;
+}
+
+function itemMenu(c: Char, it: Item, grid: Grid) {
+  const m = h('div', { class: 'ctxmenu' }, h('div', { class: 'ctxtitle' }, ITEM[it.id].name));
+  for (const a of itemActions(c, it, grid)) {
+    const b = h('button', { class: 'ctxitem' + (a.danger ? ' danger' : '') }, a.label);
+    b.onclick = () => { m.remove(); a.run(); };
     m.appendChild(b);
   }
   document.getElementById('ui')!.appendChild(m);
@@ -146,7 +154,7 @@ function itemMenu(c: Char, it: Item, grid: import('../sim/inventory').Grid) {
   const mx = (window as any).__mx ?? 200, my = (window as any).__my ?? 200;
   m.style.left = Math.min(window.innerWidth - r.width - 8, mx + 6) + 'px';
   m.style.top = Math.min(window.innerHeight - r.height - 8, my + 6) + 'px';
-  setTimeout(() => window.addEventListener('mousedown', function off(e) { if (!m.contains(e.target as Node)) { m.remove(); window.removeEventListener('mousedown', off); } }), 0);
+  setTimeout(() => window.addEventListener('pointerdown', function off(e) { if (!m.contains(e.target as Node)) { m.remove(); window.removeEventListener('pointerdown', off); } }), 0);
 }
 window.addEventListener('mousemove', (e) => { (window as any).__mx = e.clientX; (window as any).__my = e.clientY; });
 
