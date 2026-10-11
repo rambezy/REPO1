@@ -178,12 +178,12 @@ export class Char {
   }
   weaponGrade() { return this.eq.weapon ? GRADES[this.eq.weapon.q].dmg : 1; }
 
-  /** Worn armour resistances for a limb: [cut, blunt] reductions 0..0.9 */
-  armourAt(limb: number): [number, number] {
+  /** Worn armour resistances for a limb: [cut, blunt] reductions 0..0.9 (with `body` worn in place of their coat, if given) */
+  armourAt(limb: number, body: Item | null = this.eq.body): [number, number] {
     const name = ['head', 'chest', 'stomach', 'larm', 'rarm', 'lleg', 'rleg'][limb] as keyof NonNullable<ItemDef['armour']>['cover'];
     let cut = 0, blunt = 0;
     for (const slot of ['head', 'shirt', 'body', 'legs', 'feet'] as EquipSlot[]) {
-      const it = this.eq[slot];
+      const it = slot === 'body' ? body : this.eq[slot];
       if (!it) continue;
       const a = ITEM[it.id].armour;
       if (!a) continue;
@@ -334,13 +334,13 @@ export class Char {
     return it ? ITEM[it.id].wvis ?? null : null;
   }
 
-  /** Overall combat rating, for AI decisions and squad strength. */
-  power(): number {
+  /** Overall combat rating, for AI decisions and squad strength (with another weapon or coat of theirs in hand or on, if given). */
+  power(weapon: Item | null = this.eq.weapon, body: Item | null = this.eq.body): number {
     if (this.animal) return ANIMAL[this.animal].power * (0.5 + 0.5 * this.body.total());
-    const w = this.weaponStats();
+    const w = weapon === this.eq.weapon ? this.weaponStats() : (weapon && ITEM[weapon.id]?.weapon) || UNARMED;
     const att = this.skill('melee_atk') + this.skill(w.skill) * 0.8 + this.skill('strength') * 0.3;
     const def = this.skill('melee_def') + this.skill('toughness') * 0.6;
-    const [ac] = this.armourAt(1);
+    const [ac] = this.armourAt(1, body);
     return (att + def) * (1 + ac) * (0.4 + 0.6 * this.body.total()) * (w.cut + w.blunt) / 40 + 5;
   }
 

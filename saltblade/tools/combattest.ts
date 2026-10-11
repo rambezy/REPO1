@@ -2,11 +2,14 @@
 // waste: a duel to the knockout (the shorter reach stepping in), wounds that
 // bleed, blood loss, a limb cut off, a knockout slept off, crossbow fire,
 // skills that grow from use (toughness from a beating, not from beatings
-// back to back), a faction that sours when its people are beaten, and
-// bandits that go for the player's people on sight.
+// back to back), a faction that sours when its people are beaten, bandits
+// that go for the player's people on sight, and chases: a faster fighter
+// catches a runner, an order after one who cannot be caught is given up,
+// the world's people do not follow anyone across the whole waste, but
+// bounty hunters do, and the law runs a wanted man the length of a town.
 // Usage: npx tsx tools/combattest.ts
 import { generateWorld } from '../src/world/gen';
-import { Nav } from '../src/world/nav';
+import { Nav, type StructPrim } from '../src/world/nav';
 import { World } from '../src/sim/world';
 import { S } from '../src/sim/ctx';
 import { Clock, HOUR, DAY } from '../src/sim/clock';
@@ -15,7 +18,8 @@ import { Weather } from '../src/sim/weather';
 import { simStep } from '../src/sim/sim';
 import { tickSquads } from '../src/sim/squads';
 import { structuresIn, townRings } from '../src/sim/structures';
-import { applyDamage, shoot } from '../src/sim/combat';
+import { applyDamage, shoot, dist } from '../src/sim/combat';
+import { LEASH, LAW_LEASH, CHASE_GIVE_UP } from '../src/sim/ai';
 import { LI } from '../src/sim/body';
 import { SK } from '../src/sim/skills';
 import { Squad } from '../src/sim/squad';
@@ -198,6 +202,113 @@ function arm(c: Char, id: string) {
   const engaged = bandits.filter((b) => b.brain.enemy === p.id || b.target === p.id).length;
   step(20);
   check('bandits in sight pick a fight with the player', engaged > 0 && (hurt(p) > 0 || !p.up), `${engaged}/3 engaged within ${t} s; ${p.name} took ${hurt(p).toFixed(0)} damage`);
+}
+
+// 8. chases
+clearArena();
+const chase = (who: Char, secs: number, done: () => boolean) => { let t = 0; while (t < secs && !done()) { simStep(dt, { x: who.x, z: who.z }); tickSquads(dt); t += dt; } return t; };
+const reavers = () => { const s = new Squad(); s.faction = 'reavers'; s.kind = 'raid'; s.name = 'Reavers'; s.spoke = true; W.addSquad(s); return s; };
+{
+  // a beaten Reaver runs for it, slowed by his legs; a quicker fighter ordered after him lands a blow before long
+  const a = person('player', 'player', 0, 0, { loadout: 'merc' });
+  const b = person('reavers', 'bandit', 4, 0, { level: 20, whole: true });
+  W.moveToSquad(b, reavers());
+  for (let l = 0; l < 7; l++) b.body.hp[l] = b.body.max[l] * 0.25;
+  b.lastHitBy = a.id; b.lastHitT = S.time;
+  a.order = { k: 'attack', id: b.id };
+  const t0 = S.time, x0 = a.x, z0 = a.z;
+  const hit = () => b.lastHitBy === a.id && b.lastHitT > t0;
+  const t = chase(a, 30, hit);
+  check('a faster fighter lands a blow on a hurt runner within 15 s', hit() && t <= 15, `${a.moveSpeed('run').toFixed(1)} m/s after ${b.moveSpeed('run').toFixed(1)} m/s; ${hit() ? `first blow at ${t.toFixed(1)} s, ${Math.hypot(a.x - x0, a.z - z0).toFixed(0)} m on` : 'not one'}`);
+  clearArena();
+}
+{
+  // ...but on hurt legs, after one on sound ones, the order is given up, and said so (once, for the two of them)
+  const ours = [0, 1.5].map((dz) => person('player', 'player', 0, dz, { loadout: 'merc' }));
+  for (const a of ours) for (const l of [LI.lleg, LI.rleg]) a.body.hp[l] = a.body.max[l] * 0.3;
+  const b = person('reavers', 'bandit', 4, 0, { level: 20, whole: true });
+  W.moveToSquad(b, reavers());
+  for (const l of [LI.head, LI.chest, LI.stomach]) b.body.hp[l] = b.body.max[l] * 0.05;
+  for (const l of [LI.larm, LI.rarm]) b.body.hp[l] = 0;
+  b.lastHitBy = ours[0].id; b.lastHitT = S.time;
+  for (const a of ours) a.order = { k: 'attack', id: b.id };
+  const said: string[] = [], notice = S.fx.notice;
+  S.fx.notice = (text: string) => { said.push(text); };
+  const t = chase(ours[0], CHASE_GIVE_UP + 15, () => ours.every((a) => !a.order));
+  S.fx.notice = notice;
+  const gave = said.filter((x) => /gave up the chase/.test(x));
+  check('an attack order on someone who cannot be caught is given up, and said so once', ours.every((a) => !a.order) && gave.length === 1, `${ours[0].moveSpeed('run').toFixed(1)} m/s after ${b.moveSpeed('run').toFixed(1)} m/s; ${ours.some((a) => a.order) ? 'still at it' : `both dropped it by ${t.toFixed(0)} s`}; ${gave.length} notice${gave.length === 1 ? '' : 's'}${gave.length ? `: "${gave[0]}"` : ''}`);
+  clearArena();
+}
+{
+  // a Reaver after one of the player's people who keeps running turns back in the end
+  const p = person('player', 'player', 0, 0);
+  p.combatMode = 'passive';
+  p.sk[SK.athletics] = 80;
+  const r = person('reavers', 'bandit', 10, 0, { level: 14, loadout: 'reavers_young', whole: true });
+  W.moveToSquad(r, reavers());
+  let start: [number, number] | null = null, far = 0;
+  chase(p, 90, () => {
+    if (!start && r.brain.enemy === p.id) { start = [r.x, r.z]; p.order = { k: 'move', x: p.x - 500, z: p.z + 40 }; }
+    if (start) far = Math.max(far, Math.hypot(r.x - start[0], r.z - start[1]));
+    return false;
+  });
+  const from = start as [number, number] | null;
+  const back = from ? Math.hypot(r.x - from[0], r.z - from[1]) : Infinity;
+  check(`one of the world's people gives up a chase about ${LEASH} m out`, !!from && far <= LEASH + 10 && back <= LEASH + 10 && r.brain.enemy !== p.id && dist(p, r) > 2 * LEASH, from ? `chased ${far.toFixed(0)} m, now ${back.toFixed(0)} m from where it began, the runner ${dist(p, r).toFixed(0)} m off` : 'never gave chase');
+  clearArena();
+}
+
+/** Sets someone's athletics so they run about as fast as `speed` (m/s). */
+const runAt = (c: Char, speed: number) => { let best = 0, bd = Infinity; for (let a = 0; a <= 100; a++) { c.sk[SK.athletics] = a; const d = Math.abs(c.moveSpeed('run') - speed); if (d < bd) { bd = d; best = a; } } c.sk[SK.athletics] = best; return c.moveSpeed('run'); };
+{
+  // bounty hunters after a quarry a touch faster than them keep at it well past where others would turn back
+  const p = person('player', 'player', 0, 0);
+  p.combatMode = 'passive';
+  p.bounty.concord = 2000;
+  const sq = new Squad(); sq.faction = 'concord'; sq.kind = 'bounty'; sq.name = 'Hunters'; sq.task = { k: 'hunt', target: p.id }; sq.flags.spec = 'hunters'; sq.flags.hunt = p.id; W.addSquad(sq);
+  const hunters = [0, 2].map((dx) => { const h = person('concord', 'patrol', dx, 20, { level: 25, whole: true }); W.moveToSquad(h, sq); return h; });
+  const L = hunters[0], x0 = L.x, z0 = L.z;
+  runAt(p, L.moveSpeed('run') + 0.35);
+  p.order = { k: 'move', x: p.x, z: p.z - 900 };
+  let far = 0, shed = false;
+  chase(p, 60, () => { far = Math.max(far, Math.hypot(L.x - x0, L.z - z0)); shed ||= L.brain.letGo === p.id; return !p.up; });
+  check(`bounty hunters are not shed at ${LEASH} m by a quarry a little faster`, far > LEASH + 20 && !shed, `the leader ran ${far.toFixed(0)} m after them${shed ? ', then gave up' : ''}`);
+  clearArena();
+}
+{
+  // a town guard runs a wanted thief the length of a town, and no further
+  const p = person('player', 'player', 0, 0);
+  p.combatMode = 'passive';
+  p.bounty.drifters = 800;
+  const g = person('drifters', 'guard', 0, 12, { level: 25 });
+  runAt(p, g.moveSpeed('run') + 0.35);
+  let far = 0, began = false;
+  chase(p, 120, () => {
+    if (!began && g.brain.enemy === p.id) { began = true; p.order = { k: 'move', x: p.x, z: p.z - 600 }; }
+    far = Math.max(far, Math.hypot(g.x - g.homeX, g.z - g.homeZ));
+    return false;
+  });
+  check(`a guard keeps after a wanted thief to about ${LAW_LEASH} m from his post, and no further`, began && far > LEASH + 30 && far <= LAW_LEASH + 10, began ? `ran ${far.toFixed(0)} m from his post; now ${dist(g, p).toFixed(0)} m behind` : 'never gave chase');
+  clearArena();
+}
+{
+  // ...and an order on someone who cannot be got at, standing in a pen with no way in, is given up too
+  const a = person('player', 'player', 0, 0, { loadout: 'merc' });
+  const b = person('drifters', 'resident', 12, 0);
+  b.combatMode = 'passive';
+  const pen: StructPrim[] = [[0, -4, 4.5, 0.3], [0, 4, 4.5, 0.3], [-4, 0, 0.3, 4.5], [4, 0, 0.3, 4.5]].map(([dx, dz, hx, hz]) => ({ kind: 'rect', x: b.x + dx, z: b.z + dz, hx, hz }));
+  nav.structures = (x0, z0, x1, z1) => [...structuresIn(x0, z0, x1, z1), ...pen];
+  nav.invalidate(b.x - 10, b.z - 10, b.x + 10, b.z + 10);
+  a.order = { k: 'attack', id: b.id };
+  const said: string[] = [], notice = S.fx.notice;
+  S.fx.notice = (text: string) => { said.push(text); };
+  const t = chase(a, CHASE_GIVE_UP + 20, () => !a.order);
+  S.fx.notice = notice;
+  nav.structures = structuresIn;
+  nav.invalidate(b.x - 10, b.z - 10, b.x + 10, b.z + 10);
+  check('an attack order on someone who cannot be got at is given up', !a.order && said.some((x) => /gave up the chase/.test(x)), `${a.order ? 'still at it' : `dropped after ${t.toFixed(0)} s`}, ${dist(a, b).toFixed(1)} m off behind the pen's wall`);
+  clearArena();
 }
 
 const failed = results.filter((r) => !r[1]);

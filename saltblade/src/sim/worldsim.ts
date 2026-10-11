@@ -9,11 +9,12 @@ import { Char, Role } from './char';
 import { RNG } from '../core/rng';
 import { REGIONS } from '../world/regions';
 import { FACTION } from '../content/factions';
+import { ITEM } from '../content/items';
 import { SETTLEMENT } from '../content/layout';
 import { ANIMAL } from '../content/animals';
 import { strengthOf } from './combat';
 import { makeShop } from './shops';
-import { Grid } from './inventory';
+import { Grid, type Item } from './inventory';
 import { anchors } from './sim';
 import { tickShops } from './shops';
 import { kill, knockOut } from './health';
@@ -218,12 +219,29 @@ export function playerBand(): Band {
   for (const c of S.W.playerChars()) {
     if (!c.alive || c.cage || c.carriedBy) continue;
     n++;
-    power += c.power();
+    power += kitPower(c);
     if (c.animal) continue;
     people++;
     skill += (c.sk[SK.melee_atk] + c.sk[SK.melee_def] + c.sk[SK.toughness] + c.sk[SK.strength] + c.sk[SK.dexterity]) / 5;
   }
   return { n, power, level: people ? skill / people : 0 };
+}
+
+/**
+ * Someone's strength in the best weapon and body armour they carry, worn or packed: stripping off for
+ * the road does not make the roads any kinder.
+ */
+function kitPower(c: Char): number {
+  let best = c.power();
+  if (c.animal) return best;
+  let weapon = c.eq.weapon;
+  const packs = [c.inv.items, c.eq.back?.inv?.items ?? []];
+  const weigh = (w: Item | null, b: Item | null) => { const p = c.power(w, b); if (p > best) { best = p; return true; } return false; };
+  // the best weapon, in the coat they wear; then the best coat, with that weapon
+  if (c.eq.weapon2 && ITEM[c.eq.weapon2.id]?.cat === 'weapon' && weigh(c.eq.weapon2, c.eq.body)) weapon = c.eq.weapon2;
+  for (const items of packs) for (const it of items) if (ITEM[it.id]?.cat === 'weapon' && weigh(it, c.eq.body)) weapon = it;
+  for (const items of packs) for (const it of items) if (ITEM[it.id]?.cat === 'body') weigh(weapon, it);
+  return best;
 }
 
 /**
@@ -319,11 +337,15 @@ function tickPassers() {
   const lead = W.playerChars().find((c) => c.alive && !c.animal && !c.cage && !c.carriedBy);
   if (!lead) return;
   if (S.T.siteAt(lead.x, lead.z, 60)?.kind === 'town') return; // towns are busy enough
-  // company already on the way (grazing herds don't count: they are everywhere, and slow)
+  // company already on the way (grazing herds don't count: they are everywhere, and slow; nor does a band
+  // beaten where it lay, which is going nowhere and would otherwise keep the roads empty for days)
   for (const s of W.squads.values()) {
     if (!s.flags.spec || s.faction === 'player') continue;
     if (s.kind === 'herd') { const a = W.char(s.members[0]); if (!a?.animal || ANIMAL[a.animal].diet === 'grazer') continue; }
-    if (Math.hypot(s.x - lead.x, s.z - lead.z) < 350) return;
+    if (!s.members.some((id) => W.char(id)?.up)) continue;
+    // (a squad in play is where its leader is: its own mark is only kept up while he is on the road, not off on some task)
+    const L = s.active ? W.char(s.leader) : undefined;
+    if (Math.hypot((L?.x ?? s.x) - lead.x, (L?.z ?? s.z) - lead.z) < 350) return;
   }
   // the first half day brings only the harmless: traders, wanderers, grazing beasts
   const gentle = S.clock.t - (W.flags.passersFrom ?? 0) < 12 * HOUR;

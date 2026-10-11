@@ -7,6 +7,7 @@ import { SEA, WADE_DEPTH } from '../world/consts';
 import { train } from './train';
 import { turnToward } from '../core/math';
 import { floorAt } from './structures';
+import { lungeAt } from './combat';
 
 let plansThisFrame = 0;
 export const PLAN_BUDGET = 10;
@@ -31,13 +32,18 @@ export function near(c: Char, x: number, z: number, r: number) {
   return Math.hypot(c.x - x, c.z - z) <= r;
 }
 
-/** Steps a character's movement. Returns metres moved. */
+/** Steps a character's movement (and its velocity, for those who would chase or cut it off). Returns metres moved. */
 export function tickMove(c: Char, dt: number): number {
   c.speed = 0;
+  c.vx = 0; c.vz = 0;
   if (c.status !== 'up' || c.carriedBy || c.cage || c.bed || c.knockT > 0 || c.sleeping) return 0;
   const busy = !!c.atk || c.act === 'mine' || c.act === 'build' || c.act === 'craft' || c.act === 'farm' || c.act === 'research';
   let dx = 0, dz = 0;
-  if (c.hasGoal && !busy) {
+  if (c.atk) {
+    // a blow carries the attacker on after a target who backs away (see lungeAt)
+    const t = lungeAt(c);
+    if (t) { dx = t.x - c.x; dz = t.z - c.z; const l = Math.hypot(dx, dz); dx /= l; dz /= l; c.move = 'run'; }
+  } else if (c.hasGoal && !busy) {
     if (!c.path) {
       if (plansThisFrame >= PLAN_BUDGET) return 0;
       plansThisFrame++;
@@ -109,6 +115,7 @@ export function tickMove(c: Char, dt: number): number {
       }
     } else { c.stuckT = 0; c.mem.stuck = 0; }
   }
+  c.vx = (mx - c.x) / dt; c.vz = (mz - c.z) / dt;
   c.x = mx; c.z = mz;
   c.speed = moved / dt;
   if (moving) c.dir = turnToward(c.dir, Math.atan2(vx, vz), dt * 10);

@@ -194,6 +194,24 @@ run('Scrap and Sinew vs day-1 rustspiders on the road', 'scrappers', road('fauna
 run('Deserters vs day-1 Sentinels on the road', 'deserters', road('machines', 'construct', [2, 3]));
 run('Wanderer vs one Reaver as they come (camps, later days)', 'wanderer', asTheyCome('reavers', 'bandit', 1));
 
+// stripping off for the road does not make the roads kinder: a band is weighed in the best kit it carries
+{
+  clear();
+  rng = new RNG(hashStr('stripped'));
+  const ours = startBand('blades');
+  const dressed = fitAgainst(playerBand(), 'reavers', 1, rng).budget;
+  let packed = 0;
+  for (const c of ours) for (const slot of ['weapon', 'body'] as const) {
+    const it = c.eq[slot];
+    if (it && c.inv.put(it)) { c.eq[slot] = null; packed++; }
+  }
+  const worn = ours.reduce((n, c) => n + c.power(), 0);
+  const stripped = fitAgainst(playerBand(), 'reavers', 1, rng).budget;
+  check('stripping off for the road does not shrink what the roads send', packed >= 4 && stripped >= dressed * 0.99,
+    `${packed} weapons and coats packed away; budget ${Math.round(dressed)} dressed, ${Math.round(stripped)} stripped (by what they wear alone it would be ${Math.round(worn * 1.5)})`);
+  clear();
+}
+
 console.log(`trials per matchup: ${TRIALS}, fights up to ${LIMIT} s on open ground at ${ax}, ${az}\n`);
 console.log(`${'matchup'.padEnd(56)} ${'won'.padStart(9)}  ${'foes'.padStart(4)}  ${'avg'.padStart(5)}  swings us:them  KO/dead (ours)  losses by death`);
 for (const r of rows) {

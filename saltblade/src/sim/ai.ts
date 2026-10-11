@@ -4,7 +4,7 @@
 // every step.
 import { Char } from './char';
 import { S } from './ctx';
-import { hostile, dist, reach, startAttack, tickAttack, canShoot, shoot, rangedStats, strengthOf, beastLaser } from './combat';
+import { hostile, dist, reach, startAttack, tickAttack, canShoot, shoot, rangedStats, strengthOf, beastLaser, blowWillLand, receding } from './combat';
 import { goTo, stop, near } from './move';
 import { ANIMAL } from '../content/animals';
 import { FACTION } from '../content/factions';
@@ -72,6 +72,7 @@ export function findEnemy(c: Char, radius: number): Char | null {
     if (o.shackled && o.mem.enslavedBy === c.faction && !((o.bounty[c.faction] ?? 0) > 0)) return; // their own chained slaves are worked, not fought (a runaway is another matter)
     if (o.mem.grace?.[c.faction] > S.clock.t && !S.W.rel.hostile(c.faction, o.faction)) return; // fined and turned loose: the law leaves them be a while
     if (!hostile(c, o)) return;
+    if (forsaken(c, o)) return;
     if (!canSee(c, o) && o.lastHitBy !== c.id && c.lastHitBy !== o.id) return;
     let d = d2;
     if (o.status !== 'up') d *= 4; // prefer those still fighting
@@ -110,17 +111,104 @@ export function fight(c: Char, t: Char, dt: number) {
     return;
   }
   const r = reach(c);
-  if (d <= r) {
+  // (a blow at someone getting away faster than the attacker can follow would only fall short: keep after them)
+  if (d <= r && blowWillLand(c, t)) {
     stop(c);
     c.dir = angleTo(c.x, c.z, t.x, t.z);
     if (c.atkCD <= 0 && c.canUseWeapon()) startAttack(c, t, !c.animal && c.weaponStats().kind === 'unarmed' && S.rng.chance(0.25));
     else if (c.atkCD <= 0 && !c.canUseWeapon() && !c.animal) startAttack(c, t, true); // kick
   } else if (!c.holdPos || d < 6) {
-    // approach to just inside reach
-    const a = angleTo(t.x, t.z, c.x, c.z);
-    goTo(c, t.x + Math.sin(a) * (r * 0.7), t.z + Math.cos(a) * (r * 0.7));
+    // approach to just inside reach; of someone getting away, to where they will be by then
+    const lead = receding(c, t) > 0.3 ? Math.min(1, d / Math.max(1, c.moveSpeed('run'))) : 0;
+    const px = t.x + t.vx * lead, pz = t.z + t.vz * lead;
+    const a = angleTo(px, pz, c.x, c.z);
+    goTo(c, px + Math.sin(a) * (r * 0.7), pz + Math.cos(a) * (r * 0.7));
     c.move = 'run';
   }
+}
+
+/** Seconds of running after someone, with no blow struck either way, before giving it up. */
+export const CHASE_GIVE_UP = 30;
+/** How far a chase may draw one of the world's people from their own: the leader they keep with, their home, or where the fight began. */
+export const LEASH = 60;
+/** ...and how far the law runs a wanted man: the length of a town. */
+export const LAW_LEASH = LEASH * 3;
+
+/** Is c the law, after someone wanted by c's own people? */
+const lawAfter = (c: Char, t: Char) => (c.role === 'guard' || c.role === 'patrol') && (t.bounty[c.faction] ?? 0) > 0;
+
+/**
+ * Counts how long someone has been after a target with no blow struck either way, and says when to
+ * give it up: a target who keeps just out of reach, or who cannot be got at (across water, up a
+ * ledge), could be chased for ever. Time counts while the target is on the move or the chaser is
+ * getting no nearer.
+ */
+function outrun(c: Char, t: Char, dt: number): boolean {
+  const B = c.brain;
+  const d = dist(c, t);
+  if (B.chase !== t.id) { B.chase = t.id; B.chaseT = 0; B.chaseBest = d; }
+  const struck = Math.max(t.lastHitBy === c.id ? t.lastHitT : -1e9, c.lastHitBy === t.id ? c.lastHitT : -1e9);
+  if (S.time - struck < 1) { B.chaseT = 0; B.chaseBest = d; }
+  else if (d > reach(c)) {
+    // a runner getting away, or a chaser stood stuck no nearer (walking a long way round is still chasing)
+    if (t.speed > 1 || (d > B.chaseBest - 0.05 && c.speed < 0.5)) B.chaseT += dt;
+    B.chaseBest = Math.min(B.chaseBest, d);
+  }
+  return B.chaseT > CHASE_GIVE_UP;
+}
+
+/** Says, once for all who give up on the same runner, that the chase is off. */
+function gaveUp(c: Char, t: Char) {
+  if (S.time - (t.brain.shookOff ?? -1e9) > 10) S.fx.notice(`${c.name} gave up the chase.`, 'info');
+  t.brain.shookOff = S.time;
+}
+
+/** Breaks off from a target and leaves them be for a while, unless they come back for more (see forsaken). */
+function letGo(c: Char, t: Char) {
+  const B = c.brain;
+  B.letGo = t.id; B.letGoAt = S.time;
+  B.chase = 0; B.chaseT = 0;
+  if (B.enemy === t.id) B.enemy = 0;
+  c.target = 0;
+  stop(c);
+}
+
+/**
+ * Has c broken off from o lately, and is o still keeping away? A blow from o, or o coming within
+ * reach and not making off, ends it; the law looks away from a wanted man only for a few moments,
+ * and not at all once he is close.
+ */
+function forsaken(c: Char, o: Char) {
+  const B = c.brain;
+  if (o.id !== B.letGo) return false;
+  const law = lawAfter(c, o);
+  if (S.time - B.letGoAt >= (law ? 10 : 30)) return false;
+  if (c.lastHitBy === o.id && c.lastHitT > B.letGoAt) return false;
+  const d = dist(c, o);
+  if (law && d < 15) return false;
+  return !(d <= reach(c) + 1 && receding(c, o) <= 0.3);
+}
+
+/** Squads whose people keep with their leader on the road (see routine). */
+const ON_THE_ROAD = new Set(['patrol', 'caravan', 'raid', 'wanderers', 'slavers', 'bounty', 'herd']);
+
+/**
+ * Has a chase drawn one of the world's people too far from their own? Those on the road keep with
+ * their leader (a leader, with where the fight began); a town's people or a camp's with their home.
+ * The law runs a wanted man the length of a town, and hunters follow their quarry anywhere.
+ */
+function leashed(c: Char, t: Char) {
+  if (dist(c, t) <= reach(c) + 1) return false; // a fight within reach is no chase
+  const B = c.brain, sq = S.W.squadOf(c);
+  if (sq?.flags.hunt === t.id) return false;
+  let ax: number, az: number;
+  const L = sq && sq.leader !== c.id && ON_THE_ROAD.has(sq.kind) ? S.W.char(sq.leader) : undefined;
+  if (L?.up) { ax = L.x; az = L.z; }
+  else if ((!sq || !ON_THE_ROAD.has(sq.kind)) && (c.homeX || c.homeZ)) { ax = c.homeX; az = c.homeZ; }
+  else if (B.fromId === t.id) { ax = B.fromX; az = B.fromZ; }
+  else return false; // (not yet seen where this one began)
+  const r = lawAfter(c, t) ? LAW_LEASH : LEASH;
+  return (c.x - ax) ** 2 + (c.z - az) ** 2 > r * r;
 }
 
 /** Flee away from a point. */
@@ -170,7 +258,7 @@ function playerAI(c: Char, dt: number, think: boolean) {
     const threatR = c.combatMode === 'passive' ? 0 : post ? 2.5 : c.combatMode === 'aggressive' ? 22 : c.combatMode === 'defensive' ? 8 : 0;
     let enemy: Char | null = null;
     const attacker = S.W.char(c.lastHitBy);
-    if (attacker && attacker.up && S.time - c.lastHitT < 6 && c.combatMode !== 'passive' && hostileOrProvoked(c, attacker) && (!post || dist(c, attacker) < 3)) enemy = attacker;
+    if (attacker && attacker.up && S.time - c.lastHitT < 6 && c.combatMode !== 'passive' && hostileOrProvoked(c, attacker) && (!post || dist(c, attacker) < 3) && !forsaken(c, attacker)) enemy = attacker;
     if (!enemy && threatR > 0 && (!c.order || c.order.k === 'hold' || c.order.k === 'follow')) enemy = findEnemy(c, threatR);
     // help squadmates in trouble
     if (!enemy && !post && c.combatMode === 'aggressive' && (!c.order || c.order.k === 'follow' || c.order.k === 'hold')) {
@@ -189,14 +277,18 @@ function playerAI(c: Char, dt: number, think: boolean) {
   if (order && order.k === 'attack') {
     const t = S.W.char(order.id);
     if (!t || !t.alive || (t.status !== 'up' && !B.finish)) { c.order = null; }
+    else if (t.up && outrun(c, t, dt)) { c.order = null; letGo(c, t); gaveUp(c, t); }
     else { fight(c, t, dt); return; }
   }
   const enemy = S.W.char(B.enemy);
   if (enemy && enemy.alive && (enemy.up || (enemy.status === 'ko' && B.finish === enemy.id)) && (!order || order.k === 'hold' || order.k === 'follow' || order.k === 'use' || order.k === 'mine' || order.k === 'build' || order.k === 'operate')) {
-    if (c.carrying) dropCarried(c);
-    if (order && order.k !== 'hold' && order.k !== 'follow') { c.jobs.length && (B.resumeJob = true); }
-    fight(c, enemy, dt);
-    return;
+    if (enemy.up && outrun(c, enemy, dt)) { letGo(c, enemy); gaveUp(c, enemy); }
+    else {
+      if (c.carrying) dropCarried(c);
+      if (order && order.k !== 'hold' && order.k !== 'follow') { c.jobs.length && (B.resumeJob = true); }
+      fight(c, enemy, dt);
+      return;
+    }
   }
   c.target = 0;
   if (!B.enemy && c.drawn && S.time - c.lastHitT > 6) c.drawn = false;
@@ -298,7 +390,7 @@ function npcAI(c: Char, dt: number, think: boolean) {
     const radius = c.animal ? Math.max(20, ANIMAL[c.animal].aggro) : c.role === 'guard' || c.role === 'patrol' ? 36 : 26;
     const e = c.combatMode === 'passive' ? null : findEnemy(c, radius);
     const attacker = S.W.char(c.lastHitBy);
-    const provoked = attacker && attacker.alive && attacker.up && S.time - c.lastHitT < 12 ? attacker : null;
+    const provoked = attacker && attacker.alive && attacker.up && S.time - c.lastHitT < 12 && !forsaken(c, attacker) ? attacker : null;
     let target = provoked ?? e;
     // some would rather talk (and extort) first
     if (target && !provoked && target.faction === 'player' && wantsToTalk(c)) target = null;
@@ -323,6 +415,11 @@ function npcAI(c: Char, dt: number, think: boolean) {
       });
     }
     B.enemy = target ? target.id : 0;
+    // where a fight began, to turn back to if a chase goes too far (see leashed); the same one taken up again soon after keeps it
+    if (target) {
+      if (target.id !== B.fromId || S.time - (B.fromT ?? -1e9) > 120) { B.fromId = target.id; B.fromX = c.x; B.fromZ = c.z; }
+      B.fromT = S.time;
+    }
     // machines announce themselves when they pick a fight, and mutter on patrol
     if (target && target.id !== B.foe) machineSay(c, 'engage');
     // those who carry a fighting drug take it as the fight starts
@@ -339,10 +436,10 @@ function npcAI(c: Char, dt: number, think: boolean) {
   }
   const enemy = S.W.char(B.enemy);
   if (enemy && enemy.alive) {
-    if (c.carrying) dropCarried(c);
     // beasts that eat the fallen keep at it
-    if (enemy.status !== 'up' && !(c.animal && ANIMAL[c.animal].eatsDowned)) B.enemy = 0;
-    else { fight(c, enemy, dt); return; }
+    if (enemy.status !== 'up' && !(c.animal && ANIMAL[c.animal].eatsDowned)) { if (c.carrying) dropCarried(c); B.enemy = 0; }
+    else if (leashed(c, enemy)) letGo(c, enemy); // (a captor turning back keeps his prisoner)
+    else { if (c.carrying) dropCarried(c); fight(c, enemy, dt); return; }
   }
   c.target = 0;
   if (B.flee) {

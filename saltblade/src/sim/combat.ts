@@ -84,6 +84,34 @@ export function startAttack(c: Char, t: Char, kick = false) {
   if (kick ? b.prostOK(LI.rleg) || b.prostOK(LI.lleg) : b.prostOK(LI.rarm) || b.prostOK(LI.larm)) S.fx.sound('servo', c.x, c.z, 0.45);
 }
 
+/** How fast a target is getting away from an attacker, in m/s (negative when closing in). */
+export function receding(c: Char, t: Char) {
+  const dx = t.x - c.x, dz = t.z - c.z, d = Math.hypot(dx, dz);
+  return d > 0 ? (t.vx * dx + t.vz * dz) / d : 0;
+}
+
+/**
+ * Whom an attacker winding up a blow steps in after: a target backing out of easy reach (or already
+ * out of it) is followed as fast as the attacker can run, so the blow lands instead of falling short
+ * of someone on the run. Nobody once the blow has fallen, or while the target stands its ground.
+ */
+export function lungeAt(c: Char): Char | null {
+  const a = c.atk;
+  if (!a || a.t >= 0.5) return null;
+  const t = S.W.char(a.target);
+  if (!t || !t.up) return null;
+  const d = dist(c, t), r = reach(c);
+  return d > r * 0.75 && (d > r || receding(c, t) > 0.3) ? t : null;
+}
+
+/** Will a blow begun now still reach the target when it falls, the attacker following as fast as they can run? */
+export function blowWillLand(c: Char, t: Char) {
+  const away = receding(c, t);
+  if (away <= 0.3) return true; // standing their ground, or coming on
+  const gain = away - c.moveSpeed('run');
+  return gain <= 0 || dist(c, t) + gain * c.attackTime() * 0.5 <= reach(c) + 0.5;
+}
+
 /** Advances an attack in progress; resolves the blow at the strike moment. */
 export function tickAttack(c: Char, dt: number) {
   const a = c.atk;
