@@ -6,7 +6,9 @@
 // what they watch and not before; and the things that must not count (a
 // recruit's old fights, a bought house, a bounty wiped by a jailer, a coin
 // sound that is no sale, a cannibal village) do not. Progress survives a save
-// round trip, and a reward with no room in the packs lands at your feet.
+// round trip, and a reward with no room in the packs lands at your feet. With
+// the goals done, or in a save that never had any, the tracker keeps one Next
+// line (the journal's current goal), which its × hides with the rest.
 // Usage: npx tsx tools/objtest.ts
 import { generateWorld } from '../src/world/gen';
 import { Nav } from '../src/world/nav';
@@ -32,7 +34,8 @@ import { emit, on } from '../src/core/events';
 import { LI } from '../src/sim/body';
 import { SCENARIOS } from '../src/content/scenarios';
 import { OBJECTIVES, Trigger } from '../src/content/objectives';
-import { beginObjectives, setupObjectives, tickObjectives, objectiveView } from '../src/ui/objectives';
+import { beginObjectives, setupObjectives, tickObjectives, objectiveView, trackerNext, hideTracker } from '../src/ui/objectives';
+import { currentGoal } from '../src/sim/contracts';
 import type { Char } from '../src/sim/char';
 
 const T = await generateWorld(1337, () => {});
@@ -97,7 +100,7 @@ setupObjectives();
 {
   const before = JSON.stringify(W.flags);
   tick(3);
-  check('a game without objective state has no tracker', objectiveView() === null);
+  check('a game without objective state has no chain of goals', objectiveView() === null);
   check('...and ticking it writes nothing into the save', JSON.stringify(W.flags) === before);
 }
 
@@ -183,6 +186,24 @@ const kos = W.playerChars().reduce((n, c) => n + c.stats.kos, 0); // whoever of 
 check('knocking out a bandit completes "Win a fight"', !foe.up && kos > 0 && done().includes('win'), `${foe.name} ${foe.status} after ${t} s, ${kos} KO${kos === 1 ? '' : 's'} for the band`);
 check('with every goal done the chain is finished and the outro is in the journal', !!objectiveView()?.finished && W.log.some((l) => /on your own now/.test(l.text)), `${done().length}/8`);
 check('...and said out loud, once', notices.filter((n) => /on your own now/.test(n)).length === 1);
+
+// ---------------------------------------------------------------- the goals done: what to do next
+{
+  const next = trackerNext(), goal = currentGoal();
+  check('with the goals done the tracker keeps one line: what to do next, as the journal has it', !!next && !!goal && next.text === goal.text && !!next.where && !!next.entry, next ? `${next.entry}: ${next.text}` : 'nothing');
+  const chain = W.flags.objectives;
+  delete W.flags.objectives;
+  const old = trackerNext();
+  check('...and so does a save from before the goals', !!old && old.text === goal?.text && objectiveView() === null, old?.text);
+  hideTracker();
+  const W2 = new World(); apply(JSON.parse(JSON.stringify(serialize())), W2);
+  check('...until its × hides it for the game, and the save remembers', trackerNext() === null && W.flags.nextHidden === true && W2.flags.nextHidden === true);
+  delete W.flags.nextHidden;
+  W.flags.objectives = chain;
+  chain.hidden = true;
+  check('...and hiding a chain hides its Next line with it', trackerNext() === null && objectiveView()?.hidden === true);
+  delete chain.hidden;
+}
 
 // ---------------------------------------------------------------- it all survives a save
 {

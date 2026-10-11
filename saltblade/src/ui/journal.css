@@ -1,0 +1,69 @@
+/* The journal (journal.ts): jobs, stories and the crisis; and the board's words in conversation. */
+
+.journalwin .winbody { display: flex; flex-direction: column; max-height: min(78vh, 760px); padding-bottom: 8px; }
+.journalwin .ftabs { flex: none; }
+.journalwin .ftab.alarm { color: #f0a080; }
+.jnext { flex: none; display: flex; gap: 8px; align-items: center; background: rgba(217,164,65,.1); border: 1px solid #6a5434; border-radius: 4px; padding: 5px 8px; margin-bottom: 8px; font-size: 13.5px; }
+.jnext > span:nth-child(2) { flex: 1; min-width: 0; }
+.jnexthead { font: 700 12px var(--cond); letter-spacing: .14em; text-transform: uppercase; color: var(--accent); flex: none; }
+.jlist { overflow: auto; min-height: 0; flex: 1; padding-right: 2px; }
+.jsum { font: 13px var(--cond); margin: 0 0 6px; }
+.jempty { color: var(--ink-dim); line-height: 1.45; margin: 6px 2px; }
+
+.jcard, .jstory { background: rgba(38,33,26,.6); border: 1px solid #3e3629; border-left: 3px solid #8a7458; border-radius: 4px; padding: 7px 10px 8px; margin-bottom: 6px; }
+.jcard.ready { border-left-color: var(--good); }
+.jcard.urgent { border-left-color: var(--bad); }
+.jcard.crisis { border-left-color: var(--bad); background: rgba(60,26,18,.45); }
+.jcard.crisis.ready { border-left-color: var(--good); background: rgba(38,33,26,.6); }
+.jhead { display: flex; gap: 8px; align-items: baseline; }
+.jkind { font: 700 11px var(--cond); letter-spacing: .12em; text-transform: uppercase; color: #1a140c; background: #b09a6a; border-radius: 2px; padding: 0 5px; flex: none; }
+.jcard.crisis .jkind { background: #c6523a; color: #fff0e8; }
+.jtitle { font: 600 16px var(--cond); color: #f0e0bc; flex: 1; min-width: 0; }
+.jdue { font: 13px var(--cond); color: var(--ink-dim); flex: none; }
+.jfrom { font-size: 12.5px; margin: 1px 0 3px; }
+.jstep { font-size: 14px; color: var(--ink); margin: 2px 0; }
+.jprog { font-size: 13px; color: #c8b88a; margin: 1px 0 2px; }
+.jbrief { font-size: 12.5px; color: var(--ink-dim); font-style: italic; margin: 3px 0 4px; line-height: 1.35; }
+.jrow { font-size: 13px; margin: 1px 0; line-height: 1.35; }
+.jrow b { font: 600 12px var(--cond); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); margin-right: 2px; }
+.jdanger { font-weight: 700; }
+.jdanger.d0, .jdanger.d1 { color: #9cd070; }
+.jdanger.d2 { color: var(--warn); }
+.jdanger.d3 { color: #e89a50; }
+.jdanger.d4, .jdanger.d5 { color: #f0705a; }
+.jbtns { display: flex; gap: 6px; justify-content: flex-end; margin-top: 4px; }
+.jbtns:empty { display: none; }
+.jbtns .tbtn.small, .jnext .tbtn.small { padding: 2px 10px; font-size: 13px; }
+
+.jstory.locked { opacity: .62; }
+.jstory.open { border-left-color: var(--accent); }
+.jstory.active { border-left-color: #8a4ec0; }
+.jstory.done { border-left-color: var(--good); }
+.jsteps { margin: 4px 0 2px; padding-left: 20px; font-size: 13px; }
+.jsteps li { margin: 2px 0; line-height: 1.35; }
+.jsteps li.done b { color: #9cd070; }
+.jsteps li.now b { color: var(--accent); }
+.jcap { font-size: 13px; color: #c0e0a8; margin-top: 4px; }
+/* the entry the objective tracker's Next line opened the journal at, lit a moment */
+.jflash { animation: jflash 1.6s ease-out; }
+@keyframes jflash { 0%, 35% { box-shadow: 0 0 0 2px var(--accent); } 100% { box-shadow: 0 0 0 2px transparent; } }
+@media (prefers-reduced-motion: reduce) { .jflash { animation: none; box-shadow: 0 0 0 2px var(--accent); } }
+
+.jpast { display: grid; grid-template-columns: auto auto 1fr; gap: 0 8px; align-items: baseline; padding: 4px 6px; border-bottom: 1px solid #2e2820; font-size: 13.5px; }
+.jpday { font: 12px var(--cond); }
+.jpstate { font: 700 11px var(--cond); letter-spacing: .1em; text-transform: uppercase; }
+.jpast.done .jpstate { color: var(--good); }
+.jpast.failed .jpstate { color: var(--bad); }
+.jpast.abandoned .jpstate { color: var(--warn); }
+.jpnote { grid-column: 2 / -1; font-size: 12.5px; }
+
+/* the map's key for marks of your work */
+.maplegend i.goal { background: var(--accent); transform: rotate(45deg) scale(.85); border-color: #2a1c10; }
+
+/* a keeper reads a job out line by line */
+.dlg .dlgtext { white-space: pre-line; }
+
+@media (max-width: 760px) {
+  .journalwin .winbody { max-height: 70vh; }
+  .jtitle { font-size: 15px; }
+}

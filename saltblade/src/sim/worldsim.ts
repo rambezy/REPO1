@@ -28,9 +28,9 @@ const rng = new RNG((Date.now() ^ 4242) >>> 0); // a different world story each 
 let t = 0;
 let shopT = 0;
 
-interface Spec { key: string; faction: string; kind: SquadKind; role: Role; n: [number, number]; weight: number; regions?: string[]; from?: string[]; to?: string[]; species?: string; loadout?: string; lead?: string; }
+export interface Spec { key: string; faction: string; kind: SquadKind; role: Role; n: [number, number]; weight: number; regions?: string[]; from?: string[]; to?: string[]; species?: string; loadout?: string; lead?: string; }
 
-const SPECS: Spec[] = [
+export const SPECS: Spec[] = [
   { key: 'concord_patrol', faction: 'concord', kind: 'patrol', role: 'patrol', n: [4, 6], weight: 3, from: ['aurum', 'harrowmarket', 'stonegate', 'saltmere'], to: ['aurum', 'harrowmarket', 'stonegate', 'saltmere', 'chainfield', 'squatters', 'lowtide', 'brinewick'] },
   { key: 'ember_patrol', faction: 'ember', kind: 'patrol', role: 'patrol', n: [4, 7], weight: 3, from: ['cinderhold', 'brightwater', 'pyreswatch', 'tithefield'], to: ['cinderhold', 'brightwater', 'pyreswatch', 'crossroad', 'squatters', 'tithefield', 'rivet'] },
   { key: 'karuk_band', faction: 'karuk', kind: 'patrol', role: 'patrol', n: [3, 6], weight: 2, from: ['hornspire', 'redmesa', 'cragfold'], to: ['hornspire', 'redmesa', 'brightwater', 'crossroad', 'humminghollow', 'cragfold'] },
@@ -61,7 +61,7 @@ function beastSpecs(): Spec[] {
   }
   return out;
 }
-const BEASTS = beastSpecs();
+export const BEASTS = beastSpecs();
 const TARGET = 70;
 
 function roadRoute(a: string, b: string): number[] | null {
@@ -119,7 +119,7 @@ function randomPointIn(reg: string): [number, number] | null {
  * Sends a squad of a kind into the world: on its roads or in its lands, or (`at`) from a given place along a given route,
  * at most `cap` strong, its people no higher than `level` and dressed from `loadout` (see fitAgainst).
  */
-function spawn(spec: Spec, at?: { x: number; z: number; route: number[]; cap?: number; level?: number; loadout?: string }): Squad | null {
+export function spawn(spec: Spec, at?: { x: number; z: number; route: number[]; cap?: number; level?: number; loadout?: string }): Squad | null {
   const W = S.W;
   let x = 0, z = 0;
   let route: number[] | null = null;
@@ -277,7 +277,7 @@ export function levelUnder(loadout: string, max: number, r: RNG = rng) {
 }
 
 /** How much of a fight someone is, to fit a band: their strength, and for a beast its hide (a beast's rating leaves out how much beating it takes). */
-const threat = (c: Char) => c.power() * (c.animal ? Math.max(1, ANIMAL[c.animal].hp) : 1);
+export const threat = (c: Char) => c.power() * (c.animal ? Math.max(1, ANIMAL[c.animal].hp) : 1);
 
 /** Sends home whoever a new squad has over its fit's budget, the last to join first. False if even one of them alone is too much. */
 export function trimTo(sq: Squad, fit: Fit): boolean {

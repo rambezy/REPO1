@@ -25,6 +25,7 @@ import { setupCaptive } from './captive';
 import { openBook } from './read';
 import { DEEDS } from '../sim/deeds';
 import { setupCodex, toggleCodex } from './codex';
+import { setupJournal } from './journal';
 import { saveGame } from '../game/session';
 import { G } from '../state';
 
@@ -34,6 +35,7 @@ export function setupUI() {
   setupHints();
   setupCaptive();
   setupCodex();
+  setupJournal();
   on('ui:char', () => { if (isOpen('char')) closeWindow('char'); else openCharWindow(); });
   on('ui:loot', (looter: number, target: any) => openLoot(looter, target));
   on('world:drop', (x: number, z: number, items: any[]) => dropOnGround(x, z, items));
@@ -66,6 +68,7 @@ export function setupUI() {
     switch (code) {
       case 'KeyI': emit('ui:char'); return true;
       case 'KeyL': emit('ui:log'); return true;
+      case 'KeyJ': emit('ui:journal'); return true;
       case 'KeyM': emit('ui:map'); return true;
       case 'KeyB': emit('ui:build'); return true;
       case 'KeyU': emit('ui:research'); return true;
@@ -142,11 +145,11 @@ function inspect(id: number) {
 
 let logTab: 'log' | 'deeds' = 'log';
 function openLog() {
-  const w = openWindow('log', 'Journal', { w: 480, x: window.innerWidth - 500, y: 104 });
+  const w = openWindow('log', 'Log', { w: 480, x: window.innerWidth - 500, y: 104 });
   const render = () => {
     w.body.innerHTML = '';
     const tabs = h('div', { class: 'ftabs' });
-    for (const [k, label] of [['log', 'Journal'], ['deeds', 'Deeds']] as const) {
+    for (const [k, label] of [['log', 'Log'], ['deeds', 'Deeds']] as const) {
       const b = h('button', { class: 'ftab' + (logTab === k ? ' on' : '') }, label);
       b.onclick = () => { logTab = k; render(); };
       tabs.appendChild(b);

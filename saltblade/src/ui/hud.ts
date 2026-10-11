@@ -44,6 +44,7 @@ export function buildHUD() {
   btn('Research', 'U', 'ui:research');
   btn('Map', 'M', 'ui:map');
   btn('Factions', 'O', 'ui:factions');
+  btn('Journal', 'J', 'ui:journal');
   btn('Log', 'L', 'ui:log');
   btn('Codex', 'K', 'ui:codex');
   btn('Menu', 'Esc', 'ui:menu');

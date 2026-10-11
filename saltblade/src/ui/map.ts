@@ -10,6 +10,7 @@ import { SETTLEMENT } from '../content/layout';
 import { selected, issue } from '../game/control';
 import { playerBase } from '../sim/base';
 import { emit, on } from '../core/events';
+import { drawGoalMarks } from './goalmarks';
 
 const MAP = 1024; // base image resolution
 export const EXP = 128; // exploration grid
@@ -104,6 +105,15 @@ function known(siteId: number) {
 interface View { cx: number; cz: number; zoom: number; }
 const view: View = { cx: WORLD / 2, cz: WORLD / 2, zoom: 1 };
 
+// the journal's "Show on map": open the map on a place
+let focusAt: [number, number] | null = null;
+on('ui:map-at', (x: number, z: number) => {
+  if (isOpen('map')) closeWindow('map');
+  focusAt = [x, z];
+  view.zoom = Math.max(view.zoom, 2.5);
+  openMap();
+});
+
 export function toggleMap() {
   if (isOpen('map')) { closeWindow('map'); return; }
   openMap();
@@ -122,7 +132,8 @@ export function openMap() {
   // start centred on your people
   const pc = S.W.playerChars().find((c) => c.alive);
   if (pc && view.zoom === 1) { view.cx = pc.x; view.cz = pc.z; }
-  view.cx = G.cam.target.x; view.cz = G.cam.target.z;
+  [view.cx, view.cz] = focusAt ?? [G.cam.target.x, G.cam.target.z];
+  focusAt = null;
   if (view.zoom < 1) view.zoom = 1;
   const fog = document.createElement('canvas');
   fog.width = fog.height = EXP;
@@ -205,6 +216,8 @@ export function openMap() {
       ctx.beginPath(); ctx.moveTo(sx - 4, sy - 4); ctx.lineTo(sx + 4, sy + 4); ctx.moveTo(sx + 4, sy - 4); ctx.lineTo(sx - 4, sy + 4); ctx.stroke();
       if (view.zoom >= 1.4) label(`${b.name}: ${b.reward.toLocaleString()}c`, sx, sy - 14, '#7a1a0e', 11);
     }
+    // where your jobs, stories and the crisis send you
+    drawGoalMarks(ctx, toScreen, label, view.zoom, size);
     // your base
     const pb = playerBase();
     if (pb) {
@@ -306,6 +319,7 @@ export function openMap() {
   legend.append(
     ...[...facs].map((f) => h('span', { class: 'lg' }, h('i', { style: { background: '#' + FACTION[f].color.toString(16).padStart(6, '0') } }), FACTION[f].short)),
     h('span', { class: 'lg' }, h('i', { class: 'me' }), 'Your people'),
+    h('span', { class: 'lg' }, h('i', { class: 'goal' }), 'Your work'),
     h('span', { class: 'dim hint' }, 'Wheel to zoom · drag to pan · click to look · right-click to send the selected'),
   );
   requestAnimationFrame(draw);

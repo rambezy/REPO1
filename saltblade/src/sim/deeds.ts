@@ -43,6 +43,13 @@ export const DEEDS: Deed[] = [
   { key: 'most_wanted', name: 'Most Wanted', desc: 'Carry a price of 10,000 chits on one head.', check: (W, m) => m.some((c) => totalBounty(c) >= 10000) },
   { key: 'family', name: 'Family', desc: 'Bring Tunde and his sister together, free.', check: (W) => W.flags.moments?.tunde_ama_free !== undefined },
   { key: 'mapmaker', name: 'The Last Blank', desc: 'Help Cressa finish her map of the waste.', check: (W) => W.flags.moments?.cressa_glass !== undefined },
+  // work off the town boards, the stories and the Foundry (sim/contracts, sim/stories, sim/crisis)
+  { key: 'contract', name: 'Hired Hand', desc: 'Finish a job off a town\'s board.', check: (W) => (W.flags.contracts?.done ?? 0) >= 1 },
+  { key: 'contract10', name: 'Known on Every Board', desc: 'Finish ten jobs off the town boards.', check: (W) => (W.flags.contracts?.done ?? 0) >= 10 },
+  { key: 'free_road', name: 'The Free Road', desc: 'Stand the free towns together against the Reavers.', check: (W) => W.flags.story?.freeroad?.state === 'done' },
+  { key: 'flamebearer', name: 'Flamebearer', desc: 'Burn the Scorched Hand\'s leaf for the Ember Covenant.', check: (W) => W.flags.story?.ashtithe?.state === 'done' },
+  { key: 'custodian', name: 'Friend of the Enclave', desc: 'Silence the Rust Mill for the Hollows of Rustward.', check: (W) => W.flags.story?.foundry?.state === 'done' },
+  { key: 'foundry_sleeps', name: 'The Foundry Sleeps', desc: 'Break the Foundry Mind and end its war on the waste.', check: (W) => W.flags.crisis?.state === 'resolved' },
 ];
 
 let t = 0;

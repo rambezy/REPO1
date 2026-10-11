@@ -18,6 +18,7 @@ import { bountiesFor, claimValue, claimBounty } from './bounties';
 import { taxFor } from './raids';
 import { UNIQUE_BY_KEY, uniqueReady } from './uniques';
 import { PIT_TIERS, startBout, boutRunning, tierOpen } from './arena';
+import { WORK_CHOICES, WORK_NODES, contractTree } from './contracts';
 
 export interface DCtx { p: Char; n: Char; vars: Record<string, any>; }
 export interface DChoice { t: string | ((c: DCtx) => string); next?: string; if?: (c: DCtx) => boolean; fx?: (c: DCtx) => void | string; end?: boolean; }
@@ -98,11 +99,13 @@ const TREES: Record<string, Tree> = {
       t: (c) => greeting(c.n, c.p),
       ch: [
         { t: 'Show me what you have.', fx: (c) => { emit('ui:trade', c.p.id, c.n.id); return 'end'; } },
+        ...WORK_CHOICES, // the keeper of a town's board (sim/contracts)
         { t: 'What is this place?', next: 'place' },
         { t: 'Heard any news?', next: 'news' },
         BYE,
       ],
     },
+    ...WORK_NODES,
     place: { t: (c) => troubles(c) + aboutPlace(c.n), ch: [{ t: 'Show me what you have.', fx: (c) => { emit('ui:trade', c.p.id, c.n.id); return 'end'; } }, BYE] },
     news: { t: (c) => rumour(c.n), ch: [{ t: 'Show me what you have.', fx: (c) => { emit('ui:trade', c.p.id, c.n.id); return 'end'; } }, BYE] },
   },
@@ -357,6 +360,8 @@ function bountyTalk(c: DCtx) {
 
 /** Which conversation an NPC offers the player. */
 export function treeFor(n: Char, p: Char): [Tree, string] {
+  const job = contractTree(n); // a story's giver, or someone a job brought in
+  if (job) return job;
   if (n.dialogue && UNIQUE_TREES[n.dialogue]) return [UNIQUE_TREES[n.dialogue], 'start'];
   const f = FACTION[n.faction];
   const sq = S.W.squadOf(n);

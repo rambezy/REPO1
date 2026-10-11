@@ -49,7 +49,7 @@ export const SCENARIOS: Scenario[] = [
     squad: 'Nameless', money: 1000,
     people: [{ level: 8, loadout: 'drifters_wanderer', kit: [['dried_meat', 3], ['bandages', 2]] }],
     start: { settlement: 'crossroad', off: [170, 40] },
-    firstSteps: 'Crossroad is just to the west: a smith, and a bar with people looking for work. To earn, <b>mine</b> ore (right-click a rock) and sell it, loot the bandits you beat, or take a bounty from a town guard.',
+    firstSteps: 'Crossroad is just to the west: a smith, and a bar with people looking for work. To earn, take a <b>job</b> off the barkeep\'s board, <b>mine</b> ore (right-click a rock) and sell it, loot the bandits you beat, or take a bounty from a town guard.',
   },
   {
     key: 'freeholders', name: 'Freeholders', diff: 'Easy',
@@ -64,7 +64,7 @@ export const SCENARIOS: Scenario[] = [
     ],
     start: { settlement: 'aurum', region: 'vale', off: [-900, 500] },
     homestead: true,
-    firstSteps: 'Your claim: a shack, a wheat field, a well and a food store. Right-click the field with someone selected to <b>farm</b> it. <b>Aurum</b> is north-east (<b>M</b> for the map) and sells real weapons; the Concord and the Reavers will both come for a share.',
+    firstSteps: 'Your claim: a shack, a wheat field, a well and a food store. Right-click the field with someone selected to <b>farm</b> it. <b>Aurum</b> is north-east (<b>M</b> for the map): real weapons for sale, and paid <b>work</b> on its barkeep\'s board. The Concord and the Reavers will both come for a share.',
     items: [['building_mats', 30], ['wheat', 20], ['dustbread', 10], ['bandages', 6]],
   },
   {
@@ -78,7 +78,7 @@ export const SCENARIOS: Scenario[] = [
       { role: 'merc', level: 20, loadout: 'merc', kit: [['bandages', 2], ['dried_meat', 2]] },
     ],
     start: { settlement: 'harrowmarket', off: [-260, 90] },
-    firstSteps: 'Harrowmarket is just to the east, with weapon, armour and mercenary shops. You can fight, so fight for pay: town guards post <b>bounties</b>, and bandits carry things worth selling.',
+    firstSteps: 'Harrowmarket is just to the east, with weapon, armour and mercenary shops. You can fight, so fight for pay: town guards post <b>bounties</b>, the barkeep posts <b>work</b>, and bandits carry things worth selling.',
   },
   {
     key: 'karuk', name: 'Horned Pilgrims', diff: 'Normal',
@@ -91,7 +91,7 @@ export const SCENARIOS: Scenario[] = [
       { role: 'merc', races: ['karuk'], level: 12, loadout: 'karuk_resident', weapon: 'iron_club', kit: [['bandages', 2]] },
     ],
     start: { settlement: 'hornspire', off: [240, 210] },
-    firstSteps: 'Hornspire is just to the north-west: its <b>arena</b> pays fighters and its shops sell Karuk arms. You hit hard and heal fast but learn trades slowly. Keep out of the Covenant\'s lands to the east.',
+    firstSteps: 'Hornspire is just to the north-west: its <b>arena</b> pays fighters, its barkeep posts <b>work</b>, and its shops sell Karuk arms. You hit hard and heal fast but learn trades slowly. Keep out of the Covenant\'s lands to the east.',
     rel: { karuk: 30 },
   },
   {
@@ -104,7 +104,7 @@ export const SCENARIOS: Scenario[] = [
       { races: ['hollow'], level: 10, loadout: 'hollows_resident', weapon: 'pry_bar', kit: [['repair_kit', 1]] },
     ],
     start: { settlement: 'rustward', off: [-300, 260] },
-    firstSteps: 'Rustward, the machines\' enclave, is just to the north-east. You never eat, but you wear out: <b>repair kits</b> mend you, and Rustward sells them. Maker scrap and relics sell well to the Delvers; the Covenant hunts machines.',
+    firstSteps: 'Rustward, the machines\' enclave, is just to the north-east, and its trader posts paid <b>work</b>. You never eat, but you wear out: <b>repair kits</b> mend you, and Rustward sells them. Maker scrap and relics sell well to the Delvers; the Covenant hunts machines.',
   },
   {
     key: 'scrappers', name: 'Scrap and Sinew', diff: 'Hard',
@@ -116,7 +116,7 @@ export const SCENARIOS: Scenario[] = [
       { level: 12, loadout: 'drifters_wanderer', weapon: 'cleaver', prost: [[6, 'scrap_leg']], kit: [['solder_tin', 2], ['dried_meat', 3]] },
     ],
     start: { settlement: 'rustward', off: [240, -260] },
-    firstSteps: 'Rustward, to the north-west, buys machine parts and sells repair kits. Your scrap limbs never bleed; wrecked, a <b>repair kit</b> mends them (First aid). Machines you knock down can be <b>salvaged</b> for parts (right-click them).',
+    firstSteps: 'Rustward, to the north-west, buys machine parts and sells repair kits, and its trader posts paid <b>work</b>. Your scrap limbs never bleed; wrecked, a <b>repair kit</b> mends them (First aid). Machines you knock down can be <b>salvaged</b> for parts (right-click them).',
   },
   {
     key: 'deserters', name: 'Deserters', diff: 'Hard',
@@ -129,7 +129,7 @@ export const SCENARIOS: Scenario[] = [
     ],
     start: { settlement: 'stonegate', off: [-520, 180] },
     bounty: { concord: 3000 },
-    firstSteps: 'Stonegate is just to the east, full of people who would sell you to the Concord. With 3,000 chits on your heads, keep clear of Concord towns and patrols, or pay a Concord guard off. The free towns (Crossroad, Hardcoin) do not care who you were.',
+    firstSteps: 'Stonegate is just to the east, full of people who would sell you to the Concord. With 3,000 chits on your heads, keep clear of Concord towns and patrols, or pay a Concord guard off. The free towns (Crossroad, Hardcoin) do not care who you were, and their barkeeps post paid <b>work</b>.',
     rel: { concord: -30, unchained: 20 },
   },
   {

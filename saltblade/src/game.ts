@@ -39,6 +39,7 @@ import { tickDeeds } from './sim/deeds';
 import { tickChatter } from './sim/chatter';
 import { tickHunters } from './sim/hunters';
 import { tickPersonal } from './sim/personal';
+import { tickContracts } from './sim/contracts';
 import { tickAutosave, startNewGame, loadData } from './game/session';
 import { showTitle, tickTitle } from './ui/title';
 import { tickHints } from './ui/hints';
@@ -199,6 +200,7 @@ const SIM_PARTS: [System, (h: number) => void][] = [
   [system('Deeds'), (h) => { if (G.mode === 'play') tickDeeds(h); }],
   [system('Bounty hunters'), (h) => { if (G.mode === 'play') tickHunters(h); }],
   [system('Personal stories'), (h) => { if (G.mode === 'play') tickPersonal(h); }],
+  [system('Work and stories'), (h) => { if (G.mode === 'play') tickContracts(h); }],
   [system('Chatter'), tickChatter],
   [system('Weather'), (h) => S.weather.tick(h)],
 ];

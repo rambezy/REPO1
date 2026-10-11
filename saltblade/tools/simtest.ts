@@ -22,6 +22,7 @@ import { tickDeeds } from '../src/sim/deeds';
 import { tickChatter, chatter } from '../src/sim/chatter';
 import { tickHunters } from '../src/sim/hunters';
 import { tickPersonal } from '../src/sim/personal';
+import { tickContracts } from '../src/sim/contracts';
 import { structuresIn, townRings } from '../src/sim/structures';
 import { buildTown } from '../src/world/towns';
 import { buildSite } from '../src/world/sites';
@@ -119,6 +120,7 @@ while (S.clock.day < 1 + days) {
   guard('tickChatter', () => tickChatter(dt));
   guard('tickHunters', () => tickHunters(dt));
   guard('tickPersonal', () => tickPersonal(dt));
+  guard('tickContracts', () => tickContracts(dt));
   steps++;
   popT -= dt;
   if (popT <= 0) {

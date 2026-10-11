@@ -7,10 +7,14 @@ import { launchCampaign } from './sim/worldevents';
 import { playerBase } from './sim/base';
 import { chatNow } from './sim/chatter';
 import { dispatchHunters } from './sim/hunters';
-import { on } from './core/events';
+import { on, emit } from './core/events';
 import { applySettings } from './game/settings';
 import { impact, impactState, reducedMotion, resetImpact } from './render/impact';
 import { applyDamage } from './sim/combat';
+import { openJobs, takeContract, activeContracts, dangerOf, currentGoal, abandonContract } from './sim/contracts';
+import { storyState, setStoryStep, tickStories } from './sim/stories';
+import { crisisState, wakeCrisis, sendWave, resolveCrisis } from './sim/crisis';
+import { CRISIS } from './content/contracts';
 
 export function attachDebug() {
   const w = window as unknown as Record<string, unknown>;
@@ -235,6 +239,45 @@ export function attachDebug() {
       G.weatherFx.kind = kind; G.weatherFx.i = i;
       return true;
     },
+    /** A town's board today (the nearest lawful town to your people if none is named), and the jobs you have. */
+    contracts(town?: string) {
+      const p = G.W.playerChars()[0];
+      const site = town ? G.T.sites.find((s: any) => s.key === town || s.settlement === town) : G.T.nearestSite(p.x, p.z, (s: any) => s.kind === 'town' && openJobs(s).length > 0);
+      if (!site) return 'no such town';
+      return {
+        town: site.name,
+        board: openJobs(site).map((c, i) => `${i}: [tier ${c.tier + 1}] ${c.kind}: ${c.title} · ${c.pay}c · ${dangerOf(c).word}`),
+        active: activeContracts().map((c) => `${c.id} ${c.state}: ${c.title}`),
+      };
+    },
+    /** Takes the i-th job off a town's board (as contracts() lists it). */
+    take(i = 0, town?: string) {
+      const p = G.W.playerChars()[0];
+      const site = town ? G.T.sites.find((s: any) => s.key === town || s.settlement === town) : G.T.nearestSite(p.x, p.z, (s: any) => s.kind === 'town' && openJobs(s).length > 0);
+      const c = site ? openJobs(site)[i] : undefined;
+      if (!c) return 'no such job';
+      G.W.rel.set('player', c.issuer, Math.max(G.W.rel.get('player', c.issuer), 60));
+      return takeContract(c, p) || c.title;
+    },
+    /** Walks away from a job you have, by id (or the first). */
+    drop(id?: string) { const c = id ? activeContracts().find((x) => x.id === id) : activeContracts()[0]; return c ? abandonContract(c.id) : false; },
+    /** The Foundry: 'start' wakes it now, 'wave' sends the next wave, 'end' breaks the Mind; nothing reports how it stands. */
+    crisis(cmd?: 'start' | 'wave' | 'end') {
+      if (cmd === 'start') wakeCrisis();
+      else if (cmd === 'wave') { if (crisisState().state === 'none') wakeCrisis(); const sq = sendWave(); if (sq) { crisisState().state = 'waves'; crisisState().next = G.clock.t + CRISIS.waveDays * 86400; } }
+      else if (cmd === 'end') resolveCrisis();
+      const cs = crisisState();
+      return { state: cs.state, foundry: G.T.sites.find((s: any) => s.id === cs.foundry)?.name, wave: cs.wave, squads: cs.squads.length, mind: cs.mind };
+    },
+    /** A story's state, or (with a step) puts it at that step: 0 opens it at the giver. */
+    story(key = 'freeroad', step?: number) {
+      if (step === 0) { storyState(key).state = 'open'; tickStories(2); return 'open'; }
+      if (step !== undefined) return setStoryStep(key, step, G.W.playerChars()[0]);
+      return storyState(key);
+    },
+    /** What the objective tracker would say now. */
+    goal() { return currentGoal(); },
+    journal() { emit('ui:journal'); return true; },
     info() {
       const r = G.R.gl.info.render;
       return { calls: r.calls, tris: r.triangles, geos: G.R.gl.info.memory.geometries, time: G.clock.str(), quality: G.R.describe(), pixelRatio: G.R.pixelRatio };
