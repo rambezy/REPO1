@@ -204,17 +204,17 @@ if (what === 'chain' || what === 'all') {
   await doneGoal('deal');
   check('chain: a drag-sale ticks "Buy or sell something"', true);
   const money0 = await page.evaluate(() => __sb.S.W.money);
-  // right-click buys a whole stack, so pick the cheapest stack on the shelf the purse can cover
+  // right-click buys one of a stack: the cheapest thing on the shelf the purse can cover
   const cheap = await page.evaluate(async (kid) => {
     const { buyPrice, shopGrid } = await import('/src/sim/shops.ts');
     const W = __sb.S.W, sh = W.shops.get(+W.char(kid).shop), stock = shopGrid(sh);
-    const it = stock.items.filter((i) => buyPrice(sh, i) * i.n <= W.money).sort((a, b) => buyPrice(sh, a) * a.n - buyPrice(sh, b) * b.n)[0];
-    return it ? [it.x * 30, it.y * 30, it.id] : null;
+    const it = stock.items.filter((i) => buyPrice(sh, i) <= W.money).sort((a, b) => buyPrice(sh, a) - buyPrice(sh, b))[0];
+    return it ? [it.x * 30, it.y * 30, it.id, buyPrice(sh, it)] : null;
   }, keeper);
   if (cheap) await page.locator(`.tradewin .loot > :last-child .item[style*="left: ${cheap[0]}px"][style*="top: ${cheap[1]}px"]`).first().click({ button: 'right' });
   await page.waitForTimeout(800);
   const trades = await page.evaluate(() => ({ list: window.__trades, money: __sb.S.W.money }));
-  check('chain: the counter reports the sale and the right-click purchase', trades.list.some((t) => t.startsWith('sell')) && trades.list.some((t) => t.startsWith('buy')) && trades.money < money0, trades.list.join('; '));
+  check('chain: the counter reports the sale and the right-click purchase of one', trades.list.some((t) => t.startsWith('sell')) && trades.list.some((t) => t.startsWith('buy')) && cheap && trades.money === money0 - cheap[3], trades.list.join('; '));
   await page.evaluate(async () => { const d = await import('/src/ui/dom.ts'); d.closeTop(); });
   // 4. mine the nearest rock
   const ore = await page.evaluate(() => {
@@ -229,12 +229,13 @@ if (what === 'chain' || what === 'all') {
   check('chain: swinging a pick ticks "Mine some ore"', true);
   await page.waitForFunction((id) => __sb.G.W.playerChars()[0].inv.count(id) > 0, ore, { timeout: 150000 });
   await page.evaluate(() => { const p = __sb.G.W.playerChars()[0]; p.jobs.length = 0; p.act = null; });
-  // 5. sell the ore: the stack at its place in the pack
+  // 5. sell the ore: the whole stack at its place in the pack, with Ctrl+right-click
   const spot = await page.evaluate(([id, kid]) => { const p = __sb.G.W.playerChars()[0]; const it = p.inv.items.find((i) => i.id === id); __sb.near2(kid); __sb.trade(kid); return [it.x * 30, it.y * 30]; }, [ore, keeper]);
   await page.waitForSelector('.tradewin .item', { timeout: 30000 });
-  await page.locator(`.tradewin .loot > :first-child .item[style*="left: ${spot[0]}px"][style*="top: ${spot[1]}px"]`).first().click({ button: 'right' });
+  await page.locator(`.tradewin .loot > :first-child .item[style*="left: ${spot[0]}px"][style*="top: ${spot[1]}px"]`).first().click({ button: 'right', modifiers: ['Control'] });
   await doneGoal('sell_ore');
-  check('chain: selling the ore ticks "Sell the ore"', true);
+  const oreLeft = await page.evaluate((id) => __sb.G.W.playerChars()[0].inv.count(id), ore);
+  check('chain: selling the whole ore stack (Ctrl+right-click) ticks "Sell the ore"', oreLeft === 0, `${oreLeft} left`);
   await page.evaluate(async () => { const d = await import('/src/ui/dom.ts'); d.closeTop(); });
   await shot('fh_chain_2');
   // 6. a cut arm, bandaged
@@ -267,6 +268,7 @@ if (what === 'chain' || what === 'all') {
     const p = mine[0];
     const foe = makePerson(W, { faction: 'starvelings', role: 'bandit', level: 3, whole: true }, new RNG(7));
     const fs = new Squad(); fs.faction = 'starvelings'; fs.kind = 'raid'; fs.name = 'Starvelings'; W.addSquad(fs); W.moveToSquad(foe, fs);
+    fs.spoke = true; // past begging: he means to fight (else his first thought may be to ask for food, and the talk pauses the game)
     const spot = __sb.G.nav.nearestOpen(p.x + 2.5, p.z, 8) ?? [p.x + 2.5, p.z];
     foe.x = spot[0]; foe.z = spot[1]; foe.y = __sb.G.T.heightAt(foe.x, foe.z); foe.homeX = foe.x; foe.homeZ = foe.z;
     for (let l = 0; l < 3; l++) foe.body.hp[l] = 3; // one good blow settles it

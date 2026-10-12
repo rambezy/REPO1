@@ -1,8 +1,8 @@
 // Carrying out the player's orders: walk, follow, talk, loot, carry, heal,
 // use furniture, steal, pick locks, knock people out from behind.
-import { Char } from './char';
+import { Char, Order } from './char';
 import { S } from './ctx';
-import { goTo, stop, near } from './move';
+import { goTo, stop, near, toolsDown } from './move';
 import { emit } from '../core/events';
 import { pickUp } from './ai';
 import { dropCarried, treatLimb, aidPlan, needsCare, repairProst, worstLimb, brokenLeg } from './health';
@@ -12,7 +12,7 @@ import { ITEM } from '../content/items';
 import { crime, witness, reportRunaway } from './crime';
 import { knockOut } from './health';
 import { angleTo, wrapAngle } from '../core/math';
-import { useObject, placeInto } from './use';
+import { useObject, placeInto, leaveFurniture } from './use';
 import { reachOf } from './structures';
 import { canSalvage, canReprogram, workSalvage, workReprogram } from './salvage';
 import { HOUR } from './clock';
@@ -35,14 +35,34 @@ function lockLesson(c: Char, ok: boolean): number {
 
 function walkTo(c: Char, x: number, z: number, r = REACH): boolean {
   if (near(c, x, z, r)) { stop(c); return true; }
+  toolsDown(c);
   goTo(c, x, z);
   if (c.move !== 'sneak') c.move = c.mem.walk ? 'walk' : 'run';
   return false;
 }
 
+/** Orders that are work in themselves, and keep their own pose while it lasts. */
+const WORK_ORDERS = new Set<Order['k']>(['lockpick', 'free', 'salvage', 'reprogram']);
+
+/**
+ * A new order, or none: off any furniture, tools down, and a walk planned afresh. Every order the
+ * player gives goes through here, so that nobody stays bent over a pick or a lock after being told
+ * to go. (Standing jobs are kept: they resume once the order is done.)
+ */
+export function giveOrder(c: Char, o: Order | null) {
+  if (c.bed || c.mem.using) leaveFurniture(c);
+  c.mem.sit = false;
+  c.order = o;
+  toolsDown(c);
+  if (o && o.k === 'move') c.brain.enemy = 0;
+  if (o && (o.k === 'move' || o.k === 'attack')) { c.path = null; c.hasGoal = false; }
+}
+
 export function runOrder(c: Char, dt: number) {
   const o = c.order;
   if (!o) return;
+  // a pose left over from a job or an earlier order would hold them in place (see tickMove)
+  if (!WORK_ORDERS.has(o.k)) toolsDown(c);
   switch (o.k) {
     case 'move':
       if (!c.hasGoal && near(c, o.x, o.z, 1.5)) { c.order = null; return; }
@@ -229,9 +249,11 @@ export function runOrder(c: Char, dt: number) {
         c.brain.lockT = 0;
         const skill = c.skill('lockpicking') + (c.inv.count('lockpick_set') ? 8 : 0);
         const owner = t.mem.enslavedBy as string | undefined;
-        // irons on your own wrists are awkward, and an overseer watching makes it worse
+        // irons on your own wrists are awkward, and an overseer watching makes it worse; but slave irons
+        // are cheap and give to patience, so an unskilled hand has them off in a minute or so unwatched
+        // (about one go in seven), and at half that rate under an overseer's eye
         const watched = owner && owner !== 'player' ? witness(t, owner) : null;
-        const p = Math.max(0.04, Math.min(0.9, 0.3 + (skill - 25) * 0.02)) * (own ? 0.6 : 1) * (watched ? 0.5 : 1);
+        const p = Math.max(own ? 0.25 : 0.04, Math.min(0.9, 0.3 + (skill - 25) * 0.02)) * (own ? 0.6 : 1) * (watched ? 0.5 : 1);
         const ok = S.rng.chance(p);
         train(c, 'lockpicking', lockLesson(c, ok), versus(skill, 30));
         if (ok) {

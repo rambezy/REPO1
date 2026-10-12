@@ -261,6 +261,7 @@ export function newGame(setup: NewGameSetup | string) {
   const lead = people[0];
   // a clear first day where you begin, whatever the region had brewing
   S.weather.calm(lead.x, lead.z);
+  W.flags.clearAir = S.clock.t + 10 * HOUR; // and clean air, for the first look at the world (see game.ts skyAndWeather)
   openingView(lead, sc);
   beginObjectives(sc.key);
   W.say(`${W.factionName}: ${sc.name}. ${sc.blurb}`, 'story', S.clock.t);
@@ -299,4 +300,6 @@ function openingView(lead: Char, sc: Scenario) {
   const ahead = d > 1 && d < 200 ? Math.min(8, d * 0.1) : 0;
   cam.lookAt(lead.x + (dx / (d || 1)) * ahead, lead.z + (dz / (d || 1)) * ahead, dist);
   cam.target.y = G.T.heightAt(cam.target.x, cam.target.z);
+  // alone, the one person is the story: the view keeps with them until the player moves it
+  if (W.playerChars().length === 1) cam.follow = () => (lead.alive ? lead : null);
 }

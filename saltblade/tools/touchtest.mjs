@@ -139,13 +139,32 @@ const freeCell = (page, sel, label = 'Inventory') => page.evaluate(([sel, label]
   const saltUid = await page.evaluate(() => __sb.G.W.playerChars()[0].inv.items.find((i) => i.id === 'salt')?.uid);
   await press(cdp, page, `.item[data-uid="${saltUid}"]`);
   const sheetBtns = await page.evaluate(() => [...document.querySelectorAll('.sheetbtn')].map((b) => b.textContent));
-  check('long press opens the action sheet', sheetBtns.some((t) => t.startsWith('Sell for')), sheetBtns.join(' | '));
+  check('long press opens the action sheet: sell one, or all', sheetBtns.some((t) => t.startsWith('Sell 1 (')) && sheetBtns.some((t) => t.startsWith('Sell all 3 (')), sheetBtns.join(' | '));
   await page.screenshot({ path: `${out}/phone_trade_sheet.png` });
   const money1 = await page.evaluate(() => __sb.G.W.money);
-  await tap(page, '.sheetbtn:has-text("Sell for")');
+  await tap(page, '.sheetbtn:has-text("Sell all")');
   await page.waitForTimeout(600);
   const sold = await page.evaluate(() => ({ gone: !__sb.G.W.playerChars()[0].inv.items.some((i) => i.id === 'salt'), money: __sb.G.W.money }));
   check('sheet sells the stack', sold.gone && sold.money > money1, `+${sold.money - money1}c`);
+  // --- buy one off a stack through the sheet
+  const meat = await page.evaluate(async () => {
+    const { shopGrid } = await import('/src/sim/shops.ts');
+    const { makeItem } = await import('/src/sim/inventory.ts');
+    const { ITEM } = await import('/src/content/items.ts');
+    const W = __sb.G.W, p = W.playerChars()[0];
+    const k = [...W.chars.values()].filter((c) => c.faction !== 'player' && c.shop && c.alive && W.shops.get(+c.shop)).sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z))[0];
+    const stock = shopGrid(W.shops.get(+k.shop)), it = makeItem('dried_meat', 8), at = stock.findSpot(ITEM.dried_meat);
+    stock.put(it, at[0], at[1]);
+    __sb.trade(k.id);
+    return { uid: it.uid, had: p.inv.count('dried_meat') + (p.eq.back?.inv?.count('dried_meat') ?? 0) };
+  });
+  await page.waitForTimeout(500);
+  await press(cdp, page, `.item[data-uid="${meat.uid}"]`);
+  const buyBtns = await page.evaluate(() => [...document.querySelectorAll('.sheetbtn')].map((b) => b.textContent));
+  await tap(page, '.sheetbtn:has-text("Buy 1 (")');
+  await page.waitForTimeout(500);
+  const got = await page.evaluate(() => { const p = __sb.G.W.playerChars()[0]; return p.inv.count('dried_meat') + (p.eq.back?.inv?.count('dried_meat') ?? 0); });
+  check('a stock stack\'s sheet offers one or all, and "Buy 1" buys one', buyBtns.some((t) => t.startsWith('Buy all 8 (')) && got - meat.had === 1, `${buyBtns.join(' | ')}; got ${got - meat.had}`);
   await page.screenshot({ path: `${out}/phone_trade.png` });
   for (const w of await winsFit(page)) check(`window fits the phone: ${w.t}`, w.fits, `${w.w}x${w.h}`);
   await page.keyboard.press('Escape');

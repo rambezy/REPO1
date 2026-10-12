@@ -7,6 +7,10 @@
 // the headless test (tools/objtest.ts) drives them too; only mountObjectives
 // touches the DOM.
 import { h, shield } from './dom';
+import { withKeys } from '../core/keys';
+import { beatableNear } from '../sim/worldsim';
+import { bearing } from '../sim/errands';
+import { frame } from '../game/framing';
 import { G } from '../state';
 import { S } from '../sim/ctx';
 import { on, emit } from '../core/events';
@@ -109,6 +113,7 @@ export function firstGoalSite(setKey: string, x: number, z: number): Site | null
 export function setupObjectives() {
   if (wired) return;
   wired = true;
+  on('keys', () => { lastKey = ''; }); // a rebound key is written into the goals afresh
   on('game:start', () => { primed = false; recent.clear(); rewardNote.clear(); finishedAt = 0; hunger.clear(); prost.clear(); lastKey = ''; });
   on('ui:talk', (pid: number, nid: number) => {
     const p = S.W.char(pid), n = S.W.char(nid);
@@ -203,7 +208,7 @@ function complete(g: Objective) {
   recent.set(g.key, now());
   const note = g.reward ? give(g.reward) : '';
   if (note) rewardNote.set(g.key, note);
-  W.say(`${g.text}: done. ${g.done}${note ? ` (${note})` : ''}`, 'story', S.clock.t);
+  W.say(`${withKeys(g.text)}: done. ${g.done}${note ? ` (${note})` : ''}`, 'story', S.clock.t);
   uiSound('notify');
   if (set.goals.every((x) => st.done[x.key] !== undefined)) {
     st.finished = S.clock.t;
@@ -294,6 +299,17 @@ let root: HTMLDivElement | null = null;
 let fold = false;
 let lastKey = '';
 let nextText: HTMLSpanElement | null = null;
+/** "Win a fight", while it is open: the nearest band your people could beat, and which way (see beatableNear). */
+let aimText: HTMLSpanElement | null = null;
+let aimAt: { x: number; z: number } | null = null;
+function aimLine() {
+  if (!aimText) return;
+  const b = beatableNear();
+  aimAt = b;
+  const t = b ? `${b.n === 1 ? 'one' : b.n} ${b.name}, ${bearing(b.x, b.z)}: a fight you can win` : '';
+  if (aimText.textContent !== t) aimText.textContent = t;
+  aimText.parentElement?.classList.toggle('aimed', !!b);
+}
 
 /** Builds the tracker (mounted by the HUD) and starts its checks. */
 export function mountObjectives(): HTMLDivElement {
@@ -331,9 +347,11 @@ function refresh() {
   if (key === lastKey) {
     // (the line's words move with the clock and the road: changed in place, nothing built again)
     if (next && nextText && nextText.textContent !== next.text) nextText.textContent = next.text;
+    aimLine();
     return;
   }
   lastKey = key;
+  aimText = null;
   root.style.display = visible ? '' : 'none';
   root.classList.toggle('fold', fold);
   root.innerHTML = '';
@@ -360,10 +378,19 @@ function refresh() {
       const ack = g.done + (note ? ` (${note})` : '');
       // a done row's fade carries on from where it was if the list is drawn again
       const style = done ? { animationDelay: `-${Math.round(t - recent.get(g.key)!)}ms` } : undefined;
-      list.appendChild(h('div', { class: 'obj' + (done ? ' done' : ''), style }, h('i', { class: 'objmark' }), h('span', { class: 'objtext' }, g.text), done ? h('span', { class: 'objack' }, ack) : null));
+      const row = h('div', { class: 'obj' + (done ? ' done' : ''), style }, h('i', { class: 'objmark' }), h('span', { class: 'objtext' }, withKeys(g.text)), done ? h('span', { class: 'objack' }, ack) : null);
+      if (g.when.k === 'win' && !done) {
+        // pointed at a band they could beat: a click looks at it
+        aimText = h('span', { class: 'objaim' });
+        row.appendChild(aimText);
+        row.title = 'Look at them';
+        row.onclick = (e) => { e.stopPropagation(); if (aimAt) frame(aimAt.x, aimAt.z, true); };
+      }
+      list.appendChild(row);
     }
     if (outro) list.appendChild(h('div', { class: 'objoutro' }, set.outro));
     root.append(list);
+    aimLine();
   }
   if (next) {
     nextText = h('span', { class: 'objnextt' }, next.text);

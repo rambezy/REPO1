@@ -14,6 +14,7 @@ import { LIMB_NAMES } from '../sim/body';
 import { SKILL_INFO } from '../sim/skills';
 import { DRUG } from '../sim/drugs';
 import { FACTION } from '../content/factions';
+import { holdViewWhile } from '../game/framing';
 
 export type Source = { kind: 'grid'; grid: Grid; view: GridView } | { kind: 'slot'; slot: EquipSlot; view: SlotView };
 
@@ -369,6 +370,9 @@ export function clearHeld() {
   for (const e of document.querySelectorAll('.held')) e.classList.remove('held');
 }
 export const heldItem = () => held?.item ?? null;
+/** An item is being dragged, or carried by a finger (the camera leaves the view alone meanwhile). */
+export const itemInHand = () => !!drag || !!held;
+holdViewWhile(itemInHand);
 
 /** The carried item's view may have been rebuilt since the tap: find it again, or let go of an item that is gone. */
 function resolveHeld(): Drag | null {

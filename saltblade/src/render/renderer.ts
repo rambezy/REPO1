@@ -55,9 +55,13 @@ const GradeShader = {
       if (uHigh > 0.0) {
         uv += uHigh * 0.006 * vec2(sin(uv.y * 11.0 + uTime * 1.3), cos(uv.x * 9.0 + uTime * 1.1));
       }
-      vec2 ca = (uv - 0.5) * (0.0015 + uHigh * 0.012) * r;
-      vec3 col = vec3(texture2D(tDiffuse, uv + ca).r, texture2D(tDiffuse, uv).g, texture2D(tDiffuse, uv - ca).b);
-      if (uHigh > 0.0) col = mix(col, hue(col, sin(uTime * 0.7) * 0.9) * 1.08, uHigh * 0.55);
+      // (only then: a split even a fraction of a pixel wide turns every dark speck on the horizon pink)
+      vec3 col = texture2D(tDiffuse, uv).rgb;
+      if (uHigh > 0.0) {
+        vec2 ca = (uv - 0.5) * uHigh * 0.012 * r;
+        col = vec3(texture2D(tDiffuse, uv + ca).r, col.g, texture2D(tDiffuse, uv - ca).b);
+        col = mix(col, hue(col, sin(uTime * 0.7) * 0.9) * 1.08, uHigh * 0.55);
+      }
       // grade: warm lights, cool shadows, a little more bite
       float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
       col *= mix(vec3(0.94, 0.99, 1.04), vec3(1.04, 1.0, 0.95), smoothstep(0.05, 0.9, l));

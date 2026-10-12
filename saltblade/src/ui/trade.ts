@@ -4,10 +4,11 @@
 // is settled by one function each (payForGoods and payForSale).
 import './economy.css';
 import { h, openWindow, getWindow, esc } from './dom';
-import { GridView, hideTip, type Source } from './grid';
+import { GridView, hideTip, itemInHand, type Source, type ItemAction } from './grid';
 import { S } from '../sim/ctx';
-import { Shop, buyPrice, sellPrice, shopGrid, marketOf, marketFor, payForGoods, payForSale, buyInto, sellInto, stow, dearMarkets, type MarketTip } from '../sim/shops';
-import { Item } from '../sim/inventory';
+import { Shop, buyPrice, sellPrice, shopGrid, marketOf, marketFor, payForGoods, payForSale, buyInto, sellInto, stow, dearMarkets, affordable, type MarketTip } from '../sim/shops';
+import { Item, newUid } from '../sim/inventory';
+import { input } from '../core/input';
 import { ITEM } from '../content/items';
 import { fmt } from '../core/math';
 import { emit } from '../core/events';
@@ -20,6 +21,7 @@ import { makeAnimal } from '../sim/spawn';
 import { ANIMAL } from '../content/animals';
 import { RNG } from '../core/rng';
 import { Grid } from '../sim/inventory';
+import { holdJobs } from '../sim/jobs';
 
 let views: GridView[] = [];
 let session = 0; // which trade the open window shows: reopening it for another shop retires the old one's checks
@@ -33,7 +35,9 @@ export function openTrade(pid: number, nid: number) {
   if (!stock) return;
   const w = openWindow('trade', `${sh.name} — ${n.name}`, { w: 820, cls: 'tradewin' });
   const cleanup = () => { for (const v of views) v.destroy(); views = []; hideTip(); };
-  w.onClose = cleanup;
+  // standing jobs wait while the window is open (not in cleanup, which every redraw runs too)
+  w.onClose = () => { cleanup(); holdJobs('trade', 0); };
+  holdJobs('trade', p.id);
   let msg = '';
   const packs = () => [p.inv, p.eq.back?.inv].filter(Boolean) as Grid[];
   // where a bought thing may go: never a pack inside the pack on your back
@@ -50,16 +54,17 @@ export function openTrade(pid: number, nid: number) {
   const bought = (it: Item, k: number) => { if (k > 0) tell('Bought', it, k, payForGoods(sh, it, k)); };
   const sold = (it: Item, k: number) => { if (k > 0) tell('Sold', it, k, payForSale(sh, it, k)); };
   let told = false; // the towns the trader names are heard of once a visit
-  /** Why the shop won't take this stack from you, if it won't. */
-  const refuse = (it: Item): string => {
-    const val = sellPrice(sh, it) * it.n;
+  /** Why the shop won't take this stack (or `k` of it) from you, if it won't. */
+  const refuse = (it: Item, k = it.n): string => {
+    const val = sellPrice(sh, it) * k;
     if (val <= 0) return `${n.name} won't touch that.`;
     if (it.inv?.items.length) return `Empty the ${ITEM[it.id].name.toLowerCase()} first.`;
     if (sh.money < val) return `${n.name} can't afford it (${fmt(sh.money)}c left).`;
     return '';
   };
-  const afford = (it: Item): boolean => {
-    const cost = buyPrice(sh, it) * it.n;
+  /** Whether the purse covers this stack (or `k` of it); if not, the window says what it takes. */
+  const afford = (it: Item, k = it.n): boolean => {
+    const cost = buyPrice(sh, it) * k;
     if (S.W.money >= cost) return true;
     msg = `You need ${fmt(cost)} chits.`;
     setTimeout(render, 0);
@@ -68,11 +73,23 @@ export function openTrade(pid: number, nid: number) {
 
   // A drag can end in a merge with a matching stack, which leaves less of the dragged
   // stack behind, so how many changed hands is worked out from where it started.
-  let taking: { it: Item; n: number; before: Set<Item> } | null = null;
+  let taking: { it: Item; n: number; before: Set<Item>; of: number } | null = null;
   let giving: { it: Item; n: number } | null = null;
   const landed = (it: Item, n0: number, dst: Source) => (dst.kind === 'slot' || dst.grid.items.includes(it) || it.n <= 0 ? n0 : n0 - it.n);
+  // a stack split when a drag began that the purse could not cover all of (see canTake): whole again if the drag came to nothing
+  let split: { it: Item; rest: Item } | null = null;
+  const mergeBack = () => {
+    if (!split || itemInHand()) return false;
+    const { it, rest } = split;
+    split = null;
+    if (!stock.items.includes(it) || !stock.items.includes(rest)) return false;
+    it.n += rest.n;
+    stock.remove(rest);
+    return true;
+  };
 
   const render = () => {
+    mergeBack();
     cleanup();
     w.body.innerHTML = '';
     const mine = h('div', { class: 'lootside' }, h('div', { class: 'lhead' }, `${p.name}`));
@@ -84,8 +101,8 @@ export function openTrade(pid: number, nid: number) {
         // what comes in from the shop is paid for by the shop's side (see below)
         accept: (it, src) => (g === p.inv || !ITEM[it.id].pack) && (!(src.kind === 'grid' && src.grid === stock) || afford(it)),
         moved: () => setTimeout(render, 0),
-        rclick: (it) => sell(it, g),
-        rclickLabel: 'Sell',
+        rclick: (it, e) => sell(it, g, howMany(e, it)),
+        actions: (it) => sellActs(it, g),
       });
       views.push(v);
       mine.appendChild(v.el);
@@ -96,8 +113,21 @@ export function openTrade(pid: number, nid: number) {
       price: (it) => buyPrice(sh, it) * it.n,
       note: (it) => buyNote(sh, it, here),
       canTake: (it) => {
-        if (!afford(it)) return false;
-        taking = { it, n: it.n, before: new Set(stock.items) };
+        mergeBack();
+        // a drag takes the stack, or as much of it as the purse covers: the rest stays on the shelf
+        const k = affordable(sh, it), of = it.n;
+        if (k <= 0) return afford(it, 1);
+        if (k < of) {
+          const spot = stock.findSpot(ITEM[it.id]);
+          if (!spot) return afford(it);
+          const rest: Item = { ...it, uid: newUid(), n: of - k };
+          stock.put(rest, spot[0], spot[1]);
+          it.n = k;
+          split = { it, rest };
+          // a click that never became a drag, or a drop that took nothing: once the button is up, the stack is whole again
+          window.addEventListener('pointerup', () => setTimeout(() => { if (split?.it === it && mergeBack()) render(); }, 0), { capture: true, once: true });
+        }
+        taking = { it, n: it.n, before: new Set(stock.items), of };
         return true;
       },
       accept: (it, src) => {
@@ -113,7 +143,9 @@ export function openTrade(pid: number, nid: number) {
         if (toStock && !fromStock && giving?.it === it) sold(it, landed(it, giving.n, dst));
         else if (fromStock && !toStock && taking?.it === it) {
           // bought, wherever it was dropped: this pack, the character window, straight onto a belt
-          bought(it, landed(it, taking.n, dst));
+          const k = landed(it, taking.n, dst);
+          bought(it, k);
+          if (k > 0 && taking.of > taking.n) msg += ` That is all you can pay for (${taking.n} of ${taking.of}).`;
           // a drop onto an equipment slot swaps what was there into the stock: that stays yours
           if (dst.kind === 'slot') for (const old of stock.items.filter((x) => !taking!.before.has(x))) {
             stock.remove(old);
@@ -124,8 +156,8 @@ export function openTrade(pid: number, nid: number) {
         taking = null; giving = null;
         setTimeout(render, 0);
       },
-      rclick: (it) => buy(it),
-      rclickLabel: 'Buy',
+      rclick: (it, e) => buy(it, howMany(e, it)),
+      actions: (it) => buyActs(it),
     });
     views.push(sv);
     shopSide.appendChild(sv.el);
@@ -145,25 +177,53 @@ export function openTrade(pid: number, nid: number) {
       ),
     );
     const extra = sh.kind === 'slaves' ? slaveMarket(p, sh, render) : sh.kind === 'mercs' ? mercHall(p, sh, render) : sh.kind === 'animals' ? beastMarket(p, sh, render) : null;
-    w.body.append(head, h('div', { class: 'loot' }, mine, shopSide), extra ?? '', h('div', { class: 'lootfoot' }, h('span', { class: 'dim' }, msg || 'Drag items across to buy or sell. Right-click to buy or sell a whole stack.'), h('span')));
+    w.body.append(head, h('div', { class: 'loot' }, mine, shopSide), extra ?? '', h('div', { class: 'lootfoot' }, h('span', { class: 'dim' }, msg || (input.touch ? 'Tap an item to buy or sell one, or the whole stack. Drag to move a stack across.' : 'Drag a stack across to buy or sell it. Right-click: one. Shift+right-click: five. Ctrl+right-click: the whole stack.')), h('span')));
     told = true;
   };
-  const buy = (it: Item) => {
-    if (!afford(it)) return;
-    const n0 = it.n;
-    const [k, chits] = buyInto(sh, it, holds(it));
+  /** How many a right-click moves: one; five with Shift; the whole stack with Ctrl (or Cmd). */
+  const howMany = (e: MouseEvent, it: Item) => (e.ctrlKey || e.metaKey ? it.n : e.shiftKey ? 5 : 1);
+  /** Buys `want` of a stack, or as many of them as the purse covers. */
+  const buy = (it: Item, want: number) => {
+    want = Math.min(want, it.n);
+    const k0 = Math.min(want, affordable(sh, it));
+    if (k0 <= 0) { afford(it, want); return; }
+    const [k, chits] = buyInto(sh, it, holds(it), k0);
     if (k <= 0) { msg = 'No room in your pack.'; render(); return; }
     tell('Bought', it, k, chits);
-    if (k < n0) msg += ` No room for the other ${n0 - k}.`;
+    if (k < k0) msg += ` No room for the other ${k0 - k}.`;
+    else if (k0 < want) msg += ' That is all you can pay for.';
     render();
   };
-  const sell = (it: Item, g: Grid) => {
-    const why = refuse(it);
+  /** Sells `want` of a stack, or as many of them as the shop can pay for. */
+  const sell = (it: Item, g: Grid, want: number) => {
+    want = Math.min(want, it.n);
+    const each = sellPrice(sh, it);
+    const k0 = each > 0 && sh.money < each * want ? Math.max(1, Math.floor(sh.money / each)) : want;
+    const why = refuse(it, k0);
     if (why) { msg = why; render(); return; }
-    const [k, chits] = sellInto(sh, it, g);
+    const [k, chits] = sellInto(sh, it, g, k0);
     if (k <= 0) { msg = `${n.name} has no room for it.`; render(); return; }
     tell('Sold', it, k, chits);
+    if (k < k0) msg += ` No room for the other ${k0 - k}.`;
+    else if (k0 < want) msg += ` That is all ${n.name} can pay for.`;
     render();
+  };
+  // the action sheet (a finger has no right button): one, or the whole stack
+  const buyActs = (it: Item): ItemAction[] => {
+    const each = buyPrice(sh, it), k = affordable(sh, it);
+    if (it.n <= 1) return [{ label: `Buy for ${fmt(each)}c`, run: () => buy(it, 1) }];
+    const acts: ItemAction[] = [{ label: `Buy 1 (${fmt(each)}c)`, run: () => buy(it, 1) }];
+    if (k >= it.n) acts.push({ label: `Buy all ${it.n} (${fmt(each * it.n)}c)`, run: () => buy(it, it.n) });
+    else if (k >= 2) acts.push({ label: `Buy ${k}, all you can pay for (${fmt(each * k)}c)`, run: () => buy(it, k) });
+    return acts;
+  };
+  const sellActs = (it: Item, g: Grid): ItemAction[] => {
+    const each = sellPrice(sh, it);
+    if (it.n <= 1) return [{ label: `Sell for ${fmt(each)}c`, run: () => sell(it, g, 1) }];
+    return [
+      { label: `Sell 1 (${fmt(each)}c)`, run: () => sell(it, g, 1) },
+      { label: `Sell all ${it.n} (${fmt(each * it.n)}c)`, run: () => sell(it, g, it.n) },
+    ];
   };
   render();
   const mine = ++session;

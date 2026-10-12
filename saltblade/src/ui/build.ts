@@ -17,10 +17,14 @@ import { iconFor } from './icons';
 import { WObj } from '../sim/objects';
 import { SKILL_INFO } from '../sim/skills';
 import { buyHouse, houseOf } from '../sim/property';
+import { holdViewWhile } from '../game/framing';
 
 let cat: BuildCat = 'Storage';
 let ghost: Ghost;
 let placing: Buildable | null = null;
+/** A building is being placed (the camera leaves the view alone meanwhile: see game/framing.ts). */
+export const isPlacing = () => !!placing;
+holdViewWhile(isPlacing);
 let rot = 0;
 let chain = false;
 

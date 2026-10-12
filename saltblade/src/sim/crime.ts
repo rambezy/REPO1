@@ -67,6 +67,9 @@ export function reportRunaway(c: Char, owner: string): boolean {
 
 let slaveT = 0;
 /** Slaves of yours: an unshackled slave in the camp, or any slave outside it, is a runaway if seen. Far enough away, they are free. */
+/** How far past a camp's edge a runaway slave has to get to be free of it (its fields reach 130 m out). */
+export const ESCAPE_M = 300;
+
 export function tickRunaways(dt: number) {
   slaveT -= dt;
   if (slaveT > 0) return;
@@ -100,7 +103,7 @@ export function tickRunaways(dt: number) {
     const site = S.T.sites.find((s) => s.id === c.mem.slaveSite);
     if (!site) continue;
     const d = Math.hypot(c.x - site.x, c.z - site.z);
-    if (d > site.r + 900) {
+    if (d > site.r + ESCAPE_M) {
       // free: nobody's slave any more, whatever irons they still wear
       delete c.mem.slaveSite;
       delete c.mem.slaveSpot;

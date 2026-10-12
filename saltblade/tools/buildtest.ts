@@ -2,7 +2,10 @@
 // says: the turret hits, the fuel generator fuels itself, the still makes rum,
 // beds heal by kind and bunks sleep two, the shackle post holds a prisoner, the
 // watchtower's lookout spots and shoots, tables, stools, lamps and banners each
-// help, a Workshop Hall's crates are storage, and long blades suffer indoors.
+// help, a Workshop Hall's crates are storage, and long blades suffer indoors;
+// and nobody at work (mining, building, farming, at their own shackles) stays
+// rooted when told to go somewhere, or walks back to work from an open trade
+// window.
 // Usage: npx tsx tools/buildtest.ts
 import { generateWorld } from '../src/world/gen';
 import { Nav } from '../src/world/nav';
@@ -26,6 +29,8 @@ import { canSee, eatSomething, pickUp, lamplit } from '../src/sim/ai';
 import { colours, cramped } from '../src/sim/combat';
 import { knockOut } from '../src/sim/health';
 import { useObject, placeInto, leaveFurniture } from '../src/sim/use';
+import { giveOrder } from '../src/sim/orders';
+import { holdJobs } from '../src/sim/jobs';
 import type { Char } from '../src/sim/char';
 import type { WObj } from '../src/sim/objects';
 
@@ -71,7 +76,7 @@ const run = (secs: number, focus: { x: number; z: number } = { x: bx, z: bz }, e
 };
 const gone = (cs: Char[]) => { for (const c of cs) W.removeChar(c); };
 // a player's order, as the right-click menu gives it (game/control.ts issue)
-const issue = (c: Char, o: any) => { if (c.bed || c.mem.using) leaveFurniture(c); c.mem.sit = false; c.order = o; if (o.k === 'move') { c.brain.enemy = 0; c.path = null; c.hasGoal = false; } };
+const issue = (c: Char, o: any) => giveOrder(c, o);
 const hurt = (c: Char) => { c.body.hp[1] = c.body.max[1] * 0.4; c.body.hp[2] = c.body.max[2] * 0.4; };
 const hp = (c: Char) => c.body.hp[1] + c.body.hp[2];
 
@@ -243,6 +248,54 @@ const hp = (c: Char) => c.body.hp[1] + c.body.hp[2];
   brute.x += 30;
   check('a slab is clumsy indoors, and fine outside', !!buildingAt(hall.x, hall.z) && inside === 0.15 && cramped(brute) === 0, `inside ${inside}, outside ${cramped(brute)}`);
   gone([brute]);
+}
+
+// ---------------------------------------------------------------- a new order puts the tools down
+{
+  // mining, building, farming and picking your own shackles each hold someone in place while it
+  // lasts; told to go somewhere, they must be on their way within a couple of seconds
+  const [ox, oz] = spot(420, 40);
+  const ore = W.addObj({ id: 0, kind: 'ore', def: 'iron', x: ox, z: oz, y: T.heightAt(ox, oz), rot: 0, owner: '', site: 0, parent: 0, data: { left: 300, size: 1 } } as WObj);
+  const field = build('farm_hemp', 400, -30);
+  const [sx, sz] = spot(450, -10);
+  const plot = placeSite(BUILDABLE.chest, sx, sz, 0);
+  const cases: [string, string, (c: Char) => void][] = [
+    ['mining', 'mine', (c) => c.jobs.push({ k: 'mine', obj: ore.id, label: 'Mine' } as any)],
+    ['building', 'build', (c) => { c.inv.add('building_mats', 20); c.jobs.push({ k: 'build', obj: plot.id, label: 'Build' } as any); }],
+    ['farming', 'farm', (c) => c.jobs.push({ k: 'farm', obj: field.id, label: 'Farm' } as any)],
+    ['picking their own shackles', 'craft', (c) => { c.shackled = true; giveOrder(c, { k: 'free', id: c.id }); }],
+  ];
+  for (const [what, act, start] of cases) {
+    const c = person(425, 0);
+    start(c);
+    let t = 0;
+    while (c.act !== act && t < 120) { run(0.5, c); t += 0.5; }
+    const x0 = c.x, z0 = c.z;
+    const [tx, tz] = spot(440, 20);
+    giveOrder(c, { k: 'move', x: tx, z: tz });
+    run(2, c);
+    const d = Math.hypot(c.x - x0, c.z - z0);
+    check(`told to go while ${what}, they put the tools down and walk`, c.act !== act && d > 2 && Math.hypot(tx - x0, tz - z0) > 8, `${act} after ${t.toFixed(1)} s, then ${d.toFixed(1)} m in 2 s`);
+    gone([c]);
+  }
+  // a miner sent over to trade or loot stays there while the window is open, and goes back after
+  const c = person(425, 0);
+  c.jobs.push({ k: 'mine', obj: ore.id, label: 'Mine' } as any);
+  let t = 0;
+  while (c.act !== 'mine' && t < 120) { run(0.5, c); t += 0.5; }
+  const [tx, tz] = spot(440, 20);
+  giveOrder(c, { k: 'move', x: tx, z: tz });
+  for (t = 0; c.order && t < 60; t += 0.5) run(0.5, c);
+  holdJobs('trade', c.id); // what the trade window does when it opens (ui/trade.ts)
+  const x0 = c.x, z0 = c.z;
+  run(30, c);
+  const stayed = Math.hypot(c.x - x0, c.z - z0);
+  holdJobs('trade', 0);
+  run(15, c);
+  const back = Math.hypot(c.x - ore.x, c.z - ore.z);
+  check('a miner at a trade window waits there, and goes back to the rock once it closes', stayed < 0.5 && c.act !== null && back < 3,
+    `moved ${stayed.toFixed(1)} m in 30 s with the window open; ${back.toFixed(1)} m from the rock 15 s after, ${c.act ?? 'idle'}`);
+  gone([c]);
 }
 
 const failed = results.filter((r) => !r[1]);

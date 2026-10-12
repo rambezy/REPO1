@@ -23,6 +23,7 @@ import { HOUR } from './clock';
 import { LOADOUTS, loadoutFor } from '../content/loadouts';
 import { SK } from './skills';
 import { clamp } from '../core/math';
+import { OBJECTIVES } from '../content/objectives';
 
 const rng = new RNG((Date.now() ^ 4242) >>> 0); // a different world story each game
 let t = 0;
@@ -279,6 +280,80 @@ export function levelUnder(loadout: string, max: number, r: RNG = rng) {
 /** How much of a fight someone is, to fit a band: their strength, and for a beast its hide (a beast's rating leaves out how much beating it takes). */
 export const threat = (c: Char) => c.power() * (c.animal ? Math.max(1, ANIMAL[c.animal].hp) : 1);
 
+/**
+ * Cuts a band down to a fit: no more than its number (the last to join go home first), then trimmed to
+ * its budget (see trimTo). False if even one of them alone is too much.
+ */
+export function cutToFit(sq: Squad, fit: Fit): boolean {
+  while (sq.members.length > Math.max(1, fit.n)) {
+    const c = S.W.char(sq.members[sq.members.length - 1]);
+    if (!c) { sq.members.pop(); continue; }
+    S.W.removeChar(c);
+  }
+  return trimTo(sq, fit);
+}
+
+const specOf = (key: string) => SPECS.find((s) => s.key === key) ?? BEASTS.find((s) => s.key === key);
+
+/** Where a squad is: its leader's spot while in play, its own mark while on the road off-screen. */
+function whereIs(sq: Squad): { x: number; z: number } {
+  const L = sq.active ? S.W.char(sq.leader) : undefined;
+  return L ?? sq;
+}
+
+/** How near the nearest of the player's people (on their feet or not, free) is to a point. */
+function playerDist(x: number, z: number): number {
+  let d = Infinity;
+  for (const c of S.W.playerChars()) if (c.alive && !c.animal && !c.cage) d = Math.min(d, Math.hypot(c.x - x, c.z - z));
+  return d;
+}
+
+/**
+ * The first days: a band that means harm and comes within 700 m of the player's people (born there,
+ * or roaming in) is cut to what they can stand up to, as passers-by are (see fitAgainst: three at
+ * most on a new band's first days), while it is still out of sight. One too much for them even alone
+ * goes elsewhere. Each band is weighed once.
+ */
+function fitEarly(sq: Squad) {
+  if (sq.flags.fitted || S.clock.day > EARLY_DAYS) return;
+  const spec = specOf(sq.flags.spec);
+  if (!spec || !hostileKind(spec) || sq.flags.passer) { sq.flags.fitted = 1; return; }
+  const at = whereIs(sq);
+  if (playerDist(at.x, at.z) > 700) return;
+  sq.flags.fitted = 1;
+  // (its own draw for the gear, so the world's dice roll as they would have)
+  if (!cutToFit(sq, fitAgainst(playerBand(), spec.faction, S.clock.day, new RNG(sq.id))) && !sq.active) despawn(sq);
+}
+
+/**
+ * The nearest band within `r` that means the player's people harm and that they could beat: no more
+ * of them, and no stronger between them, than the roads would send against the band today (see
+ * fitAgainst). People first (they carry something worth looting after); beasts only when no such
+ * band is about, and never those on the wing, which no one on foot can bring to a fight. For the
+ * goal tracker's "Win a fight".
+ */
+export function beatableNear(r = 900): { x: number; z: number; n: number; name: string; d: number } | null {
+  const band = playerBand();
+  if (!band.n) return null;
+  let best: { x: number; z: number; n: number; name: string; d: number; beast: boolean } | null = null;
+  for (const sq of S.W.squads.values()) {
+    if (sq.faction === 'player' || !sq.flags.spec) continue;
+    const spec = specOf(sq.flags.spec);
+    if (!spec || !hostileKind(spec)) continue;
+    const up = sq.members.map((id) => S.W.char(id)).filter((c): c is Char => !!c && c.up);
+    if (!up.length) continue;
+    const beast = !!spec.species;
+    if (beast && WINGED.has(ANIMAL[spec.species!].shape)) continue;
+    const d = playerDist(up[0].x, up[0].z);
+    if (d > r || (best && (beast ? !best.beast || d >= best.d : !best.beast && d >= best.d))) continue;
+    const fit = fitAgainst(band, sq.faction === 'fauna' ? spec.faction : sq.faction, S.clock.day, new RNG(sq.id));
+    if (up.length > Math.max(1, fit.n) || up.reduce((n, c) => n + threat(c), 0) > fit.budget * fit.slack) continue;
+    best = { x: up[0].x, z: up[0].z, n: up.length, name: sq.name, d, beast };
+  }
+  return best;
+}
+const WINGED = new Set(['bat', 'fly']);
+
 /** Sends home whoever a new squad has over its fit's budget, the last to join first. False if even one of them alone is too much. */
 export function trimTo(sq: Squad, fit: Fit): boolean {
   const members = sq.members.map((id) => S.W.char(id)).filter((c): c is Char => !!c);
@@ -297,6 +372,14 @@ export function trimTo(sq: Squad, fit: Fit): boolean {
 // somebody crosses their path (the region's own bandits, beasts, slavers and
 // wanderers, or a trader with guards) from beyond sight, past the player's
 // people and on. What happens then is up to them, and to you.
+
+/** The player's next goal is to win a fight (see content/objectives): the road may as well bring one. */
+export function wantsFight(): boolean {
+  const st = S.W.flags.objectives as { set?: string; done?: Record<string, number> } | undefined;
+  const set = st?.set ? OBJECTIVES[st.set] : undefined;
+  if (!set || !st?.done || typeof st.done !== 'object') return false;
+  return set.goals.find((g) => st.done![g.key] === undefined)?.when.k === 'win';
+}
 
 /** Squads that mean harm to whoever they meet. */
 const hostileKind = (spec: Spec) => spec.kind === 'raid' || spec.kind === 'slavers' || (!!spec.species && ANIMAL[spec.species].diet !== 'grazer');
@@ -347,10 +430,14 @@ function tickPassers() {
     const L = s.active ? W.char(s.leader) : undefined;
     if (Math.hypot((L?.x ?? s.x) - lead.x, (L?.z ?? s.z) - lead.z) < 350) return;
   }
-  // the first half day brings only the harmless: traders, wanderers, grazing beasts
-  const gentle = S.clock.t - (W.flags.passersFrom ?? 0) < 12 * HOUR;
+  // the first half day brings only the harmless: traders, wanderers, grazing beasts; unless the band is out
+  // to win a fight (its next goal), when the road brings one it can win more often than not (see fitAgainst)
+  const fightWanted = wantsFight();
+  const gentle = S.clock.t - (W.flags.passersFrom ?? 0) < 12 * HOUR && !fightWanted;
   // (the same kind twice running is less likely: the waste has more than one story)
-  const spec = rng.weighted(passerSpecs(S.T.regionAt(lead.x, lead.z).key, gentle).map(([sp, w]) => [sp, sp.key === W.flags.lastPasser ? w * 0.25 : w] as [Spec, number]));
+  let pool = passerSpecs(S.T.regionAt(lead.x, lead.z).key, gentle);
+  if (fightWanted && rng.chance(0.7) && pool.some(([sp]) => hostileKind(sp))) pool = pool.filter(([sp]) => hostileKind(sp));
+  const spec = rng.weighted(pool.map(([sp, w]) => [sp, sp.key === W.flags.lastPasser ? w * 0.25 : w] as [Spec, number]));
   for (let i = 0; i < 16; i++) {
     const a = rng.range(0, Math.PI * 2), d = rng.range(540, 680);
     const sx = lead.x + Math.sin(a) * d, sz = lead.z + Math.cos(a) * d;
@@ -482,6 +569,8 @@ export function tickWorld(dt: number) {
     if (sq.faction === 'player') continue;
     sq.active = sq.members.some((id) => S.W.char(id)?.active);
     if (!sq.flags.spec) continue;
+    fitEarly(sq);
+    if (!S.W.squads.has(sq.id)) continue;
     if (!sq.active) {
       const done = moveAbstract(sq, step);
       const members = sq.members.map((id) => S.W.char(id)).filter(Boolean) as Char[];

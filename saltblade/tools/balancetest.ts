@@ -21,7 +21,7 @@ import { structuresIn, townRings } from '../src/sim/structures';
 import { Squad } from '../src/sim/squad';
 import { makePerson, makeAnimal } from '../src/sim/spawn';
 import { makeItem } from '../src/sim/inventory';
-import { fitAgainst, levelUnder, playerBand, trimTo } from '../src/sim/worldsim';
+import { fitAgainst, levelUnder, playerBand, trimTo, cutToFit } from '../src/sim/worldsim';
 import { raidParty, type RaidKind } from '../src/sim/raids';
 import { loadoutFor } from '../src/content/loadouts';
 import { SCENARIO } from '../src/content/scenarios';
@@ -98,6 +98,13 @@ const road = (faction: string, role: any, n: [number, number], species?: string,
     W.moveToSquad(c, sq);
   }
   if (!trimTo(sq, fit)) return [];
+  return sq.members.map((id) => W.char(id)!);
+};
+/** A roaming band as the world makes it, any size its kind comes in, cut down as it nears a new band in its first days (see worldsim fitEarly). */
+const roaming = (faction: string, role: any, n: [number, number], day = 1): Foes => () => {
+  const sq = band(faction);
+  for (let i = rng.int(n[0], n[1]); i > 0; i--) W.moveToSquad(makePerson(W, { faction, role }, rng), sq);
+  if (!cutToFit(sq, fitAgainst(playerBand(), faction, day, rng))) return [];
   return sq.members.map((id) => W.char(id)!);
 };
 /** The first raid on the band's base. */
@@ -181,6 +188,7 @@ run('Wanderer vs one starveling', 'wanderer', asTheyCome('starvelings', 'bandit'
 run('Wanderer vs one day-1 Reaver', 'wanderer', fitted('reavers', 'bandit', 1), [25, 60]);
 run('Three Hired Blades vs four day-1 Reavers', 'blades', fitted('reavers', 'bandit', 4), [55, 100]);
 run('Horned Pilgrims vs three day-1 Reavers', 'karuk', fitted('reavers', 'bandit', 3), [35, 100]);
+run('Deserters vs a roaming starveling band met on day 1', 'deserters', roaming('starvelings', 'bandit', [5, 12]), [50, 100]);
 // shown for comparison: what each start meets on its first days' roads, and the first raid on a homestead
 run('Wanderer vs day-1 Reavers on the road', 'wanderer', road('reavers', 'bandit', [4, 9]));
 run('Wanderer vs day-1 dunehounds on the road', 'wanderer', road('fauna', 'animal', [3, 7], 'dunehound'));
@@ -192,6 +200,8 @@ run('Horned Pilgrims vs day-1 Reavers on the road', 'karuk', road('reavers', 'ba
 run('Old Iron vs day-1 Sentinels on the road', 'constructs', road('machines', 'construct', [2, 3]));
 run('Scrap and Sinew vs day-1 rustspiders on the road', 'scrappers', road('fauna', 'animal', [2, 5], 'rustspider'));
 run('Deserters vs day-1 Sentinels on the road', 'deserters', road('machines', 'construct', [2, 3]));
+run('Deserters vs day-1 Reavers on the road', 'deserters', road('reavers', 'bandit', [4, 9]));
+run('Wanderer vs a roaming starveling band met on day 1', 'wanderer', roaming('starvelings', 'bandit', [5, 12]));
 run('Wanderer vs one Reaver as they come (camps, later days)', 'wanderer', asTheyCome('reavers', 'bandit', 1));
 
 // stripping off for the road does not make the roads kinder: a band is weighed in the best kit it carries

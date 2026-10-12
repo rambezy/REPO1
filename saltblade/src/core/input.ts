@@ -22,6 +22,7 @@ class Input {
   panDX = 0; // screen pixels dragged with a finger
   panDY = 0;
   touch = false; // a touch screen has been used
+  fingers = 0; // fingers on the world view now
   shift = false;
   ctrl = false;
   alt = false;
@@ -122,6 +123,7 @@ class Input {
     canvas.addEventListener('touchstart', (e) => {
       e.preventDefault();
       this.touch = true;
+      this.fingers = e.touches.length;
       if (e.touches.length === 1) {
         const t = e.touches[0];
         start = { x: t.clientX, y: t.clientY, t: performance.now() };
@@ -158,6 +160,7 @@ class Input {
     canvas.addEventListener('touchend', (e) => {
       e.preventDefault();
       clearTimeout(holdTimer);
+      this.fingers = e.touches.length;
       if (e.touches.length === 0) {
         if (start && !moved && !held) {
           const now = performance.now();
@@ -174,7 +177,7 @@ class Input {
         this.mx = t.clientX; this.my = t.clientY;
       }
     }, { passive: false });
-    canvas.addEventListener('touchcancel', () => { clearTimeout(holdTimer); start = null; two = null; });
+    canvas.addEventListener('touchcancel', () => { clearTimeout(holdTimer); start = null; two = null; this.fingers = 0; });
   }
   takePan() { const p = [this.panDX, this.panDY]; this.panDX = 0; this.panDY = 0; return p; }
   private mods(e: KeyboardEvent | MouseEvent) {

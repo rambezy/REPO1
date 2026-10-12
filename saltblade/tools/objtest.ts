@@ -26,7 +26,9 @@ import { Squad } from '../src/sim/squad';
 import { makePerson } from '../src/sim/spawn';
 import { populateTown } from '../src/sim/populate';
 import { recruit } from '../src/sim/dialogue';
-import { payForGoods, payForSale } from '../src/sim/shops';
+import { payForGoods, payForSale, buyInto, sellInto, shopGrid } from '../src/sim/shops';
+import { tickRunaways, ESCAPE_M } from '../src/sim/crime';
+import { wantsFight } from '../src/sim/worldsim';
 import { makeItem } from '../src/sim/inventory';
 import { markHousesForSale, buyHouse } from '../src/sim/property';
 import { serialize, apply } from '../src/sim/save';
@@ -34,6 +36,7 @@ import { emit, on } from '../src/core/events';
 import { LI } from '../src/sim/body';
 import { SCENARIOS } from '../src/content/scenarios';
 import { OBJECTIVES, Trigger } from '../src/content/objectives';
+import { withKeys, keymap } from '../src/core/keys';
 import { beginObjectives, setupObjectives, tickObjectives, objectiveView, trackerNext, hideTracker } from '../src/ui/objectives';
 import { currentGoal } from '../src/sim/contracts';
 import type { Char } from '../src/sim/char';
@@ -93,6 +96,13 @@ setupObjectives();
   check('goal keys are unique within a chain', Object.values(OBJECTIVES).every((s) => new Set(s.goals.map((g) => g.key)).size === s.goals.length));
   const unknown = Object.values(OBJECTIVES).flatMap((s) => s.goals.map((g) => g.when.k)).filter((k) => !KINDS.includes(k));
   check('every trigger is one the tracker checks', unknown.length === 0, unknown.length ? `unknown: ${[...new Set(unknown)].join(', ')}` : `${KINDS.length} kinds`);
+  // a key named in a goal (or a start's first steps) is the one bound, not a letter written in
+  const texts = [...Object.values(OBJECTIVES).flatMap((s) => s.goals.map((g) => g.text)), ...SCENARIOS.map((s) => s.firstSteps ?? '')];
+  const fixed = texts.filter((t) => /\([A-Z]\)/.test(t) || /[{}]/.test(withKeys(t)));
+  keymap.set('sneak', ['y']);
+  const rebound = withKeys('Sneak ({sneak})');
+  keymap.set('sneak', ['t']);
+  check('goals name keys as the player has them bound, never a fixed letter', fixed.length === 0 && rebound === 'Sneak (Y)' && withKeys('Sneak ({sneak})') === 'Sneak (T)', fixed.length ? fixed.join(' | ') : `rebound: ${rebound}`);
   check('every goal has text, an acknowledgement, and every chain an outro', Object.values(OBJECTIVES).every((s) => s.outro.length > 10 && s.goals.every((g) => g.text.length > 3 && g.done.length > 10)));
 }
 
@@ -153,8 +163,10 @@ tick();
 payForSale(shop, makeItem('bandages', 1, 2), 1); // selling something else does not sell the ore
 check('selling something that is not ore leaves "Sell the ore" open', open().includes('sell_ore'));
 tick();
-{ const it = p.inv.items.find((i) => i.id === oreId)!; p.inv.remove(it); payForSale(shop, it, it.n); }
-check('selling the ore you dug completes "Sell the ore"', done().includes('sell_ore'), oreId);
+p.inv.add(oreId, 2);
+const oreHad = p.inv.count(oreId);
+{ const it = p.inv.items.find((i) => i.id === oreId)!; sellInto(shop, it, p.inv, 1); } // a right-click sells one
+check('selling one of the ore you dug completes "Sell the ore"', done().includes('sell_ore') && p.inv.count(oreId) === oreHad - 1, `${oreId}, ${p.inv.count(oreId)} of ${oreHad} kept`);
 
 // bandage: a cut arm, treated by the only pair of hands around
 p.body.hp[LI.larm] -= 25; p.body.bleed[LI.larm] = 0.12;
@@ -251,8 +263,10 @@ fresh('constructs');
 W.money = 2000;
 payForGoods(shop, makeItem('bandages', 1, 2), 1);
 check('buying something else does not buy a repair kit', open().includes('buy'));
-payForGoods(shop, makeItem('repair_kit', 1, 2), 1);
-check('buying a repair kit completes "Buy a repair kit"', done().includes('buy'), `${W.money}c left`);
+const kits = makeItem('repair_kit', 3, 2);
+shopGrid(shop)!.put(kits);
+const [gotKit] = buyInto(shop, kits, [p.inv], 1); // a right-click buys one
+check('buying one repair kit off a stack completes "Buy a repair kit"', done().includes('buy') && gotKit === 1 && kits.n === 2, `${W.money}c left, ${kits.n} kits left on the shelf`);
 // scrap: salvage and a mended limb
 p.body.lost |= 1 << LI.rleg; p.body.prost[LI.rleg] = 'scrap_leg'; p.body.hp[LI.rleg] = 10;
 fresh('scrappers');
@@ -264,6 +278,12 @@ p.body.hp[LI.rleg] += 15; tick();
 check('a prosthetic mended completes "Mend a wrecked limb"', done().includes('repair'));
 // deserters: a clean name
 fresh('deserters');
+// the road brings a fight once winning one is the next goal (see worldsim tickPassers)
+const fightBefore = wantsFight();
+W.flags.objectives.done.reach = S.clock.t;
+const fightAfter = wantsFight();
+delete W.flags.objectives.done.reach;
+check('once "Win a fight" is the next goal, the road may bring one, even on the first, gentle day', !fightBefore && fightAfter);
 p.bounty.concord = 3000; tick();
 check('a price on your head leaves "Clear your names" open', open().includes('clear'));
 p.cage = 1; p.bounty.concord = 0; tick(); // arrested: the jailer wipes the bounty
@@ -282,8 +302,15 @@ p.shackled = false; tick();
 check('picked shackles complete "Pick your shackles"', done().includes('shackles'));
 p.move = 'sneak'; tick(); p.move = 'run';
 check('sneaking completes "Sneak"', done().includes('sneak'));
-W.flags.escaped = S.clock.t; tick();
-check('getting clear completes "Get clear of Chainfield"', done().includes('escape'));
+// a runaway of Chainfield's, out past the fields: free of it 300 m past the camp's edge (see tickRunaways)
+const cfield = T.sites.find((s) => s.settlement === 'chainfield')!;
+p.mem.enslavedBy = 'chainhouse'; p.mem.slaveSite = cfield.id;
+const pastEdge = (m: number) => { put(p, cfield.x + cfield.r + m, cfield.z); tickRunaways(1.1); tick(); return Math.round(Math.hypot(p.x - cfield.x, p.z - cfield.z) - cfield.r); };
+const near = pastEdge(ESCAPE_M - 60);
+check('a runaway still within 300 m of Chainfield is not clear of it', open().includes('escape') && !!p.mem.slaveSite, `${near} m past the edge`);
+const far = pastEdge(ESCAPE_M + 15);
+check('300 m past its edge completes "Get clear of Chainfield"', done().includes('escape') && !p.mem.slaveSite, `${far} m past the edge`);
+p.bounty = {}; delete p.mem.runawayT;
 const hideout = T.sites.find((s) => s.key === 'brokenchain' || s.settlement === 'brokenchain');
 if (hideout) { put(p, hideout.x, hideout.z); tick(); }
 check('reaching Brokenchain completes "Find Brokenchain"', !!hideout && done().includes('brokenchain'), hideout ? hideout.name : 'no such site');

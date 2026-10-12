@@ -5,7 +5,8 @@
 // full; tearing down a cage lets its prisoner out; relics pay for a tech once;
 // a bribe the officer takes ends the search; a paid bounty never leaves you
 // better liked than before the crime; a weapon dropped by armless hands lands
-// on the ground when the pack is full.
+// on the ground when the pack is full; one, five or a whole stack can be
+// bought or sold, as far as the purse and the pack go.
 // Usage: npx tsx tools/economytest.ts
 import { generateWorld } from '../src/world/gen';
 import { Nav } from '../src/world/nav';
@@ -26,7 +27,7 @@ import { BUILDABLE, RECIPES, TECH } from '../src/content/buildables';
 import { Squad } from '../src/sim/squad';
 import { makePerson } from '../src/sim/spawn';
 import { Grid, makeItem, type Item } from '../src/sim/inventory';
-import { buyPrice, sellPrice, makeShop, restock, shopGrid, payForGoods, payForSale, sellInto, buyStanding, dearMarkets, type Shop } from '../src/sim/shops';
+import { buyPrice, sellPrice, makeShop, restock, shopGrid, payForGoods, payForSale, sellInto, buyInto, affordable, buyStanding, dearMarkets, type Shop } from '../src/sim/shops';
 import { MARKETS } from '../src/content/markets';
 import { ITEM, ITEMS } from '../src/content/items';
 import { treeFor, choose, say, type DChoice, type DCtx, type Tree } from '../src/sim/dialogue';
@@ -181,6 +182,41 @@ check('selling part of a stolen stack leaves the rest marked', partSold === 1 &&
 shelf.items = [];
 const [restSold] = sellInto(fence, loot, sack);
 check('...while what reaches the shelf is the shop\'s own, unmarked', restSold === 19 && shelf.items.includes(loot) && !loot.stolen && !sack.items.length);
+
+// one, five or the whole stack off the shelf (right-click, Shift, Ctrl): one settlement each, the rest left where it was
+const trades: [string, number, number][] = [];
+const offTrade = on('sim:trade', (kind: string, _sh: Shop, _it: Item, n: number, chits: number) => trades.push([kind, n, chits]));
+shelf.items = [];
+const meat = makeItem('dried_meat', 16);
+shelf.put(meat, 0, 0);
+const purse = new Grid(6, 4);
+const meatEach = buyPrice(fence, meat);
+W.money = 10000;
+const m3 = W.money;
+const [one, onePaid] = buyInto(fence, meat, [purse], 1);
+const [five, fivePaid] = buyInto(fence, meat, [purse], 5);
+check('buying one, then five, off a stack of 16 takes just those and leaves the rest on the shelf', one === 1 && five === 5 && meat.n === 10 && shelf.items.includes(meat) && purse.count('dried_meat') === 6,
+  `${one} + ${five} bought, ${meat.n} left on the shelf, ${purse.count('dried_meat')} in the pack`);
+check('...each charged exactly, one settlement apiece', onePaid === meatEach && fivePaid === meatEach * 5 && W.money === m3 - meatEach * 6 && trades.length === 2 && trades.every((t) => t[0] === 'buy'),
+  `${trades.map((t) => `${t[1]} for ${t[2]}c`).join(', ')}`);
+W.money = meatEach * 4 + 1;
+check('a purse that covers part of a stack covers that many', affordable(fence, meat) === 4 && affordable(fence, meat, meatEach * 100) === meat.n && affordable(fence, meat, meatEach - 1) === 0, `${affordable(fence, meat)} of ${meat.n}`);
+const [all] = buyInto(fence, meat, [purse], affordable(fence, meat));
+check('...and the whole-stack buy takes what it can pay for, never running the purse dry', all === 4 && W.money === 1 && meat.n === 6 && trades.length === 3, `${all} bought, ${W.money}c left, ${meat.n} on the shelf`);
+W.money = 10000;
+const meatBack = purse.items.find((i) => i.id === 'dried_meat')!;
+const [sold1] = sellInto(fence, meatBack, purse, 1);
+const [soldAll] = sellInto(fence, meatBack, purse, meatBack.n);
+check('selling one, then the rest, of a stack in a pack: one settlement each', sold1 === 1 && soldAll === 9 && !purse.count('dried_meat') && trades.length === 5 && trades.slice(3).every((t) => t[0] === 'sell'),
+  `${sold1} then ${soldAll} sold`);
+const cramped = new Grid(1, 1);
+shelf.items = [];
+const big = makeItem('dried_meat', 16);
+shelf.put(big, 0, 0);
+cramped.put(makeItem('dried_meat', ITEM.dried_meat.stack - 2), 0, 0);
+const [fit] = buyInto(fence, big, [cramped], 5);
+check('five bought into a pack with room for two takes two, and only two are paid for', fit === 2 && big.n === 14 && trades.length === 6 && trades[5][1] === 2, `${fit} fitted, ${big.n} left on the shelf`);
+offTrade();
 W.shops.delete(till.id);
 W.removeObj(till);
 

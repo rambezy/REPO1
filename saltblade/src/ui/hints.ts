@@ -4,7 +4,7 @@
 // queue waits while a window, menu or conversation is open. Each situational
 // card is shown once per browser; the start cards once per game.
 import { h, ui, esc, anyOpen } from './dom';
-import { keymap, ActionId } from '../core/keys';
+import { keymap, ActionId, withKeys } from '../core/keys';
 import { G } from '../state';
 import { S } from '../sim/ctx';
 import { on } from '../core/events';
@@ -105,7 +105,7 @@ export function setupHints() {
     else startCard('start', 'Your people', `Your people are the portraits at the bottom. <b>Left-click</b> selects (drag for several); <b>right-click</b> the ground to walk there, or someone for things to do. <b>${kb('pause')}</b> pauses, <b>${kb('speed1')}–${kb('speed4')}</b> set the speed.`, PRI.start);
     // what to do first, for the way this game began
     const sc = SCENARIO[S.W.flags.scenario];
-    if (sc?.firstSteps) startCard('first_' + sc.key, 'First steps', sc.firstSteps, PRI.steps);
+    if (sc?.firstSteps) startCard('first_' + sc.key, 'First steps', sc.firstSteps.replace(/\{(\w+)\}/g, (m) => esc(withKeys(m))), PRI.steps);
   });
   on('ui:talk', () => hint('talk', 'Talking', 'People remember how you treat them. Recruits drink in bars: some join for free, some want paying.'));
   on('ui:trade', (pid: number, nid: number) => {

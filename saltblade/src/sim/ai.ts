@@ -5,7 +5,7 @@
 import { Char } from './char';
 import { S } from './ctx';
 import { hostile, dist, reach, startAttack, tickAttack, canShoot, shoot, rangedStats, strengthOf, beastLaser, blowWillLand, receding } from './combat';
-import { goTo, stop, near } from './move';
+import { goTo, stop, near, toolsDown } from './move';
 import { ANIMAL } from '../content/animals';
 import { FACTION } from '../content/factions';
 import { ITEM } from '../content/items';
@@ -14,7 +14,7 @@ import { angleTo } from '../core/math';
 import { LI } from './body';
 import { runOrder } from './orders';
 import { runRoutine } from './routine';
-import { runJobs } from './jobs';
+import { runJobs, jobsHeld } from './jobs';
 import { wantsToTalk } from './encounters';
 import { leaveFurniture, leaveBed } from './use';
 import { machineSay } from './machines';
@@ -295,6 +295,8 @@ function playerAI(c: Char, dt: number, think: boolean) {
   // off watch: down from the tower before anything else
   if (c.mem.using && !c.jobs.some((j) => j.obj === c.mem.using) && onTower(c)) leaveFurniture(c);
   if (c.order) { B.slaveT = 0; runOrder(c, dt); return; } // (not `order`: an attack on someone now gone was just dropped)
+  // at a trade or loot window: everything else waits where they stand, until it closes
+  if (jobsHeld(c)) { if (c.hasGoal) stop(c); toolsDown(c); return; }
   if (c.jobs.length && runJobs(c, dt, think)) return;
   // idle: eat when hungry, patch yourself up; the chained are put to work
   if (think) { idleUpkeep(c); if (!c.order && c.shackled && c.mem.slaveSite) slaveWork(c); }

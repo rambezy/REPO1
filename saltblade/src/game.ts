@@ -8,7 +8,8 @@ import { TerrainRenderer } from './render/terrainMesh';
 import { makeWaterMaterial } from './render/water';
 import { Sky } from './render/sky';
 import { Daylight } from './render/daylight';
-import { Clock } from './sim/clock';
+import { Clock, HOUR } from './sim/clock';
+import { smoothstep } from './core/math';
 import { input } from './core/input';
 import { SETTLEMENT } from './content/layout';
 import { WORLD } from './world/consts';
@@ -23,6 +24,7 @@ import { Overlay } from './render/overlay';
 import { attachControl, sel, hoverId } from './game/control';
 import { RNG } from './core/rng';
 import { setupFx } from './game/fx';
+import { setupFraming } from './game/framing';
 import { setupUI } from './ui/index';
 import { StructViews } from './render/structView';
 import { tickPopulation } from './game/world';
@@ -133,6 +135,7 @@ async function start() {
   G.structViews = new StructViews(G.W);
   G.R.scene.add(G.structViews.group);
   setupFx();
+  setupFraming();
   attachControl();
   setupUI();
   setupAudio();
@@ -293,6 +296,9 @@ function skyAndWeather(dt: number) {
   drips(dt);
   G.weatherName = G.weatherFx.kind !== 'clear' && G.weatherFx.i > 0.25 ? WEATHER_NAME[G.weatherFx.kind as keyof typeof WEATHER_NAME] : '';
   G.daylight.update(dt, G.clock.hour, G.clock.day, G.R, G.sky, G.weather, G.waterMat.uniforms);
+  // a new game's first hours: the air is cleaner than the region's usual haze, and thickens back over the last two
+  const clearAir = S.W.flags.clearAir as number | undefined;
+  if (clearAir && S.clock.t < clearAir) G.R.fog.density *= 0.5 + 0.5 * smoothstep(clearAir - 2 * HOUR, clearAir, S.clock.t);
   // lightning, unless the player asked for nothing that flashes
   if (G.weatherFx.flash > 0 && !reducedMotion()) { G.R.hemi.intensity += G.weatherFx.flash * 2.2; G.R.gl.toneMappingExposure += G.weatherFx.flash * 0.5; }
   G.sky.mesh.position.copy(G.R.camera.position);

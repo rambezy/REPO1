@@ -326,3 +326,8 @@ export function helpRows(): { keys: string; what: string }[] {
   }
   return out;
 }
+
+/** Writes the keys into a text's `{action}` marks (a goal's "Sneak ({sneak})") as the player has them bound. */
+export function withKeys(text: string): string {
+  return text.replace(/\{(\w+)\}/g, (m, id: string) => (ACTIONS.some((d) => d.id === id) ? keymap.labels(id as ActionId)[0] ?? '—' : m));
+}

@@ -11,7 +11,7 @@ import { WObj } from '../sim/objects';
 import { S } from '../sim/ctx';
 import { hostile } from '../sim/combat';
 import { emit, on } from '../core/events';
-import { leaveFurniture } from '../sim/use';
+import { giveOrder } from '../sim/orders';
 import { dropCarried } from '../sim/health';
 import { ANIMAL } from '../content/animals';
 import { FACTION } from '../content/factions';
@@ -127,14 +127,10 @@ export function objAt(sx: number, sy: number): WObj | null {
 }
 
 // ---------------------------------------------------------------- orders
-export function issue(c: Char, o: Order | null, queue = false) {
+/** Gives an order (jobs persist; orders take priority, and the tools go down: see giveOrder). */
+export function issue(c: Char, o: Order | null, _queue = false) {
   if (!c.up && o?.k !== 'drop') return;
-  if (c.bed || c.mem.using) leaveFurniture(c);
-  c.mem.sit = false;
-  c.order = o;
-  c.jobs = queue ? c.jobs : c.jobs; // jobs persist; orders take priority
-  if (o && o.k === 'move') c.brain.enemy = 0;
-  if (o && (o.k === 'move' || o.k === 'attack')) { c.path = null; c.hasGoal = false; }
+  giveOrder(c, o);
 }
 
 export function moveGroup(chars: Char[], x: number, z: number) {

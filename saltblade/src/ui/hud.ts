@@ -5,6 +5,7 @@ import { G } from '../state';
 import { S } from '../sim/ctx';
 import { on, emit } from '../core/events';
 import { sel, selected, setSpeed } from '../game/control';
+import { aboutWhom, frameChar } from '../game/framing';
 import { portrait } from '../render/portrait';
 import { Char } from '../sim/char';
 import { Squad } from '../sim/squad';
@@ -87,6 +88,14 @@ function refreshSpeed() {
 
 export function notify(text: string, kind = 'info') {
   const n = h('div', { class: 'notice ' + kind }, text);
+  // about one of your people: a click looks at them
+  const who = G.mode === 'play' ? aboutWhom(text) : null;
+  if (who) {
+    n.classList.add('goto');
+    n.appendChild(h('button', { class: 'gotobtn', title: `Look at ${who.name}` }, 'Go to'));
+    shield(n);
+    n.onclick = () => frameChar(who, true);
+  }
   notices.appendChild(n);
   while (notices.children.length > 6) notices.firstChild!.remove();
   setTimeout(() => n.classList.add('fade'), 5200);

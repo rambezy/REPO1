@@ -32,12 +32,20 @@ export function near(c: Char, x: number, z: number, r: number) {
   return Math.hypot(c.x - x, c.z - z) <= r;
 }
 
+/** What people do at work, which holds them in place while it lasts. */
+export const WORK_ACTS = new Set(['mine', 'build', 'craft', 'farm', 'research']);
+
+/** Puts the tools down: ends a work pose, so that the next walk is not held in place by it. */
+export function toolsDown(c: Char) {
+  if (c.act && WORK_ACTS.has(c.act)) { c.act = null; c.actT = 0; }
+}
+
 /** Steps a character's movement (and its velocity, for those who would chase or cut it off). Returns metres moved. */
 export function tickMove(c: Char, dt: number): number {
   c.speed = 0;
   c.vx = 0; c.vz = 0;
   if (c.status !== 'up' || c.carriedBy || c.cage || c.bed || c.knockT > 0 || c.sleeping) return 0;
-  const busy = !!c.atk || c.act === 'mine' || c.act === 'build' || c.act === 'craft' || c.act === 'farm' || c.act === 'research';
+  const busy = !!c.atk || (!!c.act && WORK_ACTS.has(c.act));
   let dx = 0, dz = 0;
   if (c.atk) {
     // a blow carries the attacker on after a target who backs away (see lungeAt)

@@ -21,6 +21,8 @@ export class RTSCamera {
   keyPan = true;
   shake = 0;
   private ty = 20;
+  /** A point the view is easing toward (see glideTo), given up the moment the player pans. */
+  private glide: { x: number; z: number; track?: () => { x: number; z: number } | null } | null = null;
 
   update(dt: number, T: Terrain) {
     const w = input.takeWheel();
@@ -54,21 +56,28 @@ export class RTSCamera {
     // a finger dragging the ground along
     const [tdx, tdy] = input.takePan();
     if (tdx || tdy) {
-      this.follow = null;
+      this.follow = null; this.glide = null;
       const k = (this.dist * 1.6) / window.innerHeight;
       const s = Math.sin(this.yaw), c = Math.cos(this.yaw);
       this.target.x -= (tdx * c + tdy * s) * k;
       this.target.z -= (-tdx * s + tdy * c) * k;
     }
     if (px || pz) {
-      this.follow = null;
+      this.follow = null; this.glide = null;
       const sp = (12 + this.dist * 1.25) * (input.shift ? 2.5 : 1) * dt;
       const s = Math.sin(this.yaw), c = Math.cos(this.yaw);
       // forward is away from the camera
       this.target.x += (px * c + pz * s) * sp;
       this.target.z += (-px * s + pz * c) * sp;
     }
-    if (this.follow) {
+    if (this.glide) {
+      const at = this.glide.track?.();
+      if (at) { this.glide.x = at.x; this.glide.z = at.z; }
+      const k = 1 - Math.exp(-dt * 6);
+      this.target.x = lerp(this.target.x, this.glide.x, k);
+      this.target.z = lerp(this.target.z, this.glide.z, k);
+      if (Math.hypot(this.target.x - this.glide.x, this.target.z - this.glide.z) < 0.5) this.glide = null;
+    } else if (this.follow) {
       const p = this.follow();
       if (p) {
         this.target.x = lerp(this.target.x, p.x, 1 - Math.exp(-dt * 8));
@@ -109,6 +118,13 @@ export class RTSCamera {
 
   lookAt(x: number, z: number, dist?: number) {
     this.target.x = x; this.target.z = z;
+    this.glide = null;
     if (dist) this.wantDist = dist;
+  }
+
+  /** Brings a point (or someone, as they move: `track`) to the middle of the view: eased over a moment, or at once with `cut`. */
+  glideTo(x: number, z: number, cut = false, track?: () => { x: number; z: number } | null) {
+    if (cut) this.lookAt(x, z);
+    else this.glide = { x, z, track };
   }
 }

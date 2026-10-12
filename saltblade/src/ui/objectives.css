@@ -26,3 +26,7 @@
 /* ...and on a phone, where the panel spans the width, under it, folded to a pill until asked */
 @media (max-width: 560px) { .objs { left: 8px; right: auto; top: 290px; width: 220px; } }
 @media (prefers-reduced-motion: reduce) { .obj.done { animation: none; } }
+.objaim { grid-column: 2; font-size: 11.5px; color: var(--ink-faint); }
+.objaim:empty { display: none; }
+.obj.aimed { cursor: pointer; }
+.obj.aimed:hover .objaim { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }

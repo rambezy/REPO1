@@ -1,5 +1,5 @@
 /* ---------------- all your people held: the captivity card ---------------- */
-.capcard { position: absolute; left: 50%; top: 64px; transform: translateX(-50%); width: min(460px, calc(100cqw - 32px)); z-index: 28; background: rgba(24,21,17,.95); border: 1px solid var(--edge-hi); border-left: 3px solid var(--bad); border-radius: 4px; padding: 10px 14px 12px; box-shadow: 0 8px 24px rgba(0,0,0,.5); pointer-events: auto; animation: capin .25s ease; }
+.capcard { position: absolute; left: 50%; top: 104px; transform: translateX(-50%); width: min(460px, calc(100cqw - 32px)); z-index: 28; background: rgba(24,21,17,.95); border: 1px solid var(--edge-hi); border-left: 3px solid var(--bad); border-radius: 4px; padding: 10px 14px 12px; box-shadow: 0 8px 24px rgba(0,0,0,.5); pointer-events: auto; animation: capin .25s ease; }
 @keyframes capin { from { opacity: 0; transform: translate(-50%, -6px); } to { opacity: 1; transform: translate(-50%, 0); } }
 .captitle { font: 600 17px var(--cond); color: #e8765a; letter-spacing: .06em; margin-bottom: 6px; }
 .caplist { margin: 0 0 8px; padding: 0 0 0 16px; font-size: 13.5px; line-height: 1.45; color: var(--ink); }

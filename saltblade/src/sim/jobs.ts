@@ -4,7 +4,7 @@
 import { Char, Job } from './char';
 import { S } from './ctx';
 import { WObj } from './objects';
-import { goTo, stop, near } from './move';
+import { goTo, stop, near, toolsDown, WORK_ACTS } from './move';
 import { train } from './train';
 import { ITEM } from '../content/items';
 
@@ -13,12 +13,23 @@ export type JobHandler = (c: Char, job: Job, o: WObj, dt: number, think: boolean
 
 export const JOB_HANDLERS: Partial<Record<Job['k'], JobHandler>> = {};
 
-/** What people do at a job, which holds them in place while it lasts. */
-const WORK_ACTS = new Set(['mine', 'build', 'craft', 'farm', 'research']);
+/**
+ * Who has a trade or loot window open, by window. Their standing jobs wait where they stand until it
+ * closes, so that a miner who walked over to a trader does not walk back to the rock mid-deal (which
+ * would close the window). Kept with the world it was set in, so a load never inherits it.
+ */
+const atWindow = new Map<string, { id: number; w: unknown }>();
+export function holdJobs(win: string, id: number) {
+  if (id) atWindow.set(win, { id, w: S.W }); else atWindow.delete(win);
+}
+export function jobsHeld(c: Char): boolean {
+  for (const h of atWindow.values()) if (h.id === c.id && h.w === S.W) return true;
+  return false;
+}
 
 export function walkTo(c: Char, x: number, z: number, r = 1.8) {
   if (near(c, x, z, r)) { stop(c); return true; }
-  if (c.act && WORK_ACTS.has(c.act)) c.act = null; // put the tools down to walk
+  toolsDown(c); // put the tools down to walk
   goTo(c, x, z);
   c.move = c.move === 'sneak' ? 'sneak' : 'run';
   return false;

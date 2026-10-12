@@ -11,6 +11,7 @@ import { crime, witness } from '../sim/crime';
 import { train, versus } from '../sim/train';
 import { emit } from '../core/events';
 import { canSee } from '../sim/ai';
+import { holdJobs } from '../sim/jobs';
 
 let views: (GridView | SlotView)[] = [];
 
@@ -22,8 +23,9 @@ export function openLoot(looterId: number, target: { char?: number; obj?: number
   if (!t && !o) return;
   const title = t ? (target.steal ? `Pickpocketing ${t.name}` : `Looting ${t.name}`) : target.steal ? `Stealing from ${objName(o!)}` : objName(o!);
   const w = openWindow('loot', title, { w: 700, cls: 'lootwin' });
-  const close = () => { for (const v of views) v.destroy(); views = []; hideTip(); };
+  const close = () => { for (const v of views) v.destroy(); views = []; hideTip(); holdJobs('loot', 0); };
   w.onClose = close;
+  holdJobs('loot', c.id); // standing jobs wait while the window is open (render never runs close)
   const render = () => {
     for (const v of views) v.destroy();
     views = [];

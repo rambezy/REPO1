@@ -4,7 +4,8 @@
 // coordinates so it takes nothing from the world's random streams. Tiles are
 // built a few at a time and cached; every kind is one instanced mesh for the
 // whole ring of tiles, so it costs a handful of draw calls. It thins out with
-// the quality setting and the draw distance, and is off on low quality.
+// the quality setting and the draw distance: on low quality a sparse, short
+// ring of it, so the ground near your people is never bare.
 // Nothing grows inside buildings, building sites, fields, walls or towers; in
 // towns dry tufts, stones and litter gather along their feet instead. A tile
 // is rebuilt when what stands on it changes.
@@ -302,9 +303,9 @@ export class GroundCover {
   update(cam: THREE.Vector3, budgetMs = 2, distMul = 1) {
     const q = G.R?.level ?? 'high';
     const dm = Math.min(1.5, Math.max(0.5, distMul));
-    const R = q === 'low' ? 0 : (q === 'high' ? 115 : 85) * dm;
+    const R = (q === 'low' ? 50 : q === 'high' ? 115 : 85) * dm;
     // within R1 everything shows; beyond it only a share of each kind (see KEEP)
-    const R1 = (q === 'high' ? 55 : 40) * dm;
+    const R1 = (q === 'low' ? 24 : q === 'high' ? 55 : 40) * dm;
     this.radius = R;
     // the cover only matters near the ground: none when the camera is high up
     if (!R || cam.y - Math.max(0, this.T.heightAt(cam.x, cam.z)) > 260) {
@@ -340,7 +341,7 @@ export class GroundCover {
     const here = cti * 4096 + ctj + R * 1e-3 + (q === 'high' ? 0.5 : 0);
     if (here === this.settledAt) return;
     const t0 = performance.now();
-    const dens = q === 'high' ? 1 : 0.6;
+    const dens = q === 'high' ? 1 : q === 'low' ? 0.45 : 0.6;
     const ti0 = Math.floor((cam.x - R) / TILE), ti1 = Math.floor((cam.x + R) / TILE);
     const tj0 = Math.floor((cam.z - R) / TILE), tj1 = Math.floor((cam.z + R) / TILE);
     const want: number[] = [];

@@ -14,7 +14,7 @@ import { RNG, hash3 } from '../src/core/rng';
 import { Weather } from '../src/sim/weather';
 import { simStep } from '../src/sim/sim';
 import { tickSquads } from '../src/sim/squads';
-import { tickRunaways, captivity } from '../src/sim/crime';
+import { tickRunaways, captivity, ESCAPE_M } from '../src/sim/crime';
 import { structuresIn, townRings } from '../src/sim/structures';
 import { buildTown } from '../src/world/towns';
 import { buildSite } from '../src/world/sites';
@@ -153,12 +153,15 @@ const lp0 = p.sk[SK.lockpicking];
 const runT0 = S.clock.t;
 p.order = { k: 'free', id: p.id };
 const tFree = until(() => !p.shackled, 1800);
-check('a slave can pick their own shackles', tFree >= 0 && !p.order, `${tFree} s, lockpicking ${lp0.toFixed(1)}`);
+// about one go in seven, a go every three seconds: a minute or so, not an hour
+check('a slave can pick their own shackles, unwatched, in a couple of minutes at most', tFree >= 0 && tFree <= 150 && !p.order, `${tFree} s, lockpicking ${lp0.toFixed(1)}`);
 check('...which trains lockpicking', p.sk[SK.lockpicking] > lp0, `${lp0.toFixed(1)} -> ${p.sk[SK.lockpicking].toFixed(1)}`);
-const away = nav.nearestOpen(cf.x - cf.r - 980, cf.z, 80)!;
+const away = nav.nearestOpen(cf.x - cf.r - ESCAPE_M - 300, cf.z, 80)!;
 p.order = { k: 'move', x: away[0], z: away[1] }; p.move = 'run';
 const tGone = until(() => !p.mem.slaveSite, 1500);
-check('...and walk away from Chainfield for good', tGone >= 0 && !p.mem.slaveSite, `${tGone} s, ${Math.round(Math.hypot(p.x - cf.x, p.z - cf.z))} m out, bounty ${p.bounty.chainhouse ?? 0}`);
+const outAt = Math.hypot(p.x - cf.x, p.z - cf.z) - cf.r;
+check('...and walk away from Chainfield for good, 300 m past its edge', tGone >= 0 && !p.mem.slaveSite && outAt >= ESCAPE_M && outAt < ESCAPE_M + 40 && ESCAPE_M === 300,
+  `${tGone} s, ${Math.round(outAt)} m past the edge, bounty ${p.bounty.chainhouse ?? 0}`);
 // seen again an hour later they may be reported again; what must not happen is a report every second in sight
 const hoursLoose = 1 + Math.floor((S.clock.t - runT0) / HOUR);
 check('a runaway seen leaving is reported at most once an hour, not every second in sight', (p.bounty.chainhouse ?? 0) <= 1000 * hoursLoose, `bounty ${p.bounty.chainhouse ?? 0} over ${hoursLoose} hour(s) loose`);

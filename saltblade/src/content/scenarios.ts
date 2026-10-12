@@ -116,7 +116,7 @@ export const SCENARIOS: Scenario[] = [
       { level: 12, loadout: 'drifters_wanderer', weapon: 'cleaver', prost: [[6, 'scrap_leg']], kit: [['solder_tin', 2], ['dried_meat', 3]] },
     ],
     start: { settlement: 'rustward', off: [240, -260] },
-    firstSteps: 'Rustward, to the north-west, buys machine parts and sells repair kits, and its trader posts paid <b>work</b>. Your scrap limbs never bleed; wrecked, a <b>repair kit</b> mends them (First aid). Machines you knock down can be <b>salvaged</b> for parts (right-click them).',
+    firstSteps: 'Rustward, to the south-west, buys machine parts and sells repair kits, and its trader posts paid <b>work</b>. Your scrap limbs never bleed; wrecked, a <b>repair kit</b> mends them (First aid). Machines you knock down can be <b>salvaged</b> for parts (right-click them).',
   },
   {
     key: 'deserters', name: 'Deserters', diff: 'Hard',
@@ -127,9 +127,10 @@ export const SCENARIOS: Scenario[] = [
       { role: 'merc', races: ['valefolk', 'duneborn'], level: 18, loadout: 'concord_guard', kit: [['bandages', 2], ['dried_meat', 2]] },
       { role: 'merc', races: ['valefolk', 'duneborn'], level: 16, loadout: 'concord_guard', kit: [['bandages', 2], ['dried_meat', 2]] },
     ],
-    start: { settlement: 'stonegate', off: [-520, 180] },
+    // days on foot from Stonegate, a short walk short of Hardcoin, on open flats clear of the camps around it
+    start: { settlement: 'hardcoin', off: [-850, -850] },
     bounty: { concord: 3000 },
-    firstSteps: 'Stonegate is just to the east, full of people who would sell you to the Concord. With 3,000 chits on your heads, keep clear of Concord towns and patrols, or pay a Concord guard off. The free towns (Crossroad, Hardcoin) do not care who you were, and their barkeeps post paid <b>work</b>.',
+    firstSteps: 'Hardcoin, a free town, is just to the south-east: nobody there reads Concord posters, and its barkeep posts paid <b>work</b>. With 3,000 chits on your heads, keep clear of Concord towns and patrols, or pay a Concord guard off. The camps around Hardcoin are no place for two; the bandits who walk the roads in twos and threes are a fight you can win.',
     rel: { concord: -30, unchained: 20 },
   },
   {
@@ -148,7 +149,7 @@ export const SCENARIOS: Scenario[] = [
     squad: 'Survivor', money: 0,
     people: [{ level: 3, loadout: 'prisoner', lost: [3], hurt: 0.55, hunger: 40 }],
     start: { region: 'ash' },
-    firstSteps: 'One-armed and bleeding in the Ashlands. Stop the bleeding first, then find food and a road. Everything that walks the ash is hungrier than you: <b>sneak</b> (T) past what you cannot fight.',
+    firstSteps: 'One-armed and bleeding in the Ashlands. Stop the bleeding first, then find food and a road. Everything that walks the ash is hungrier than you: <b>sneak</b> ({sneak}) past what you cannot fight.',
   },
   {
     key: 'fight', name: 'Proving Ground', diff: 'Normal', hidden: true,

@@ -2,7 +2,7 @@
 // prices that depend on the shop's markup and how its faction sees you.
 import { World } from './world';
 import { S } from './ctx';
-import { Grid } from './inventory';
+import { Grid, newUid } from './inventory';
 import { ITEM, itemValue, ItemDef } from '../content/items';
 import { RNG } from '../core/rng';
 import { emit } from '../core/events';
@@ -213,27 +213,55 @@ export function stow(it: Item, grids: Grid[]): number {
   return n0 - it.n;
 }
 
-/** Buys as much of a stack on the shelf as fits in these packs; the rest stays on the shelf. Returns how many, and the chits paid. */
-export function buyInto(sh: Shop, it: Item, packs: Grid[]): [number, number] {
-  const stock = shopGrid(sh);
-  if (!stock) return [0, 0];
-  const n0 = it.n;
-  stock.remove(it);
-  it.stolen = undefined; // bought and paid for, so it stacks with what you already carry
-  const k = stow(it, packs);
-  if (k < n0) stock.put(it);
-  return [k, k > 0 ? payForGoods(sh, it, k) : 0];
+/**
+ * Takes `n` off a stack where it lies: the stack itself when that is all of it, or else a new stack of
+ * `n` split from it (the rest stays put). `back` returns what did not go anywhere to where it came from.
+ */
+function partOf(it: Item, n: number, from: Grid): { part: Item; back: () => void } {
+  if (n >= it.n) {
+    const n0 = it.n;
+    from.remove(it);
+    return { part: it, back: () => { if (it.n > 0 && it.n <= n0) from.put(it); } };
+  }
+  const part: Item = { ...it, uid: newUid(), n };
+  it.n -= n;
+  return { part, back: () => { it.n += part.n; part.n = 0; } };
 }
 
-/** Sells as much of a stack from a pack as fits on the shelf; the rest stays in the pack, as it was. Returns how many, and the chits paid. */
-export function sellInto(sh: Shop, it: Item, from: Grid): [number, number] {
+/**
+ * Buys up to `count` of a stack on the shelf (all of it by default), as much of that as fits in these
+ * packs; the rest stays on the shelf. Returns how many, and the chits paid (one settlement, one
+ * `sim:trade`).
+ */
+export function buyInto(sh: Shop, it: Item, packs: Grid[], count = it.n): [number, number] {
   const stock = shopGrid(sh);
-  if (!stock) return [0, 0];
-  const n0 = it.n;
-  from.remove(it);
-  const k = stow(it, [stock]);
-  if (k < n0) from.put(it);
-  return [k, k > 0 ? payForSale(sh, it, k) : 0];
+  const want = Math.min(Math.floor(count), it.n);
+  if (!stock || want <= 0) return [0, 0];
+  const { part, back } = partOf(it, want, stock);
+  part.stolen = undefined; // bought and paid for, so it stacks with what you already carry
+  const k = stow(part, packs);
+  if (k < want) back();
+  return [k, k > 0 ? payForGoods(sh, part, k) : 0];
+}
+
+/**
+ * Sells up to `count` of a stack from a pack (all of it by default), as much of that as fits on the
+ * shelf; the rest stays in the pack, as it was. Returns how many, and the chits paid.
+ */
+export function sellInto(sh: Shop, it: Item, from: Grid, count = it.n): [number, number] {
+  const stock = shopGrid(sh);
+  const want = Math.min(Math.floor(count), it.n);
+  if (!stock || want <= 0) return [0, 0];
+  const { part, back } = partOf(it, want, from);
+  const k = stow(part, [stock]);
+  if (k < want) back();
+  return [k, k > 0 ? payForSale(sh, part, k) : 0];
+}
+
+/** How many of a stack on the shelf the purse covers. */
+export function affordable(sh: Shop, it: Item, money = S.W.money): number {
+  const each = buyPrice(sh, it);
+  return each <= 0 ? it.n : Math.max(0, Math.min(it.n, Math.floor(money / each)));
 }
 
 /** A town that pays well for something, and what one would fetch at a counter there. */

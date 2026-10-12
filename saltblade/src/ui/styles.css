@@ -88,6 +88,9 @@ body.paused .hud-speed::after { content: 'PAUSED'; font: 700 11px var(--cond); c
 .notice { background: rgba(20,17,13,.88); border-left: 3px solid var(--accent); padding: 4px 12px; border-radius: 3px; font: 500 14px var(--font); transition: opacity 1s; max-width: 560px; }
 .notice.bad, .notice.crime { border-left-color: var(--bad); } .notice.good { border-left-color: var(--good); } .notice.combat { border-left-color: #a07050; }
 .notice.fade { opacity: 0; }
+.notice.goto { pointer-events: auto; cursor: pointer; display: flex; align-items: baseline; gap: 10px; }
+.gotobtn { font: 600 12px var(--font); color: var(--accent); background: none; border: 1px solid currentColor; border-radius: 3px; padding: 0 6px; cursor: pointer; flex: none; }
+.notice.goto:hover .gotobtn, .gotobtn:focus-visible { background: rgba(255,255,255,.08); }
 
 /* ---------------- context menu, tooltip ---------------- */
 .ctxmenu { position: absolute; z-index: 400; min-width: 170px; background: rgba(24,21,17,.97); border: 1px solid var(--edge-hi); border-radius: 4px; padding: 3px; box-shadow: 0 6px 20px rgba(0,0,0,.5); }
