@@ -590,18 +590,18 @@ function spawnRecipient(e: Errand, owner: string): Char | null {
 
 /**
  * Sends a war party of a kind of squad on a town, from out of sight: the
- * world's spawner makes it, `budget` caps its strength (see trimTo), and from
- * then on it is one of the world's war parties (worldevents), marching and
- * fighting like any other.
+ * world's spawner makes it (on `r`'s dice, if given, else the world's),
+ * `budget` caps its strength (see trimTo), and from then on it is one of the
+ * world's war parties (worldevents), marching and fighting like any other.
  */
-export function sendWarParty(spec: Spec, n: number, site: Site, budget: number, level?: number, loadout?: string): Squad | null {
+export function sendWarParty(spec: Spec, n: number, site: Site, budget: number, level?: number, loadout?: string, r?: RNG): Squad | null {
   for (let i = 0; i < 24; i++) {
     const a = (i / 24) * Math.PI * 2, d = 560 + (i % 3) * 60;
     const x = site.x + Math.sin(a) * d, z = site.z + Math.cos(a) * d;
     if (S.T.heightAt(x, z) < 0.4 || S.T.slopeAt(x, z) > 0.5 || S.T.siteAt(x, z, 100)) continue;
     const at = openNear(x, z, 10);
     if (!at) continue;
-    const sq = spawn({ ...spec, n: [n, n] }, { x: at[0], z: at[1], route: [site.x, site.z], level, loadout });
+    const sq = spawn({ ...spec, n: [n, n] }, { x: at[0], z: at[1], route: [site.x, site.z], level, loadout }, r);
     if (!sq) return null;
     trimTo(sq, { n, budget, slack: 1.5 });
     sq.kind = 'raid';

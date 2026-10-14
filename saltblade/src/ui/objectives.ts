@@ -23,6 +23,8 @@ import type { Char } from '../sim/char';
 import type { Site } from '../world/terrain';
 import { makeItem, type Item } from '../sim/inventory';
 import { currentGoal, type Goal } from '../sim/contracts';
+import { storeNear } from '../sim/jobs';
+import type { WObj } from '../sim/objects';
 
 interface ObjState {
   set: string;
@@ -153,6 +155,8 @@ export function setupObjectives() {
   on('ui:loot', (looter: number, target: { char?: number }) => {
     const t = target?.char ? S.W.char(target.char) : null;
     if (t && t.faction !== 'player') fire((x) => x.k === 'loot');
+    // a beast your people brought down, cut open: the hunt
+    if (t?.animal && !t.up && S.W.char(t.lastHitBy)?.faction === 'player') fire((x) => x.k === 'hunt');
   });
   // goods settled at a shop's counter (sim/shops): slaves, beasts and hired blades are not goods
   on('sim:trade', (kind: 'buy' | 'sell', _sh: unknown, it: Item) => {
@@ -250,25 +254,60 @@ function complete(g: Objective) {
   refresh();
 }
 
-/** Hands out a reward: chits to the purse, things to whoever has room, the rest at the lead's feet. Says what came of it. */
+/**
+ * Hands out a reward: chits to the purse; things to whoever can carry them without being slowed, the
+ * least laden first (ten loads of stone in one pack would leave its carrier hours behind the rest),
+ * except that goods for a base (materials, anything heavy) go into its stores first when your people
+ * are at it, and light things go there when no pack has room; the rest at the lead's feet. Says what
+ * came of it.
+ */
 function give(r: Reward): string {
   const W = S.W;
   const bits: string[] = [];
   if (r.money) { W.money += r.money; bits.push(`+${r.money}c`); }
   const mine = W.playerChars().filter((c) => c.alive && !c.animal);
-  const lead = mine[0];
+  const lead = mine.find((c) => c.up && !c.cage) ?? mine[0];
   const loose: Item[] = [];
+  const spare = (c: Char) => c.capacity() - c.carryWeight();
   for (const [id, n] of r.items ?? []) {
     const d = ITEM[id];
     if (!d) continue;
-    let left = n;
-    for (const c of mine) {
-      for (const g of [c.inv, c.eq.back?.inv]) if (g && left > 0) left = g.add(id, left);
-      if (!left) break;
-    }
+    let left = n, store: WObj | null = null;
+    // into the base's stores (a store meant for them first), as many as will go
+    const stow = () => {
+      for (let tries = 0; left > 0 && lead && tries < 6; tries++) {
+        const st = storeNear(lead, id);
+        if (!st?.inv) return;
+        const before = left;
+        left = st.inv.add(id, left);
+        if (left === before) return;
+        store ??= st;
+      }
+    };
+    const forBase = d.cat === 'resource' || d.weight >= 3;
+    // into packs, the least laden first; anything with weight to it no one past what they can carry at their pace
+    const carry = () => {
+      const full = new Set<Char>();
+      while (left > 0) {
+        const c = mine.filter((x) => !full.has(x) && (!forBase || spare(x) >= d.weight)).sort((a, b) => spare(b) - spare(a))[0];
+        if (!c) return;
+        const want = forBase ? Math.min(left, Math.max(1, Math.floor(spare(c) / Math.max(0.01, d.weight)))) : left;
+        let rest = want;
+        for (const g of [c.inv, c.eq.back?.inv]) if (g && rest > 0) rest = g.add(id, rest);
+        left -= want - rest;
+        if (rest > 0) full.add(c);
+      }
+    };
+    let stored = 0;
+    if (forBase) { stow(); stored = n - left; carry(); } else { carry(); const before = left; stow(); stored = before - left; }
+    const carried = n - stored - left;
     if (left > 0) loose.push(makeItem(id, left));
     const feet = lead ? `${lead.name}'s feet` : 'your feet';
-    bits.push(left === 0 ? `+${n} ${d.name}` : left === n ? `${n} ${d.name} at ${feet}` : `+${n - left} ${d.name}, ${left} at ${feet}`);
+    const inStore = `in the ${(store as WObj | null)?.data?.name ?? 'stores'}`;
+    if (carried === n) bits.push(`+${n} ${d.name}`);
+    else if (stored === n) bits.push(`${n} ${d.name} ${inStore}`);
+    else if (left === n) bits.push(`${n} ${d.name} at ${feet}`);
+    else bits.push(`+${n} ${d.name} (${[carried ? `${carried} carried` : '', stored ? `${stored} ${inStore}` : '', left ? `${left} at ${feet}` : ''].filter(Boolean).join(', ')})`);
   }
   if (loose.length && lead) emit('world:drop', lead.x, lead.z, loose);
   return bits.join(', ');
@@ -329,8 +368,9 @@ let root: HTMLDivElement | null = null;
 let fold = false;
 let lastKey = '';
 let nextText: HTMLSpanElement | null = null;
-/** "Win a fight", while it is open: the nearest band your people could beat, and which way (see beatableNear). */
+/** "Win a fight" (or "Hunt something to eat"), while it is open: the nearest band your people could beat, and which way (see beatableNear). */
 let aimText: HTMLSpanElement | null = null;
+let aimHunt = false;
 let aimAt: { x: number; z: number } | null = null;
 /** "Reach ...", while it is open: the way in, a walled town's nearest gate (see reachPoint). */
 let reachText: HTMLSpanElement | null = null;
@@ -346,11 +386,13 @@ function aimLine() {
     reachText.parentElement?.classList.toggle('aimed', !!p);
   }
   if (!aimText) return;
-  const b = beatableNear();
+  const b = beatableNear(300, 900, aimHunt);
   aimAt = b;
-  // (one near, coming this way, or slower than your people; else only the safest about, which may run; else none)
-  const t = !b ? 'none near: bands walk the roads out of town'
-    : `${b.n === 1 ? 'one' : b.n} ${b.name}, ${bearing(b.x, b.z)}: ${b.why === 'safest' ? 'the safest fight about, if you can catch them' : 'a fight you can win'}`;
+  // (a fight already on them, which may be more than they can win; one near, coming this way, or slower than your
+  // people; else only the safest about, which may run; else none yet, and the road will bring one: see worldsim tickOffer)
+  const who = b && (b.one ? `a ${b.one}` : b.n === 1 ? `one of the ${b.name}` : `${b.n} ${b.name}`);
+  const t = !b ? (aimHunt ? 'none near yet: beasts come down to the roads' : 'none near yet: bands walk the roads out of town')
+    : `${who}, ${bearing(b.x, b.z)}: ${b.why === 'on' ? (b.fits ? 'on you now, a fight you can win' : 'on you now: fight, or run') : b.why === 'safest' ? 'the safest fight about, if you can catch them' : aimHunt ? 'meat, if you can bring it down' : 'a fight you can win'}`;
   if (aimText.textContent !== t) aimText.textContent = t;
   aimText.parentElement?.classList.toggle('aimed', !!b);
 }
@@ -425,9 +467,10 @@ function refresh() {
       // a done row's fade carries on from where it was if the list is drawn again
       const style = done ? { animationDelay: `-${Math.round(t - recent.get(g.key)!)}ms` } : undefined;
       const row = h('div', { class: 'obj' + (done ? ' done' : ''), style }, h('i', { class: 'objmark' }), h('span', { class: 'objtext' }, withKeys(g.text)), done ? h('span', { class: 'objack' }, ack) : null);
-      if (g.when.k === 'win' && !done) {
-        // pointed at a band they could beat: a click looks at it
+      if ((g.when.k === 'win' || g.when.k === 'hunt') && !done && !aimText) {
+        // pointed at a band they could beat (for the hunt, a beast with meat on it): a click looks at it
         aimText = h('span', { class: 'objaim' });
+        aimHunt = g.when.k === 'hunt';
         row.appendChild(aimText);
         row.title = 'Look at them';
         row.onclick = (e) => { e.stopPropagation(); if (aimAt) frame(aimAt.x, aimAt.z, true); };

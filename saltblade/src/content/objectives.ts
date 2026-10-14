@@ -19,6 +19,7 @@ export type Trigger =
   | { k: 'recruit' } // someone who was not there at the start
   | { k: 'win' } // knocked out or killed an enemy
   | { k: 'loot' } // went through a fallen stranger's pack
+  | { k: 'hunt' } // brought a beast down and went through its carcass (its meat, its hide)
   | { k: 'build' } // finished building something
   | { k: 'farm' }
   | { k: 'unshackle' }
@@ -63,21 +64,24 @@ const RECRUIT: Objective = { key: 'recruit', text: 'Recruit someone', done: 'Two
 const WIN: Objective = { key: 'win', text: 'Win a fight', done: 'Skill comes from blows given and taken. Losing teaches too.', when: { k: 'win' } };
 const LOOT: Objective = { key: 'loot', text: 'Loot the fallen', done: 'Whatever they carried is yours now. Weapons sell; so do boots.', when: { k: 'loot' } };
 const EAT: Objective = { key: 'eat', text: 'Eat something', done: 'Hungry people fight badly and faint. Food comes from towns, fields and the fallen.', when: { k: 'eat' } };
+// (the road brings one, lame enough for a starving hunter to bring down: see worldsim sendHunt)
+const HUNT: Objective = { key: 'hunt', text: 'Hunt something to eat: bring a beast down and butcher it (Loot)', done: 'Meat of your own killing. Anything that walks out there is meat, if you can bring it down and cut it open.', when: { k: 'hunt' } };
 
 export const OBJECTIVES: Record<string, ObjectiveSet> = {
   wanderer: {
     title: 'First steps',
+    // (the fight early, and the wound it leaves bandaged straight after: a first hour with something in it)
     goals: [
       REACH_TOWN('crossroad', 'Crossroad', 'A wall, a well and everyone passing through. Shops are inside; the bar is where the work is.'),
       TALK_BARKEEP,
+      WIN,
+      { ...BANDAGE, reward: { items: [['bandages', 2]] }, done: 'Bound wounds stop bleeding and heal faster. Two spare rolls turn up.' },
       DEAL,
       MINE,
       SELL_ORE,
-      { ...BANDAGE, reward: { items: [['bandages', 2]] }, done: 'Bound wounds stop bleeding and heal faster. Two spare rolls turn up.' },
       RECRUIT,
-      WIN,
     ],
-    outro: 'That is the whole trade: walk, earn, bleed, heal, bring people along. The rest of the waste is yours to find. You are on your own now.',
+    outro: 'That is the whole trade: walk, bleed, heal, earn, bring people along. The rest of the waste is yours to find. You are on your own now.',
   },
   freeholders: {
     title: 'The claim',
@@ -85,11 +89,11 @@ export const OBJECTIVES: Record<string, ObjectiveSet> = {
       { key: 'farm', text: 'Farm the wheat field (right-click it)', done: 'Wheat becomes dustbread at a stove. A field fed is a band fed.', when: { k: 'farm' } },
       { key: 'build', text: 'Build something ({build})', done: 'Materials come from your stores. Walls and gates keep the taxman honest.', when: { k: 'build' }, reward: { items: [['building_mats', 10]] } },
       EAT,
+      WIN,
+      BANDAGE,
       REACH_TOWN('aurum', 'Aurum', 'The Concord\'s city. Real weapons, real armour, real prices.'),
       DEAL,
-      BANDAGE,
       { ...RECRUIT, text: 'Recruit a fifth hand' },
-      WIN,
     ],
     outro: 'The claim stands and the four of you know how to hold it. Whatever comes up the Vale road now is your problem to solve. You are on your own now.',
   },
@@ -168,6 +172,8 @@ export const OBJECTIVES: Record<string, ObjectiveSet> = {
       { key: 'brokenchain', text: 'Find Brokenchain, in the reeds to the west', done: 'The Unchained ask no questions of a runaway.', when: { k: 'reach', site: 'brokenchain' } },
       TALK_ANY,
       EAT,
+      // (fed once by the Unchained, and told: after tonight you hunt like the rest of us)
+      HUNT,
       { key: 'money', text: 'Earn 50 chits', done: 'Mine a rock, loot a bandit, sell what you find. A purse is a start.', when: { k: 'money', n: 50 } },
     ],
     outro: 'Free, fed and among friends, with chits of your own. The blade and the name are yours to earn. You are on your own now.',
@@ -178,6 +184,8 @@ export const OBJECTIVES: Record<string, ObjectiveSet> = {
       { key: 'clot', text: 'Stop the bleeding', done: 'The blood stops. You are still alive.', when: { k: 'clot' } },
       { key: 'road', text: 'Find a road', done: 'Roads lead to towns and to the people who walk them. Not all of them friendly.', when: { k: 'road' } },
       { key: 'sneak', text: 'Sneak past something hungry ({sneak})', done: 'What cannot see you cannot eat you. {sneak} again to run.', when: { k: 'sneak' } },
+      // (the way to food in the ash, with nothing to buy it with: what can be brought down)
+      { ...HUNT, done: 'Meat of your own killing. The ash feeds whoever can bring something down and cut it open.' },
       { ...EAT, text: 'Find food' },
       { key: 'town', text: 'Reach a town', done: 'Walls. Beds. People who will sell you a hand, in time.', when: { k: 'reach', site: 'town' } },
       { key: 'money', text: 'Earn 100 chits', done: 'The first hundred is the hardest. Sell what you find; mine what you can.', when: { k: 'money', n: 100 } },

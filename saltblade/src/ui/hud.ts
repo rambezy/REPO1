@@ -6,7 +6,7 @@ import { S } from '../sim/ctx';
 import { on, emit } from '../core/events';
 import { sel, selected, setSpeed } from '../game/control';
 import { aboutWhom, frameChar, frameFight } from '../game/framing';
-import { TRAVEL_SPEED, toggleTravel, setupTravel, walkMinutes, minutesText, isTravelling } from '../game/travel';
+import { TRAVEL_SPEED, toggleTravel, setupTravel, walkMinutes, minutesText, isTravelling, laggard } from '../game/travel';
 import { portrait } from '../render/portrait';
 import { Char } from '../sim/char';
 import { Squad } from '../sim/squad';
@@ -285,13 +285,15 @@ function activity(c: Char): string {
   return c.hasGoal ? 'Walking' : 'Idle';
 }
 
-/** A walk's time left, for the slowest of the selected on one: "· ~40 min" (game time). */
+/** A walk's time left, for the slowest of the selected on one: "· ~40 min" (game time), and who holds the rest up, if anyone. */
 function eta(who: Char[]) {
   const el = selBox.querySelector('.seleta');
   if (!el) return;
-  let m: number | null = null;
-  for (const c of who) { const w = walkMinutes(c); if (w !== null && (m === null || w > m)) m = w; }
-  const t = m === null ? '' : ` · ${minutesText(m)}${isTravelling() ? ' (travelling)' : ''}`;
+  let m: number | null = null, last: Char | null = null;
+  for (const c of who) { const w = walkMinutes(c); if (w !== null && (m === null || w > m)) { m = w; last = c; } }
+  const lag = m !== null && who.length > 1 ? laggard(who.filter((c) => walkMinutes(c) !== null)) : null;
+  const behind = lag && lag.c === last ? `, ${lag.c.name} ${lag.why.replace(/ \(.*\)$/, '')}` : '';
+  const t = m === null ? '' : ` · ${minutesText(m)}${behind}${isTravelling() ? ' (travelling)' : ''}`;
   if (el.textContent !== t) el.textContent = t;
 }
 

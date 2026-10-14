@@ -23,13 +23,13 @@ import { structuresIn, townRings } from '../src/sim/structures';
 import { buildTown } from '../src/world/towns';
 import { SETTLEMENT } from '../src/content/layout';
 import { Squad } from '../src/sim/squad';
-import { makePerson } from '../src/sim/spawn';
+import { makePerson, makeAnimal } from '../src/sim/spawn';
 import { populateTown } from '../src/sim/populate';
 import { recruit } from '../src/sim/dialogue';
 import { payForGoods, payForSale, buyInto, sellInto, shopGrid } from '../src/sim/shops';
 import { tickRunaways, tickStealth, ESCAPE_M, SNEAK_QUIET } from '../src/sim/crime';
-import { wantsFight, beatableNear, spawn, SPECS } from '../src/sim/worldsim';
-import { makeItem } from '../src/sim/inventory';
+import { wantsFight, fightWanted, beatableNear, spawn, sendOffer, SPECS, BEASTS, tickOffer, playerBand, quickThreat } from '../src/sim/worldsim';
+import { makeItem, Grid } from '../src/sim/inventory';
 import { markHousesForSale, buyHouse } from '../src/sim/property';
 import { serialize, apply } from '../src/sim/save';
 import { emit, on } from '../src/core/events';
@@ -39,6 +39,8 @@ import { OBJECTIVES, Trigger } from '../src/content/objectives';
 import { withKeys, keymap } from '../src/core/keys';
 import { beginObjectives, setupObjectives, tickObjectives, objectiveView, trackerNext, hideTracker, reachPoint } from '../src/ui/objectives';
 import { currentGoal } from '../src/sim/contracts';
+import { giveOrder } from '../src/sim/orders';
+import { tickHunters } from '../src/sim/hunters';
 import type { Char } from '../src/sim/char';
 
 const T = await generateWorld(1337, () => {});
@@ -78,13 +80,15 @@ const put = (c: Char, x: number, z: number) => {
   // the rest of the band keeps up (a goal about where you are is about all of you)
   W.playerChars().forEach((o, i) => { if (o !== c && o.alive) { o.x = c.x + (i % 3) + 1; o.z = c.z + Math.floor(i / 3); o.y = c.y; o.path = null; o.hasGoal = false; } });
 };
+/** Takes a band out of the world, people and all. */
+const despawnFor = (q: Squad) => { for (const id of q.members) { const m = W.char(id); if (m) W.removeChar(m); } W.squads.delete(q.id); };
 const dt = 0.1;
 const step = (secs: number, c: Char) => { for (let i = 0; i < secs / dt; i++) { simStep(dt, { x: c.x, z: c.z }); tickSquads(dt); } };
 const open = () => objectiveView()?.open.map((g) => g.key) ?? [];
 const done = () => objectiveView()?.done.map((g) => g.key) ?? [];
 const tick = (n = 1) => { for (let i = 0; i < n; i++) tickObjectives(); };
 /** What tools/objtest.ts knows how to check: every trigger kind the content uses must be one of these. */
-const KINDS: Trigger['k'][] = ['reach', 'talk', 'deal', 'sell', 'buy', 'sell_ore', 'mine', 'bandage', 'clot', 'eat', 'recruit', 'win', 'loot', 'build', 'farm', 'unshackle', 'sneak', 'escape', 'salvage', 'repair', 'bounty', 'clear_bounty', 'arena', 'money', 'road'];
+const KINDS: Trigger['k'][] = ['reach', 'talk', 'deal', 'sell', 'buy', 'sell_ore', 'mine', 'bandage', 'clot', 'eat', 'recruit', 'win', 'loot', 'hunt', 'build', 'farm', 'unshackle', 'sneak', 'escape', 'salvage', 'repair', 'bounty', 'clear_bounty', 'arena', 'money', 'road'];
 setupObjectives();
 
 // ---------------------------------------------------------------- every start has a chain, and the chains are sound
@@ -279,19 +283,30 @@ p.body.hp[LI.rleg] = 10; tick();
 check('a limb left as it is does not count as mended', open().includes('repair'));
 p.body.hp[LI.rleg] += 15; tick();
 check('a prosthetic mended completes "Mend a wrecked limb"', done().includes('repair'));
+// the road brings a fight once winning one is the next goal (see worldsim fightWanted): a "Reach" before it is no
+// bar (it can be met on the way), anything else is; and while the road's own offer stands, nothing more
+fresh('wanderer');
+const atBar = wantsFight();
+W.flags.objectives.done.reach = S.clock.t;
+const toTalk = wantsFight();
+W.flags.objectives.done.barkeep = S.clock.t;
+const toFight = wantsFight();
+W.flags.fightOffer = 1e9;
+const offered = wantsFight(), still = fightWanted();
+delete W.flags.fightOffer;
 // deserters: a clean name
 fresh('deserters');
-// the road brings a fight once winning one is the next goal (see worldsim tickPassers)
-const fightBefore = wantsFight();
-W.flags.objectives.done.reach = S.clock.t;
-const fightAfter = wantsFight();
-delete W.flags.objectives.done.reach;
-check('once "Win a fight" is the next goal, the road may bring one, even on the first, gentle day', !fightBefore && fightAfter);
+const onTheWay = wantsFight();
+check('once "Win a fight" is the next goal (a "Reach" before it aside), the road may bring one, even on the first, gentle day; not before, and no more while its own offer stands',
+  !atBar && !toTalk && toFight && !offered && still === 'win' && onTheWay, `Wanderer: on the way to Crossroad ${atBar}, to the barkeep ${toTalk}, to the fight ${toFight}, with an offer out ${offered}; Deserters on the way to Hardcoin ${onTheWay}`);
 {
-  // the Wanderer's "Bandage a wound" comes before "Win a fight", and with no wound yet it waits on the fight
-  fresh('wanderer');
-  for (const k of ['reach', 'barkeep', 'deal', 'mine', 'sell_ore', 'recruit']) W.flags.objectives.done[k] = S.clock.t;
-  delete W.flags.objectives.done.bandage;
+  // a wound to bandage comes of a fight: every chain asks for the fight first
+  const early = Object.entries(OBJECTIVES).filter(([, set]) => { const w = set.goals.findIndex((g) => g.when.k === 'win'), b = set.goals.findIndex((g) => g.when.k === 'bandage'); return w >= 0 && b >= 0 && b < w; }).map(([k]) => k);
+  check('in every chain "Win a fight" comes before the wound it leaves is to be bandaged', early.length === 0, early.length ? early.join(', ') : 'all');
+  // and were a chain to ask for a bandage first, with no wound yet that waits on the fight (a chain made for the test)
+  OBJECTIVES.bandage_first = { title: 'test', outro: 'test', goals: [OBJECTIVES.wanderer.goals.find((g) => g.when.k === 'bandage')!, OBJECTIVES.wanderer.goals.find((g) => g.when.k === 'win')!] };
+  fresh('bandage_first');
+  delete W.flags.objectives.done.bandage; // (an old bandage of the Wanderer's still on: not the point here)
   // (everyone whole for this, and as they were after)
   const kept = W.playerChars().map((c) => [c, [...c.body.hp], [...c.body.bleed]] as const);
   for (const c of W.playerChars()) for (let l = 0; l < 7; l++) { c.body.hp[l] = c.body.max[l]; c.body.bleed[l] = 0; }
@@ -301,6 +316,7 @@ check('once "Win a fight" is the next goal, the road may bring one, even on the 
   const hurt = wantsFight();
   for (const [c, hp, bleed] of kept) for (let l = 0; l < 7; l++) { c.body.hp[l] = hp[l]; c.body.bleed[l] = bleed[l]; }
   check('with nobody hurt, an open "Bandage a wound" waits on "Win a fight": the road may bring one; with a wound to bandage, it does not yet', sound && unhurt && !hurt, `unhurt ${unhurt}, hurt ${hurt}`);
+  delete OBJECTIVES.bandage_first;
   fresh('deserters');
 }
 p.bounty.concord = 3000; tick();
@@ -314,6 +330,33 @@ check('...nor paying off somebody else\'s bounty', open().includes('clear'));
 p.bounty.concord = 3000; p.bounty.concord = 0; emit('sim:bountyPaid', p, 'concord', 3000); tick();
 check('paying it off completes "Clear your names"', done().includes('clear'));
 // the runaway
+// the hunt: a beast your people brought down and cut open (not one somebody else did, nor one still on its feet)
+fresh('chainbound');
+{
+  const prey = makeAnimal(W, 'ashjackal', rng);
+  prey.x = p.x + 3; prey.z = p.z; prey.y = p.y;
+  const someone = [...W.chars.values()].find((c) => c.faction !== 'player' && !c.animal)!;
+  emit('ui:loot', p.id, { char: prey.id }); tick();
+  const standing = done().includes('hunt');
+  prey.status = 'dead'; prey.lastHitBy = someone.id;
+  emit('ui:loot', p.id, { char: prey.id }); tick();
+  const theirs = done().includes('hunt');
+  prey.lastHitBy = p.id;
+  emit('ui:loot', p.id, { char: prey.id }); tick();
+  check('cutting open a beast your people brought down completes "Hunt something to eat" (not one still up, nor one somebody else brought down)', !standing && !theirs && done().includes('hunt'));
+  W.removeChar(prey);
+  // what the hunt names: never a beast in its prime that happens by, only the lame one the road brings for it
+  delete W.flags.objectives.done.hunt;
+  const pack = spawn(BEASTS.find((x) => x.species === 'ashjackal')!, { x: p.x + 60, z: p.z, route: [p.x + 60, p.z], cap: 1 })!;
+  const passing = beatableNear(300, 900, true);
+  const brought = sendOffer([p.x + 90, p.z], 'ash', rng, true);
+  for (let i = 0; i < 20; i++) tickHunters(0.5); // (the bounty hunters' rounds leave a beast on offer be)
+  const lame = beatableNear(300, 900, true);
+  check('the hunt names only the lame beast the road brings for it ("a lame Ash Jackal"), never one in its prime that happens by',
+    !passing && !!brought && !!lame?.one?.startsWith('lame') && lame.d > 60, `${passing ? `named one passing: ${passing.one ?? passing.name}` : 'one passing not named'}; then ${lame ? `a ${lame.one}, ${Math.round(lame.d)} m` : 'nothing'}`);
+  despawnFor(pack); if (brought) despawnFor(brought);
+  delete W.flags.fightOffer;
+}
 fresh('chainbound');
 p.shackled = true; tick();
 check('still in shackles, the first goal waits', open().includes('shackles'));
@@ -403,6 +446,9 @@ check('...a treated wound does', done().includes('bandage'));
 // a reward with no room in the packs lands at your feet, and the record says so
 fresh('wanderer');
 {
+  // (out on the flats, with no store of theirs in reach: the house bought in town would take it otherwise)
+  const flats = nav.nearestOpen(crossroad.x + 1500, crossroad.z - 600, 60)!;
+  put(p, flats[0], flats[1]);
   const packs = W.playerChars().flatMap((c) => [c.inv, c.eq.back?.inv]).filter(Boolean) as import('../src/sim/inventory').Grid[];
   for (const g of packs) { g.items.length = 0; for (const id of ['iron_plates', 'stone', 'wheat']) while (g.add(id, 1) === 0) { /* fill every cell, of everyone's packs */ } }
   for (let l = 0; l < 7; l++) p.body.treated[l] = 0;
@@ -412,6 +458,31 @@ fresh('wanderer');
   const line = W.log.filter((l) => /^Bandage a wound/.test(l.text)).pop()?.text ?? '';
   check('with every pack full the bandage reward is dropped at the lead\'s feet', done().includes('bandage') && fell === 2 && /2 Bandages at .* feet/.test(line), line.slice(-60));
   for (const g of packs) g.items.length = 0;
+}
+// the claim's "Build something" reward, ten loads of materials (100 kg): at the base into its stores, nobody slowed by
+// it; away from any store, shared out within what each can carry at their pace, and the rest at the lead's feet
+{
+  const reward = OBJECTIVES.freeholders.goals.find((g) => g.key === 'build')!.reward!.items![0];
+  const loads = () => W.playerChars().filter((c) => c.alive).map((c) => c.load());
+  const packed = () => W.playerChars().reduce((n, c) => n + c.inv.count('building_mats') + (c.eq.back?.inv?.count('building_mats') ?? 0), 0);
+  for (const c of W.playerChars()) { c.inv.items.length = 0; if (c.eq.back?.inv) c.eq.back.inv.items.length = 0; }
+  fresh('freeholders');
+  const chest = W.addObj({ id: 0, kind: 'storage', def: 'chest', x: p.x + 3, z: p.z, y: p.y, rot: 0, owner: 'player', site: 0, parent: 0, built: true, inv: new Grid(8, 6), data: { name: 'Storage Chest' } });
+  tick(); // (the chest is the something built)
+  const line = W.log.filter((l) => /^Build something/.test(l.text)).pop()?.text ?? '';
+  check('at the base, the claim\'s "Build something" materials go into its stores, not onto anyone\'s back', done().includes('build') && chest.inv!.count(reward[0]) === reward[1] && packed() === 0 && /in the Storage Chest/.test(line), line.slice(-70));
+  W.objs.delete(chest.id); W.rebuildObjHash();
+  fresh('freeholders');
+  const flats = nav.nearestOpen(crossroad.x + 1500, crossroad.z - 600, 60)!;
+  put(p, flats[0], flats[1]);
+  dropped.length = 0;
+  W.addObj({ id: 0, kind: 'chest', def: 'chest', x: p.x + 3, z: p.z, y: p.y, rot: 0, owner: 'player', site: 0, parent: 0, built: true, data: { name: 'Storage chest' } });
+  tick();
+  const fell = dropped.flat().filter((i) => i.id === reward[0]).reduce((a, i) => a + i.n, 0);
+  const line2 = W.log.filter((l) => /^Build something/.test(l.text)).pop()?.text ?? '';
+  check('...and away from any store, shared out within what each can carry (nobody overloaded by it), the rest at the lead\'s feet',
+    done().includes('build') && packed() + fell === reward[1] && fell > 0 && loads().every((l) => l <= 1), `${packed()} carried, ${fell} at the feet; loads ${loads().map((l) => l.toFixed(2)).join(', ')}: ${line2.slice(-60)}`);
+  for (const c of W.playerChars()) { for (const g of [c.inv, c.eq.back?.inv]) if (g) for (const it of g.items.filter((i) => i.id === reward[0])) g.remove(it); }
 }
 // a chain that is not one
 {
@@ -488,6 +559,140 @@ fresh('nothing');
   for (const id of q.members) { const m = W.char(id); if (m) { m.status = 'dead'; W.removeChar(m); } }
   for (const ms of bands) for (const m of ms) { m.status = 'dead'; W.removeChar(m); }
   for (const [c, was] of away) put(c, was[0], was[1]);
+}
+
+// "Win a fight" open and nothing about that the band could beat: the road sends a fight (see worldsim tickOffer).
+// Within the half hour, a short walk off by a road out of town, out of sight, no more of them than of yours and
+// weaker between them; the tracker names it, and it waits there. Left behind it is given up and another comes soon,
+// nearer; on the march, it waits on the way they walk; none while a fight is already on them, and none once the fight is won.
+{
+  fresh('wanderer');
+  for (const k of ['reach', 'barkeep']) W.flags.objectives.done[k] = S.clock.t;
+  delete W.flags.fightOffer; delete W.flags.offerAt;
+  const inTown = nav.nearestOpen(crossroad.x + 20, crossroad.z, 40)!;
+  put(p, inTown[0], inTown[1]);
+  for (const c of W.playerChars()) if (c.alive) { c.body.bleed.fill(0); for (let l = 0; l < 7; l++) c.body.hp[l] = c.body.max[l]; }
+  // (the world's own bands kept out of it: the road's offer is what is under test)
+  const world = (secs: number) => { for (let i = 0; i < secs / 2; i++) { step(2, p); tickOffer(); } };
+  const t0 = S.clock.t;
+  while (!W.flags.fightOffer && S.clock.t - t0 < 45 * 60) world(2);
+  const sq = W.flags.fightOffer ? W.squads.get(W.flags.fightOffer) : undefined;
+  const up = sq ? sq.members.map((id) => W.char(id)).filter((c): c is Char => !!c && c.up) : [];
+  const band = playerBand();
+  // (weighed as the road weighs them: by blows as well as by weight, on both sides)
+  const theirs = up.reduce((n, c) => n + quickThreat(c), 0);
+  const ours = W.playerChars().filter((c) => c.alive && !c.cage && !c.carriedBy).reduce((n, c) => n + quickThreat(c), 0);
+  const at = up[0] ?? p;
+  const d = Math.hypot(at.x - p.x, at.z - p.z);
+  let road = Infinity;
+  for (const r of T.roads) for (let i = 0; i < r.pts.length; i += 2) road = Math.min(road, Math.hypot(r.pts[i] - at.x, r.pts[i + 1] - at.z));
+  const mins = Math.round((S.clock.t - t0) / 60);
+  check('with "Win a fight" open and nothing about to beat, within half an hour the road sends one: no more of them than of yours, and weaker between them',
+    !!sq && mins <= 30 && up.length >= 1 && up.length <= band.n && theirs <= ours * (band.n > 1 ? 0.8 : 0.55) + 0.5,
+    sq ? `${up.length} ${sq.name} after ${mins} min, ${Math.round(theirs)} against the band's ${Math.round(ours)}, blow for blow` : `nothing after ${mins} min`);
+  check('...a short walk off, by a road out of town, out of sight and out of any town or camp',
+    !!sq && d >= 200 && d <= 500 && road < 30 && !T.siteAt(at.x, at.z, 60) && W.playerChars().every((c) => !c.alive || Math.hypot(c.x - at.x, c.z - at.z) > 150),
+    `${Math.round(d)} m from the band, ${Math.round(road)} m from a road`);
+  const b = beatableNear();
+  check('...and the tracker names it, a fight they can win', !!b && !!sq && b.name === sq.name && b.n === up.length && b.fits && b.why === 'near', b ? `${b.why}: ${b.n} ${b.name}, ${Math.round(b.d)} m` : 'nothing named');
+  const x0 = at.x, z0 = at.z;
+  world(60);
+  check('...and they wait where they were named for them, an hour on', !!sq && W.squads.has(sq.id) && Math.hypot(at.x - x0, at.z - z0) < 25 && W.flags.fightOffer === sq.id, `${Math.round(Math.hypot(at.x - x0, at.z - z0))} m from where they were`);
+  // left far behind: given up, and another, nearer where the band is now, in its time
+  const far = nav.nearestOpen(crossroad.x + 1700, crossroad.z + 300, 60)!;
+  put(p, far[0], far[1]);
+  world(4);
+  const gone = !!sq && !W.squads.has(sq.id) && !W.flags.fightOffer;
+  const t1 = S.clock.t;
+  while (!W.flags.fightOffer && S.clock.t - t1 < 70 * 60) world(2);
+  const sq2 = W.flags.fightOffer ? W.squads.get(W.flags.fightOffer) : undefined;
+  const at2 = sq2 ? W.char(sq2.members[0]) : undefined;
+  check('an offer left behind is given up, and the next comes within a quarter hour, a short walk from where the band is now', gone && !!sq2 && !!at2 && Math.hypot(at2.x - p.x, at2.z - p.z) <= 500 && S.clock.t - t1 <= 15 * 60, `${gone ? 'given up' : 'kept'}; the next after ${Math.round((S.clock.t - t1) / 60)} min, ${at2 ? Math.round(Math.hypot(at2.x - p.x, at2.z - p.z)) + ' m off' : 'none'}`);
+  // on the march (back to Crossroad, here): the next waits on the way they are walking, a short walk on, where they will walk into it
+  if (sq2) despawnFor(sq2);
+  delete W.flags.fightOffer; W.flags.offerAt = S.clock.t + 3600;
+  for (const c of W.playerChars()) if (c.alive) giveOrder(c, { k: 'move', x: crossroad.x + 20, z: crossroad.z });
+  step(2, p);
+  const way = p.path ? [p.x, p.z, ...p.path.pts.slice(p.path.idx * 2), ...p.path.coarse.slice(p.path.cidx * 2)] : [];
+  W.flags.offerAt = S.clock.t - 1;
+  tickOffer();
+  const sq3 = W.flags.fightOffer ? W.squads.get(W.flags.fightOffer) : undefined;
+  const at3 = sq3 ? W.char(sq3.members[0]) : undefined;
+  let byWay = Infinity, along = 0;
+  for (let i = 0, run = 0; at3 && i + 3 < way.length; i += 2) {
+    const ax = way[i], az = way[i + 1], bx = way[i + 2], bz = way[i + 3], len = Math.hypot(bx - ax, bz - az) || 1;
+    const k = Math.max(0, Math.min(1, ((at3.x - ax) * (bx - ax) + (at3.z - az) * (bz - az)) / (len * len)));
+    const d = Math.hypot(ax + (bx - ax) * k - at3.x, az + (bz - az) * k - at3.z);
+    if (d < byWay) { byWay = d; along = run + k * len; }
+    run += len;
+  }
+  check('...and on the march, the next waits on the way they are walking, a short walk on and out of sight, where they will walk into it',
+    !!at3 && byWay <= 10 && along >= 250 && along <= 520 && W.playerChars().every((c) => !c.alive || Math.hypot(c.x - at3.x, c.z - at3.z) > 150),
+    at3 ? `${sq3!.members.length} ${sq3!.name}, ${Math.round(byWay)} m off the way, ${Math.round(along)} m on along it` : `nothing sent (${way.length / 2} points of way)`);
+  if (sq3) despawnFor(sq3);
+  for (const c of W.playerChars()) if (c.alive) { c.order = null; c.path = null; c.hasGoal = false; }
+  // a fight on them (beasts on the wing, here) is the fight: named "on you", and nothing more is sent meanwhile
+  delete W.flags.fightOffer; W.flags.offerAt = S.clock.t - 1;
+  const bats = BEASTS.find((x) => x.species === 'carrionbat')!;
+  const swarm = spawn(bats, { x: p.x + 4, z: p.z, route: [p.x + 4, p.z], cap: 2 })!;
+  for (const id of swarm.members) { const m = W.char(id)!; m.brain.enemy = p.id; }
+  step(1.2, p); // (in play, and in the reckoning of who is near whom)
+  for (const id of swarm.members) { const m = W.char(id)!; m.brain.enemy = p.id; }
+  const onYou = beatableNear();
+  tickOffer();
+  check('beasts already on them, on the wing or not, are the fight: named "on you", and no other is sent meanwhile', onYou?.why === 'on' && onYou.name === swarm.name && !W.flags.fightOffer, onYou ? `${onYou.why}: ${onYou.n} ${onYou.name}${onYou.fits ? '' : ' (more than a fair fight)'}` : 'nothing named');
+  despawnFor(swarm);
+  const extra = W.flags.fightOffer ? W.squads.get(W.flags.fightOffer) : undefined;
+  if (extra) despawnFor(extra);
+  delete W.flags.fightOffer;
+  // fought, and fled with none of them down: once out of sight, ten minutes on, another takes their place
+  for (const c of W.playerChars()) if (c.alive) { c.body.bleed.fill(0); for (let l = 0; l < 7; l++) c.body.hp[l] = c.body.max[l]; }
+  W.flags.offerAt = S.clock.t - 1;
+  for (const t2 = S.clock.t; !W.flags.fightOffer && S.clock.t - t2 < 30 * 60;) world(2);
+  const runners = W.flags.fightOffer ? W.squads.get(W.flags.fightOffer) : undefined;
+  const ran = runners ? runners.members.map((id) => W.char(id)).filter((c): c is Char => !!c) : [];
+  // (they took a blow or two a while ago, broke, and ran: out of the fight, out of sight)
+  for (const c of ran) { c.lastHitBy = p.id; c.lastHitT = S.time - 60; c.brain.enemy = 0; c.x = p.x + 150; c.z = p.z; c.path = null; c.hasGoal = false; }
+  world(4);
+  const waiting = !!runners && W.flags.fightOffer === runners.id;
+  for (const tf = S.clock.t; S.clock.t - tf < 12 * 60;) world(2);
+  const replaced = !!runners && !W.squads.has(runners.id) && !!W.flags.fightOffer && W.flags.fightOffer !== runners.id;
+  check('an offer that was fought and fled, none of them down, is waited on a while, then given up for another once out of sight, a quarter hour on',
+    waiting && replaced, runners ? `${runners.name}: ${waiting ? 'waited on' : 'dropped at once'}, then ${replaced ? 'another in their place' : W.squads.has(runners.id) ? 'still there' : 'gone, none sent'}` : 'none sent to try');
+  const next = W.flags.fightOffer ? W.squads.get(W.flags.fightOffer) : undefined;
+  // won, with a band still standing on offer: nothing more is sent, and that band is only a band now
+  W.flags.objectives.done.win = S.clock.t;
+  W.flags.offerAt = S.clock.t - 1;
+  world(4);
+  check('once "Win a fight" is done, the road sends no more, and what it sent is offered no longer', !W.flags.fightOffer && W.flags.offerAt === undefined && !!next && !next.flags.offer,
+    `${W.flags.fightOffer ? 'an offer still flagged' : 'no offer flagged'}; ${next ? (next.flags.offer ? 'the last band still marked an offer' : 'the last band unmarked') : 'no band to see'}`);
+  if (next && W.squads.has(next.id)) despawnFor(next);
+}
+
+// never among the buildings of a claim of theirs, left to itself while they are out (a band waits 100 m clear)
+{
+  fresh('wanderer');
+  for (const k of ['reach', 'barkeep']) W.flags.objectives.done[k] = S.clock.t;
+  const out = nav.nearestOpen(crossroad.x + 600, crossroad.z + 200, 60)!;
+  put(p, out[0], out[1]);
+  for (const c of W.playerChars()) if (c.alive) { c.body.bleed.fill(0); for (let l = 0; l < 7; l++) c.body.hp[l] = c.body.max[l]; }
+  // a claim spread about the roads near them: posts every 60 m round a ring 300 m out
+  const posts: number[] = [];
+  for (let a = 0; a < Math.PI * 2; a += 60 / 300) { const o = W.addObj({ id: 0, kind: 'crate', def: 'storage_box', x: p.x + Math.sin(a) * 300, z: p.z + Math.cos(a) * 300, y: 0, rot: 0, owner: 'player', site: 0, parent: 0, inv: new Grid(4, 4) }); posts.push(o.id); }
+  const world = (secs: number) => { for (let i = 0; i < secs / 2; i++) { step(2, p); tickOffer(); } };
+  let worst = Infinity, sent = 0;
+  for (let k = 0; k < 6; k++) {
+    delete W.flags.fightOffer; W.flags.offerAt = S.clock.t - 1;
+    world(2);
+    const q = W.flags.fightOffer ? W.squads.get(W.flags.fightOffer) : undefined;
+    const f = q ? W.char(q.members[0]) : undefined;
+    if (f) { sent++; for (const id of posts) { const o = W.objs.get(id)!; worst = Math.min(worst, Math.hypot(o.x - f.x, o.z - f.z)); } }
+    if (q) despawnFor(q);
+  }
+  check('a band on offer never waits within 100 m of anything of theirs outside a town', sent > 0 && worst > 100, `${sent} sent, the nearest ${Math.round(worst)} m from the claim`);
+  for (const id of posts) W.removeObj?.(W.objs.get(id)!);
+  for (const id of posts) W.objs.delete(id);
+  delete W.flags.fightOffer; delete W.flags.offerAt;
 }
 
 const failed = results.filter((x) => !x[1]);

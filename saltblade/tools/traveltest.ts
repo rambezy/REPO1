@@ -17,11 +17,12 @@ import { buildTown } from '../src/world/towns';
 import { SETTLEMENT } from '../src/content/layout';
 import { Squad } from '../src/sim/squad';
 import { makePerson } from '../src/sim/spawn';
-import { giveOrder } from '../src/sim/orders';
+import { giveOrder, JOB_AWAY, JOB_AWAY_FIGHT } from '../src/sim/orders';
+import { LI } from '../src/sim/body';
 import { emit, on } from '../src/core/events';
 import { keymap, ACTION } from '../src/core/keys';
 import { G } from '../src/state';
-import { setupTravel, startTravel, tickTravel, isTravelling, walkMinutes, minutesText, TRAVEL_SPEED } from '../src/game/travel';
+import { setupTravel, startTravel, tickTravel, isTravelling, walkMinutes, minutesText, TRAVEL_SPEED, laggard } from '../src/game/travel';
 import type { Char } from '../src/sim/char';
 
 const T = await generateWorld(1337, () => {});
@@ -98,7 +99,7 @@ check('...and back to 1× when they get there, with a word why', G.speed === 1 &
 check('the selection panel\'s estimate of the walk is about right', est !== null && Math.abs(est - took) <= 0.35 * took, `estimated ${est === null ? '-' : minutesText(est)} (${est?.toFixed(0)} min), took ${took.toFixed(0)} game min in ${frames} frames`);
 
 // ---------------------------------------------------------------- danger
-const foeSq = new Squad(); foeSq.faction = 'starvelings'; foeSq.kind = 'raid'; foeSq.name = 'Starvelings'; W.addSquad(foeSq);
+const foeSq = new Squad(); foeSq.faction = 'starvelings'; foeSq.kind = 'raid'; foeSq.name = 'Starvelings'; foeSq.spoke = true; W.addSquad(foeSq); // (past talking: they asked, and were told no)
 const foe = makePerson(W, { faction: 'starvelings', role: 'bandit', level: 3, whole: true }, rng);
 W.moveToSquad(foe, foeSq);
 const back = along(300);
@@ -116,16 +117,58 @@ check('a hostile coming into sight drops it to 1× before they close, and says w
 press5();
 check('...and it will not start again with them in sight', G.speed === 1 && /Not with/.test(notices[notices.length - 1] ?? ''), notices[notices.length - 1]);
 foe.status = 'dead';
+// a band that only wants a word (Starvelings, begging): no trouble until they are close, where they walk up to say it
+{
+  if (S.clock.isNight) S.clock.t = (S.clock.day + 1) * DAY + 10 * HOUR; // (by day, when 35 m is in plain sight)
+  const beg = new Squad(); beg.faction = 'starvelings'; beg.kind = 'raid'; beg.name = 'Starvelings'; W.addSquad(beg);
+  const b = makePerson(W, { faction: 'starvelings', role: 'bandit', level: 3, whole: true }, rng);
+  W.moveToSquad(b, beg);
+  const at = along(462);
+  put(b, at[0], at[1]);
+  b.order = { k: 'hold' };
+  const to = along(1000);
+  put(p, along(420)[0], along(420)[1]);
+  giveOrder(p, { k: 'move', x: to[0], z: to[1] });
+  for (let i = 0; i < 12; i++) frame(0.1); // (a second for them to come into play)
+  const seen = Math.hypot(b.x - p.x, b.z - p.z);
+  // (in plain sight: had they been past talking, it would not have started)
+  beg.spoke = true; press5(); const refusedPast = !isTravelling(); beg.spoke = false;
+  G.speed = 1; press5();
+  const went = isTravelling();
+  frames = 0;
+  let near = Infinity;
+  while (isTravelling() && frames < 4000) { frame(0.1); frames++; near = Math.hypot(b.x - p.x, b.z - p.z); }
+  check('a band that only wants a word (a beggar, a toll-taker) is no reason to stop until it is close: travel starts with them in sight, and stops 25 m off',
+    refusedPast && went && seen > 26 && seen < 42 && !isTravelling() && near <= 26 && near >= 12 && /in sight/.test(notices[notices.length - 1] ?? ''), `in sight at ${Math.round(seen)} m, stopped at ${Math.round(near)} m: "${notices[notices.length - 1]}"`);
+  b.status = 'dead';
+}
+// started at 3×, it goes back to 3× when they get there; but for trouble, to 1×
+{
+  const A = along(1100), B = along(250);
+  const go = () => { const to = Math.hypot(p.x - A[0], p.z - A[1]) > 400 ? A : B; giveOrder(p, { k: 'move', x: to[0], z: to[1] }); for (let i = 0; i < 3; i++) frame(0.05); G.speed = 3; G.lastSpeed = 3; emit('speed'); press5(); return isTravelling(); };
+  const on = go();
+  frames = 0;
+  while (isTravelling() && frames < 4000) { frame(0.1); frames++; }
+  const there = G.speed;
+  const said = notices[notices.length - 1] ?? '';
+  const on2 = go();
+  S.fx.hit(p, p, 4, false, 1);
+  check('started at 3×, it drops back to 3× when they get there, saying so; for trouble, to 1×', on && there === 3 && /^Back to 3×: your people are where they were going/.test(said) && on2 && G.speed === 1 && !isTravelling(), `${there}× on arriving ("${said}"), ${G.speed}× on a blow`);
+  G.speed = 1; G.lastSpeed = 1; emit('speed');
+}
 
 // (a long walk each time: to the far spot, or back from it)
 const walkOn = () => { const A = along(1100), B = along(250); const to = Math.hypot(p.x - A[0], p.z - A[1]) > 400 ? A : B; giveOrder(p, { k: 'move', x: to[0], z: to[1] }); for (let i = 0; i < 3; i++) frame(0.05); G.speed = 1; press5(); return isTravelling(); };
-// a notice, but not good news
+// news: good, or only news, leaves it on; bad news stops it
 let on0 = walkOn();
 S.fx.notice(`${p.name}'s Athletics rose to 5.`, 'good');
 frame(0.1);
 const kept = isTravelling();
-S.fx.notice('Something happened somewhere.', 'info');
-check('good news (a skill rising) leaves it on; any other notice drops it to 1×, saying so', on0 && kept && G.speed === 1 && !isTravelling() && notices[notices.length - 1] === 'Back to normal speed: Something happened somewhere.', notices[notices.length - 1]);
+S.fx.notice('Work is posted in Crossroad. Ask the barkeep (J for your journal).', 'info');
+frame(0.1);
+const keptToo = isTravelling();
+S.fx.notice('Something bad happened.', 'bad');
+check('good news (a skill rising) and plain news (work posted in a town) leave it on; bad news drops it to 1×, saying so', on0 && kept && keptToo && G.speed === 1 && !isTravelling() && notices[notices.length - 1] === 'Back to normal speed: Something bad happened.', notices[notices.length - 1]);
 // one of yours bleeding, or down
 on0 = walkOn();
 p.body.bleed[1] = 0.12;
@@ -205,6 +248,63 @@ G.speed = 3; G.lastSpeed = 3; emit('speed');
 frame(0.1);
 check('a speed key takes over from it', on0 && G.speed === 3 && !isTravelling());
 G.speed = 1;
+
+// a standing job and a march: sent well away from the work they leave it off (and say what they left), a walk about
+// the claim does not; nor does a fight by the work, though a fight well off does; and one of a group much slower
+// than the rest, for a reason, is the one the walk waits on
+{
+  const rock = [...W.objs.values()].filter((o) => o.kind === 'ore').sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z))[0];
+  put(p, rock.x + 3, rock.z);
+  p.jobs = [{ k: 'mine', obj: rock.id, label: 'Mine' }];
+  // (in to the stores 150 m off, as about a claim)
+  const aside = giveOrder(p, { k: 'move', x: rock.x + 150, z: rock.z });
+  const kept = p.jobs.length === 1;
+  const away = along(900);
+  const left = giveOrder(p, { k: 'move', x: away[0], z: away[1] });
+  check(`a move order ${JOB_AWAY} m or more from a standing job leaves the job off, and says which; a walk about the claim (150 m) keeps it`, !aside.length && kept && left.join() === 'Mine' && !p.jobs.length, `about the claim: ${aside.join() || 'kept'}; away: ${left.join() || 'kept'}`);
+  // a fight: one by the work keeps it, one well off leaves it
+  const foe = makePerson(W, { faction: 'reavers', role: 'bandit', level: 5 }, rng);
+  p.jobs = [{ k: 'mine', obj: rock.id, label: 'Mine' }];
+  foe.x = rock.x + 40; foe.z = rock.z;
+  const byWork = giveOrder(p, { k: 'attack', id: foe.id });
+  const stays = p.jobs.length === 1;
+  foe.x = rock.x + 400;
+  const sally = giveOrder(p, { k: 'attack', id: foe.id });
+  check(`an attack on someone ${JOB_AWAY_FIGHT} m or more from a standing job leaves the job off too; defending the work keeps it`, !byWork.length && stays && sally.join() === 'Mine' && !p.jobs.length, `by the work: ${byWork.join() || 'kept'}; 400 m off: ${sally.join() || 'kept'}`);
+  W.removeChar(foe);
+  giveOrder(p, null);
+  // back from a fight bleeding: the wound bound before the work, with a dressing of their own, or a squadmate's near
+  {
+    p.jobs = [{ k: 'mine', obj: rock.id, label: 'Mine' }];
+    put(p, rock.x + 30, rock.z);
+    const own = p.inv.add('bandages', 2) === 0;
+    p.body.bleed[LI.rarm] = 0.3; p.body.hp[LI.rarm] = p.body.max[LI.rarm] * 0.6;
+    let first = '';
+    for (let i = 0; i < 40 && !first; i++) { frame(0.1); if (p.order?.k === 'aid') first = 'aid'; else if (p.act === 'mine' || (p.hasGoal && Math.hypot(p.goalX - rock.x, p.goalZ - rock.z) < 4)) first = 'work'; }
+    for (let i = 0; i < 300 && p.body.bleeding() > 0.04; i++) frame(0.1);
+    const bound = p.body.bleeding() <= 0.04 && p.jobs.length === 1;
+    // with nothing of their own, a squadmate near comes to them, and they wait for it
+    for (const g of [p.inv, p.eq.back?.inv]) if (g) g.items.length = 0;
+    const q = makePerson(W, { faction: 'drifters', role: 'wanderer', level: 8, loadout: 'drifters_wanderer', whole: true }, rng);
+    q.faction = 'player'; q.role = 'player'; W.moveToSquad(q, sq); put(q, p.x + 12, p.z + 4); q.inv.add('bandages', 2);
+    p.body.bleed[LI.rarm] = 0.3; p.body.treated[LI.rarm] = 0; p.body.hp[LI.rarm] = p.body.max[LI.rarm] * 0.6;
+    let sent = false, waited = true;
+    for (let i = 0; i < 200 && p.body.bleeding() > 0.04; i++) { frame(0.1); if (q.order?.k === 'aid' && q.order.id === p.id) sent = true; if (sent && p.act === 'mine') waited = false; }
+    check('back at work bleeding, a worker binds the wound before taking the work up again: with their own dressing, or waiting for a squadmate near who has one',
+      own && first === 'aid' && bound && sent && waited && p.body.bleeding() <= 0.04, `own dressing: first ${first || 'nothing'}, ${bound ? 'bound, the work kept' : 'still bleeding'}; none of their own: ${sent ? `${q.name} came${waited ? ', and they waited' : ', but they went back to the rock'}` : 'nobody came'}, ${p.body.bleeding() <= 0.04 ? 'bound' : 'still bleeding'}`);
+    q.status = 'dead'; W.removeChar(q);
+    p.jobs = [];
+  }
+  const q = makePerson(W, { faction: 'drifters', role: 'wanderer', level: 8, loadout: 'drifters_wanderer', whole: true }, rng);
+  q.faction = 'player'; q.role = 'player'; W.moveToSquad(q, sq);
+  put(q, p.x + 2, p.z);
+  const even = laggard([p, q]);
+  q.inv.add('building_mats', 6);
+  const lag = laggard([p, q]);
+  check('of a group on the move, one overloaded far past the pace of the rest is named, and why; a group that keeps together is not',
+    !even && lag?.c === q && /^overloaded \(\d+ of \d+ kg\)$/.test(lag.why), `${lag ? `${lag.c.name}: ${lag.why}, ${q.moveSpeed().toFixed(1)} against ${p.moveSpeed().toFixed(1)} m/s` : 'nobody'}`);
+  q.status = 'dead';
+}
 
 console.log(`\n${results.filter((r) => r[1]).length}/${results.length} checks passed.`);
 if (results.some((r) => !r[1])) process.exitCode = 1;

@@ -45,11 +45,21 @@ function walkTo(c: Char, x: number, z: number, r = REACH): boolean {
 const WORK_ORDERS = new Set<Order['k']>(['lockpick', 'free', 'salvage', 'reprogram']);
 
 /**
+ * How far an order may take someone from a standing job of theirs and leave it standing (metres): a move
+ * (a walk about the claim, in to the stores and out to the rock, is no march away from it), and an attack
+ * (defending the work is no sally out after a band down the road).
+ */
+export const JOB_AWAY = 250, JOB_AWAY_FIGHT = 150;
+
+/**
  * A new order, or none: off any furniture, tools down, and a walk planned afresh. Every order the
  * player gives goes through here, so that nobody stays bent over a pick or a lock after being told
- * to go. (Standing jobs are kept: they resume once the order is done.)
+ * to go. Standing jobs are kept, to be taken up again once the order is done, unless a move or an
+ * attack takes them well away from the work (JOB_AWAY): a march to town, or a fight half a mile off,
+ * is no walk back to the field after it. Those are left off until they are given again, and their
+ * labels returned, for a word about it.
  */
-export function giveOrder(c: Char, o: Order | null) {
+export function giveOrder(c: Char, o: Order | null): string[] {
   if (c.bed || c.mem.using) leaveFurniture(c);
   c.mem.sit = false;
   c.order = o;
@@ -57,6 +67,14 @@ export function giveOrder(c: Char, o: Order | null) {
   toolsDown(c);
   if (o && o.k === 'move') c.brain.enemy = 0;
   if (o && (o.k === 'move' || o.k === 'attack')) { c.path = null; c.hasGoal = false; }
+  if (!o || !c.jobs.length || (o.k !== 'move' && o.k !== 'attack')) return [];
+  const foe = o.k === 'attack' ? S.W.char(o.id) : undefined;
+  const to = o.k === 'move' ? { x: o.x, z: o.z, r: JOB_AWAY } : foe ? { x: foe.x, z: foe.z, r: JOB_AWAY_FIGHT } : null;
+  if (!to) return [];
+  const away = c.jobs.filter((j) => { const ob = S.W.objs.get(j.obj); return !ob || Math.hypot(ob.x - to.x, ob.z - to.z) > to.r; });
+  if (!away.length) return [];
+  c.jobs = c.jobs.filter((j) => !away.includes(j));
+  return away.map((j) => j.label || j.k);
 }
 
 export function runOrder(c: Char, dt: number) {

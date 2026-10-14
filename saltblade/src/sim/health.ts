@@ -13,6 +13,9 @@ import { clamp } from '../core/math';
 import { drugPain, tickDrugs } from './drugs';
 import { emit } from '../core/events';
 
+/** Seconds after the last blow that a knockout of the wounds it left still counts as the hitter's. */
+const KO_CREDIT = 180;
+
 export function koThreshold(c: Char, limb: number) {
   const t = c.skill('toughness');
   // a painkiller (or rage) keeps them up a good way past where they'd drop
@@ -124,8 +127,13 @@ export function tickHealth(c: Char, dt: number) {
   }
   // status transitions
   if (isDeadCondition(c)) { kill(c, S.W.char(c.lastHitBy)); return; }
-  if (c.status === 'up' && isKOCondition(c)) knockOut(c, b.blood < b.bloodMax * 0.3 ? 'blood loss' : '');
-  else if (c.status === 'ko') {
+  if (c.status === 'up' && isKOCondition(c)) {
+    knockOut(c, b.blood < b.bloodMax * 0.3 ? 'blood loss' : '');
+    // down of the wounds someone gave them in a fight not long since (a run from it bleeds a while): their
+    // knockout, as much as a blow's (see combat). lastHitBy is the last to hit them: nobody has since.
+    const by = S.W.char(c.lastHitBy);
+    if (by && by !== c && S.time - c.lastHitT < KO_CREDIT) by.stats.kos++;
+  } else if (c.status === 'ko') {
     b.koT += dt;
     if (!c.carriedBy && !c.playDead && b.koT > 10 && !isKOCondition(c)) {
       // coming round

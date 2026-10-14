@@ -11,6 +11,8 @@ import { on } from '../core/events';
 import { uiSound } from '../audio';
 import { input } from '../core/input';
 import { SCENARIO } from '../content/scenarios';
+import { FACTION } from '../content/factions';
+import { starving } from '../sim/dialogue';
 import { NOTE } from '../content/notes';
 import { shopGrid } from '../sim/shops';
 import { menuOpen } from './menu';
@@ -28,6 +30,9 @@ const kb = (a: ActionId) => esc(keymap.labels(a)[0] ?? '?');
 
 const seen = new Set<string>();
 let box: HTMLDivElement | null = null;
+/** The card up now, and how long (real seconds) what it is about has been over. */
+let current: Card | null = null;
+let staleT = 0;
 let queue: Card[] = [];
 let hidden = false; // the card is up but something is in front of it
 let hold = 0; // real seconds before the next card may show
@@ -78,6 +83,8 @@ function startCard(key: string, title: string, text: string, pri: number) {
 function show(card: Card) {
   if (card.perGame) { const shown: string[] | undefined = S.W.flags.hints; if (shown && !shown.includes(card.key)) shown.push(card.key); }
   hidden = false;
+  current = card;
+  staleT = 0;
   const ok = h('button', { class: 'tbtn small' }, 'Got it');
   const off = h('button', { class: 'hintoff' }, 'No more hints');
   box = h('div', { class: 'hintbox', role: 'status' }, h('div', { class: 'hinttitle' }, card.title), h('div', { class: 'hinttext', html: card.text }), h('div', { class: 'hintbtns' }, off, ok));
@@ -97,6 +104,7 @@ function show(card: Card) {
 function close() {
   box?.remove();
   box = null;
+  current = null;
   hold = 0.6;
 }
 
@@ -106,14 +114,14 @@ const blocked = () => anyOpen() || menuOpen() || dialogueOpen() || contextMenuOp
 export function setupHints() {
   load();
   // back to the title, or a fresh world: nothing from the old game lingers
-  on('world:reset', () => { queue = []; box?.remove(); box = null; });
+  on('world:reset', () => { queue = []; box?.remove(); box = null; current = null; });
   // a window, a conversation or the menu opening puts the card away at once, before the next frame looks round
   for (const ev of ['ui:char', 'ui:build', 'ui:research', 'ui:map', 'ui:factions', 'ui:log', 'ui:codex', 'ui:inspect', 'ui:trade', 'ui:loot', 'ui:talk', 'ui:object', 'ui:read', 'ui:menu']) {
     on(ev, () => { if (box && !hidden) { hidden = true; box.style.display = 'none'; } });
   }
   on('game:start', () => {
     queue = [];
-    box?.remove(); box = null;
+    box?.remove(); box = null; current = null;
     hold = 1.5;
     t = 6;
     if (input.touch || matchMedia('(pointer: coarse)').matches) startCard('start', 'Your people', 'Your people are the portraits at the bottom. <b>Tap</b> to select; <b>press and hold</b> the ground to walk there, or someone for things to do. Drag to look, pinch to zoom.', PRI.start);
@@ -162,6 +170,14 @@ export function tickHints(dt: number) {
   if (G.mode !== 'play') { if (box) { box.remove(); box = null; } return; }
   const busy = blocked();
   if (box && busy !== hidden) { hidden = busy; box.style.display = busy ? 'none' : ''; }
+  // a card about something no longer so goes once it has been over a moment, as it would have been dropped had it
+  // still been waiting its turn (see next): no "Shackles" hours after they came off, no "Towns" out at the rock face
+  if (box && current?.still) {
+    let ok = true;
+    try { ok = current.still(); } catch { ok = false; }
+    staleT = ok ? 0 : staleT + dt;
+    if (staleT > 1.5) close();
+  }
   hold -= dt;
   if (!box && !busy && hold <= 0 && queue.length) { const card = next(); if (card) show(card); }
   t -= dt;
@@ -176,10 +192,14 @@ export function tickHints(dt: number) {
     const name = esc(c.name);
     const still = (f: (c: Char) => boolean) => () => c.alive && W.char(c.id) === c && f(c);
     if (c.hunger < 100 && !c.robot && !c.animal) tip('hunger', 'Hunger', `${name} is hungry. Eat from the pack (<b>${kb('char')}</b>, right-click food) or buy food in town. The starving fight badly and faint.`, still((x) => x.hunger < 100));
+    // nothing to eat and nothing to buy it with: what the waste has instead (and, once, the Unchained)
+    if (c.hunger < 100 && !c.robot && !c.animal && starving()) tip('meat', 'Nothing to eat', `${name} is hungry, with no food in any pack and no chits to buy it. <b>Beasts carry meat</b>: knock one down and <b>loot</b> it (right-click) for raw meat, which fills a belly.${W.flags.unchainedFed ? '' : ' The Unchained at Brokenchain share what they have with a runaway, once: ask them.'}`, starving);
     if (c.body.bleeding() > 0.05 && c.up) tip('bleed', 'Bleeding', `${name} is bleeding. Right-click them, <b>First aid</b>: it takes bandages or a kit from someone's pack.`, still((x) => x.body.bleeding() > 0.02));
     if (c.carrying) tip('carry', 'Carrying', `Right-click a bed to lay them down, a cage to lock them in, or press <b>${kb('drop')}</b> to put them down.`, ours((x) => !!x.carrying));
     if (c.load() > 1) tip('load', 'Overloaded', `${name} is carrying too much and slows down. Heavy loads do build strength.`, still((x) => x.load() > 1));
-    if (Object.values(c.bounty).some((v) => v > 0)) tip('wanted', 'Wanted', 'Someone saw a crime. That faction\'s guards will try an arrest. Pay a guard, lie low, or fight.', ours((x) => Object.values(x.bounty).some((v) => v > 0)));
+    // (what is so of every price on a head, whoever put it there: a crime seen, or the posters a deserter walked out on)
+    const price = Object.entries(c.bounty).find(([, v]) => v > 0);
+    if (price) tip('wanted', 'Wanted', `There is a price of ${price[1].toLocaleString()} chits on ${name}'s head with the ${esc(FACTION[price[0]]?.short ?? price[0])}. Their guards and patrols will try an arrest: pay one of their guards off, keep clear of their towns, or fight.`, ours((x) => Object.values(x.bounty).some((v) => v > 0)));
     if (c.shackled) tip('shackles', 'Shackles', 'Shackled people move slowly. Select them and right-click themselves (or a friend) to <b>pick the shackles</b>, best unseen.', ours((x) => x.shackled));
     // the harder trades, the first time they are lived with
     const b = c.body;

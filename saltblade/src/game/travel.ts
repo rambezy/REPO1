@@ -1,15 +1,18 @@
-// Travel speed: a long walk passes at 15×, and drops back to 1× the moment
-// anything happens: a hostile comes into sight, a notice (other than good
-// news) or an auto-pause fires, someone of yours is hit or hits, falls or
-// bleeds, a conversation or a counter opens, or everyone gets where they were
-// going or as near as they can. It always says why. Like the captive card's
-// wait, it sets the speed directly, past setSpeed's bookkeeping: travel speed
-// is nothing Space should resume at.
+// Travel speed: a long walk passes at 15×, and drops back the moment anything
+// happens: a hostile comes into sight (one who only wants a word, a toll or a
+// meal, once they are close), bad news is given (danger, a wound, a loss: news
+// that is only news waits in the corner) or an auto-pause fires, someone of yours is hit or hits, falls or bleeds, a
+// conversation or a counter opens, or everyone gets where they were going or
+// as near as they can. It always says why. It drops back to the speed it was
+// started at, or to 1× for trouble. Like the captive card's wait, it sets the
+// speed directly, past setSpeed's bookkeeping: travel speed is nothing Space
+// should resume at.
 import { G } from '../state';
 import { S } from '../sim/ctx';
 import { on, emit } from '../core/events';
 import { keymap } from '../core/keys';
 import { canSee } from '../sim/ai';
+import { wantsToTalk } from '../sim/encounters';
 import { hostile } from '../sim/combat';
 import { RATE } from '../sim/clock';
 import { WORK_ACTS } from '../sim/move';
@@ -20,9 +23,12 @@ import type { Char } from '../sim/char';
 export const TRAVEL_SPEED = 15;
 /** how far out a hostile is looked for (whether it is seen is canSee's to say) */
 const LOOK = 90;
+/** how near a band that only wants a word (a toll, a meal, a look at your papers) may come before it counts as trouble in sight */
+const TALK_NEAR = 25;
 
 let travelling = false;
 let saying = false; // our own notice is going out: it must not stop us
+let before = 1; // the speed travel was started at, to go back to
 
 export const isTravelling = () => travelling && G.speed === TRAVEL_SPEED;
 
@@ -57,13 +63,18 @@ function hurt(): string {
   return '';
 }
 
-/** A hostile one of yours can see, on its feet and awake, or null. */
+/**
+ * A hostile one of yours can see, on its feet and awake, or null. A band that would rather talk first
+ * (beggars, toll-takers, slavers sizing you up: see encounters) is no trouble until it is close: it walks
+ * up to say its piece, and the conversation stops travel when it starts.
+ */
 export function hostileInSight(): Char | null {
   let found: Char | null = null;
   for (const c of walkers()) {
     S.W.hash.near(c.x, c.z, LOOK, (o) => {
       if (found || o.faction === 'player' || !o.awake || o.cage || o.carriedBy) return;
       if (!(hostile(o, c) || hostile(c, o)) || !canSee(c, o)) return;
+      if (!o.brain.enemy && Math.hypot(o.x - c.x, o.z - c.z) > TALK_NEAR && wantsToTalk(o)) return;
       found = o;
     });
     if (found) break;
@@ -79,13 +90,14 @@ function say(text: string, kind = 'info') {
   try { emit('notice', text, kind); } finally { saying = false; }
 }
 
-/** Back to normal speed (1×), saying why if there is anything to say. */
+/** Back to the speed travel was started at (1× for trouble: `kind` 'bad'), saying why if there is anything to say. */
 export function stopTravel(why = '', kind = 'info') {
   if (!travelling) return;
   travelling = false;
-  if (G.speed === TRAVEL_SPEED) { G.speed = 1; emit('speed'); }
-  if (G.lastSpeed === TRAVEL_SPEED) G.lastSpeed = 1;
-  if (why) say(`Back to normal speed: ${why}.`, kind);
+  const back = kind === 'bad' ? 1 : before;
+  if (G.speed === TRAVEL_SPEED) { G.speed = back; emit('speed'); }
+  if (G.lastSpeed === TRAVEL_SPEED) G.lastSpeed = back;
+  if (why) say(`Back to ${back === 1 ? 'normal speed' : `${back}×`}: ${why}.`, kind);
 }
 
 /** Starts travel speed if a walk is under way and nothing is in sight; says why not otherwise. */
@@ -97,6 +109,7 @@ export function startTravel(): boolean {
   const foe = hostileInSight();
   if (foe) { say(`Not with ${whatIs(foe)} in sight.`, 'bad'); return false; }
   if (G.speed && G.speed !== TRAVEL_SPEED) G.lastSpeed = G.speed;
+  before = G.speed && G.speed !== TRAVEL_SPEED ? G.speed : 1;
   lastMoved.clear();
   travelling = true;
   G.speed = TRAVEL_SPEED;
@@ -146,6 +159,29 @@ export function walkMinutes(c: Char): number | null {
   return (d / Math.max(0.3, c.moveSpeed())) * RATE / 60;
 }
 
+/** What slows someone below their legs' pace: shackles, someone in their arms, too much on their back, a bad leg. */
+export function slowedBy(c: Char): string {
+  if (c.shackled) return 'in shackles';
+  if (c.carrying) return 'carrying someone';
+  if (c.load() > 1) return `overloaded (${Math.round(c.carryWeight())} of ${Math.round(c.capacity())} kg)`;
+  if (c.legFactor() < 0.85) return 'limping';
+  return '';
+}
+
+/**
+ * One of a group who will fall well behind the rest on a walk (at under three quarters of the others'
+ * pace, for a reason: see slowedBy), and why; null if they keep together.
+ */
+export function laggard(group: Char[]): { c: Char; why: string } | null {
+  const ws = group.filter((c) => c.alive && c.up && !c.carriedBy && !c.cage);
+  if (ws.length < 2) return null;
+  const pace = ws.map((c) => ({ c, v: c.moveSpeed() })).sort((a, b) => a.v - b.v);
+  const slow = pace[0], rest = pace[Math.floor(pace.length / 2)];
+  if (slow.v >= rest.v * 0.75) return null;
+  const why = slowedBy(slow.c);
+  return why ? { c: slow.c, why } : null;
+}
+
 /** "~40 min", "~2.5 h". */
 export function minutesText(m: number): string {
   if (m < 90) return `~${Math.max(1, Math.round(m / (m < 15 ? 1 : 5)) * (m < 15 ? 1 : 5))} min`;
@@ -159,10 +195,11 @@ export function setupTravel(poll = true) {
   if (wired) return;
   wired = true;
   keymap.on('travel', () => { toggleTravel(); });
-  // anything worth a notice is worth normal speed, but good news (a skill rising, a deed) is no reason to stop
-  on('notice', (text: string, kind?: string) => { if (travelling && !saying && kind !== 'good') stopTravel(String(text).replace(/[.!\s]+$/, ''), kind === 'bad' ? 'bad' : 'info'); });
+  // bad news is worth normal speed (danger, a wound, a loss); news that is only news is not (a skill rising, a
+  // deed, work posted in a town, a band marching on somewhere else): it waits in the corner, and the walk goes on
+  on('notice', (text: string, kind?: string) => { if (travelling && !saying && kind === 'bad') stopTravel(String(text).replace(/[.!\s]+$/, ''), 'bad'); });
   // a blow given or taken by one of yours
-  on('fx:hit', (c: Char, by: Char) => { if (travelling && (c.faction === 'player' || by?.faction === 'player')) stopTravel(c.faction === 'player' ? `${c.name} was hit` : `${by.name} is fighting`); });
+  on('fx:hit', (c: Char, by: Char) => { if (travelling && (c.faction === 'player' || by?.faction === 'player')) stopTravel(c.faction === 'player' ? `${c.name} was hit` : `${by.name} is fighting`, 'bad'); });
   // anything else that changes the speed ends it: a speed key or button, a pause, an auto-pause, a load
   on('speed', () => {
     if (travelling && G.speed !== TRAVEL_SPEED) { travelling = false; if (G.lastSpeed === TRAVEL_SPEED) G.lastSpeed = 1; }

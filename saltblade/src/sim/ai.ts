@@ -340,9 +340,35 @@ function playerAI(c: Char, dt: number, think: boolean) {
   if (c.order) { B.slaveT = 0; runOrder(c, dt); return; } // (not `order`: an attack on someone now gone was just dropped)
   // at a trade or loot window: everything else waits where they stand, until it closes
   if (jobsHeld(c)) { if (c.hasGoal) stop(c); toolsDown(c); return; }
+  // bleeding, with something to bind it to hand: patched up before going back to work
+  if (c.jobs.length && patchFirst(c)) return;
   if (c.jobs.length && runJobs(c, dt, think)) return;
   // idle: eat when hungry, patch yourself up; the chained are put to work
   if (think) { idleUpkeep(c); if (!c.order && c.shackled && c.mem.slaveSite) slaveWork(c); }
+}
+
+/**
+ * A worker bleeding from a fight binds the wound before taking up the work again: with a dressing of their
+ * own, at once; else, with a squadmate near (25 m) who has one and nothing else to do, waiting where they
+ * stand while that squadmate comes to them. True while the work waits on it.
+ */
+function patchFirst(c: Char): boolean {
+  if (c.body.bleeding() <= 0.04 || !c.body.needsAid()) return false;
+  const coming = (S.W.squadOf(c)?.members ?? []).some((id) => { const o = S.W.char(id); return !!o && o !== c && o.up && o.order?.k === 'aid' && o.order.id === c.id; });
+  if (coming) { if (c.hasGoal) stop(c); toolsDown(c); return true; }
+  if (findMedkit(c, c.robot, c)) { c.order = { k: 'aid', id: c.id }; return true; }
+  let medic: Char | null = null, bd = 25 * 25;
+  for (const id of S.W.squadOf(c)?.members ?? []) {
+    const o = S.W.char(id);
+    if (!o || o === c || !o.up || o.animal || o.order || o.cage || o.carriedBy) continue;
+    const d2 = (o.x - c.x) ** 2 + (o.z - c.z) ** 2;
+    if (d2 < bd && findMedkit(o, c.robot, c)) { bd = d2; medic = o; }
+  }
+  if (!medic) return false;
+  medic.order = { k: 'aid', id: c.id };
+  if (c.hasGoal) stop(c);
+  toolsDown(c);
+  return true;
 }
 
 /**

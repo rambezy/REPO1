@@ -19,6 +19,7 @@ import { FACTION } from '../content/factions';
 import { ITEM } from '../content/items';
 import { buyHouse, houseOf } from '../sim/property';
 import { canSalvage, canReprogram, hackNeed } from '../sim/salvage';
+import { laggard } from './travel';
 
 const ray = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
@@ -128,11 +129,37 @@ export function objAt(sx: number, sy: number): WObj | null {
 }
 
 // ---------------------------------------------------------------- orders
-/** Gives an order (jobs persist; orders take priority, and the tools go down: see giveOrder). */
+/** Work left off by the orders being given together (see together), to be told once. */
+let leaving: { names: string[]; jobs: Set<string> } | null = null;
+
+/** Gives an order (jobs persist unless a march takes them away from them; orders take priority, and the tools go down: see giveOrder). */
 export function issue(c: Char, o: Order | null, _queue = false) {
   if (!c.up && o?.k !== 'drop') return;
-  giveOrder(c, o);
+  const left = giveOrder(c, o);
+  if (!left.length) return;
+  if (leaving) { leaving.names.push(c.name); for (const j of left) leaving.jobs.add(j); }
+  else saidLeft([c.name], left);
 }
+
+/** Gives a group its orders at once: what work they leave off by them is said in one notice, not one each. */
+export function together(f: () => void) {
+  const outer = leaving;
+  leaving = outer ?? { names: [], jobs: new Set() };
+  try { f(); } finally {
+    const l = leaving;
+    leaving = outer;
+    if (!outer && l.names.length) saidLeft(l.names, [...l.jobs]);
+  }
+}
+
+/** "Ulric and Greta leave their work behind (Farm Wheat Field): set them to it again to send them back." (see giveOrder) */
+function saidLeft(names: string[], jobs: string[]) {
+  const who = names.length < 3 ? names.join(' and ') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+  S.fx.notice(`${who} ${names.length > 1 ? 'leave' : 'leaves'} their work behind (${jobs.join(', ')}): set them to it again to send them back.`, 'info');
+}
+
+/** When each of yours was last said to be falling behind (game time), so a walk with a slow one is told once in a while. */
+const behindSaid = new Map<number, number>();
 
 export function moveGroup(chars: Char[], x: number, z: number) {
   if (!chars.length) return;
@@ -143,14 +170,20 @@ export function moveGroup(chars: Char[], x: number, z: number) {
   const cols = Math.ceil(Math.sqrt(chars.length));
   const sp = 1.5;
   chars.sort((a, b) => a.id - b.id);
-  chars.forEach((c, i) => {
+  together(() => chars.forEach((c, i) => {
     const row = Math.floor(i / cols), col = i % cols;
     const ox = (col - (cols - 1) / 2) * sp, oz = -row * sp;
     const s = Math.sin(ang), co = Math.cos(ang);
     const tx = x + ox * co + oz * s, tz = z - ox * s + oz * co;
     const spot = chars.length > 1 ? G.nav.nearestOpen(tx, tz, 4) ?? [x, z] : [x, z];
     issue(c, { k: 'move', x: spot[0], z: spot[1] });
-  });
+  }));
+  // one of them much slower than the rest (a full pack, a bad leg): they will string out, so say so
+  const lag = laggard(chars);
+  if (lag && Math.hypot(x - lag.c.x, z - lag.c.z) > 40 && S.clock.t - (behindSaid.get(lag.c.id) ?? -1e9) > 1800) {
+    behindSaid.set(lag.c.id, S.clock.t);
+    S.fx.notice(`${lag.c.name} is ${lag.why} and will fall behind the rest.`, 'info');
+  }
   G.overlay.markers.push({ x, y: G.T.heightAt(x, z) + 0.1, z, t: 0.8, color: palette.move });
 }
 

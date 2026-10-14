@@ -12,6 +12,7 @@ import { emit } from '../core/events';
 import { greeting, rumour, aboutMe, aboutPlace, LINES } from '../content/lines';
 import { knockOut, dropCarried } from './health';
 import { ITEM } from '../content/items';
+import { makeItem } from './inventory';
 import { freeFromCage } from './orders';
 import { strengthOf } from './combat';
 import { bountiesFor, claimValue, claimBounty } from './bounties';
@@ -77,6 +78,52 @@ function sisterLine(c: DCtx): string {
 
 /** Common farewell and utility choices. */
 const BYE: DChoice = { t: 'Goodbye.', end: true };
+
+/** Hungry, with nothing to eat in any pack of yours and no chits to buy it with (a runaway, say, or someone robbed in the ash). */
+export function starving(): boolean {
+  if (S.W.money >= 50) return false;
+  const mine = S.W.playerChars().filter((m) => m.alive && !m.animal && !m.robot);
+  if (!mine.some((m) => m.hunger < 150)) return false;
+  return !mine.some((m) => [m.inv, m.eq.back?.inv].some((g) => g?.items.some((i) => ITEM[i.id]?.cat === 'food' && (ITEM[i.id].food ?? 0) > 0)));
+}
+/** The Unchained feed whoever walks into their reeds out of the chains or the ash with nothing: once a game (see W.flags.unchainedFed). */
+const canFeed = (c: DCtx) => c.n.faction === 'unchained' && !S.W.flags.unchainedFed && starving();
+const FED_WITH: [string, number][] = [['dustbread', 3]];
+/** And for one with nothing in hand, something to hunt with: a spear, or for one hand a cleaver (see the hunt, content/objectives). */
+const HUNT_WITH = (p: Char) => (p.body.armOK(3) && p.body.armOK(4) ? 'spear' : 'cleaver');
+function feed(c: DCtx) {
+  S.W.flags.unchainedFed = S.clock.t;
+  const loose: string[] = [];
+  const give = FED_WITH;
+  const armed = !c.p.eq.weapon && !c.p.robot ? HUNT_WITH(c.p) : '';
+  if (armed) { c.p.eq.weapon = makeItem(armed, 1); c.vars.armed = armed; }
+  for (const [id, n] of give) {
+    let left = c.p.inv.add(id, n);
+    if (left && c.p.eq.back?.inv) left = c.p.eq.back.inv.add(id, left);
+    if (left) { emit('world:drop', c.p.x, c.p.z, [makeItem(id, left)]); loose.push(id); }
+  }
+  const what = [...give.map(([id, n]) => `${n} ${ITEM[id].name}`), ...(armed ? [`a ${ITEM[armed].name.toLowerCase()}`] : [])].join(' and ');
+  S.W.say(`${c.n.name} of Brokenchain gave ${c.p.name} ${what}.`, 'good', S.clock.t);
+  S.fx.notice(`${c.n.name} gives ${c.p.name} ${what}${loose.length ? ' (at their feet: their pack is full)' : ''}.`, 'good');
+}
+// (asked of any of them, but not by someone they want for a crime: see withMeal)
+const FEED: DChoice = { t: 'We have nothing to eat, and nothing to buy food with.', if: (c) => !wanted(c) && canFeed(c), fx: (c) => feed(c), next: 'unchained_meal' };
+const FED: DNode = {
+  t: (c) => `${c.n.mem.story === 'brokenchain' && c.n.name === 'Iyabo' ? 'My rule' : 'Iyabo\'s rule'}: nobody who walks out of the chains, or out of the ash, goes hungry their first night in the reeds. Here. After tonight you hunt like the rest of us. Anything that walks out there is meat, if you can bring it down and cut it open.${c.vars.armed ? ` And take the ${ITEM[c.vars.armed as string].name.toLowerCase()}. Nobody in the reeds hunts with bare hands.` : ''}`,
+  ch: [BYE],
+};
+/**
+ * The Unchained's meal (see canFeed) among the first things to say, whoever of them is asked and whatever
+ * they would talk about otherwise: a drinker, a guard, a recruit, a named runaway, the Voice herself. Not
+ * one caged or in chains, who has nothing to give.
+ */
+function withMeal([tree, at]: [Tree, string], n: Char): [Tree, string] {
+  const node = tree[at];
+  if (n.faction !== 'unchained' || n.cage || n.role === 'slave' || S.W.flags.unchainedFed || !node?.ch?.length || tree.unchained_meal) return [tree, at];
+  // (before the goodbye)
+  const ch = [...node.ch.slice(0, -1), FEED, node.ch[node.ch.length - 1]];
+  return [{ ...tree, [at]: { ...node, ch }, unchained_meal: FED }, at];
+}
 
 function wanted(c: DCtx) { return (c.p.bounty[c.n.faction] ?? 0) > 0; }
 function guardish(n: Char) { return n.role === 'guard' || n.role === 'patrol'; }
@@ -365,6 +412,10 @@ function bountyTalk(c: DCtx) {
 
 /** Which conversation an NPC offers the player. */
 export function treeFor(n: Char, p: Char): [Tree, string] {
+  return withMeal(treeOf(n, p), n);
+}
+/** (the conversation as it is, before any meal is put in it) */
+function treeOf(n: Char, p: Char): [Tree, string] {
   const job = contractTree(n); // a story's giver, or someone a job brought in
   if (job) return job;
   if (n.dialogue && UNIQUE_TREES[n.dialogue]) return [UNIQUE_TREES[n.dialogue], 'start'];

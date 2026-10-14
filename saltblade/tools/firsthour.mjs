@@ -97,6 +97,14 @@ if (what === 'starts' || what === 'all') {
       }
       const forgot = await page.evaluate(() => !JSON.parse(localStorage.getItem('sb-hints') ?? '[]').includes('shackles'));
       check('chainbound: a card gone stale in the queue is dropped (shackles picked before its turn)', queued && !titles.includes('Shackles') && forgot, `queued ${queued}, then shown: ${titles.join(' | ') || 'none'}; forgotten ${forgot}`);
+      // and a card already up about something that stops being so goes by itself: no "Shackles" hours after they came off
+      await start('chainbound');
+      for (let i = 0; i < 2; i++) { await firstCard(); await page.evaluate(() => document.querySelector('.hintbox')?.click()); await stepped(1); }
+      const up = await page.waitForFunction(() => document.querySelector('.hintbox .hinttitle')?.textContent === 'Shackles', null, { timeout: 120000 }).then(() => true).catch(() => false);
+      await page.evaluate(() => { for (const c of __sb.G.W.playerChars()) c.shackled = false; });
+      const t0 = Date.now();
+      const went = await page.waitForFunction(() => document.querySelector('.hintbox .hinttitle')?.textContent !== 'Shackles', null, { timeout: 30000 }).then(() => true).catch(() => false);
+      check('chainbound: a card that is up closes by itself once what it is about is over (shackles picked with "Shackles" showing)', up && went, `shown ${up}; closed ${went ? `${((Date.now() - t0) / 1000).toFixed(1)} s after` : 'never'}`);
     }
   }
 }

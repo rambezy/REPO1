@@ -21,7 +21,7 @@ import { structuresIn, townRings } from '../src/sim/structures';
 import { Squad } from '../src/sim/squad';
 import { makePerson, makeAnimal } from '../src/sim/spawn';
 import { makeItem } from '../src/sim/inventory';
-import { fitAgainst, levelUnder, playerBand, trimTo, cutToFit } from '../src/sim/worldsim';
+import { fitAgainst, levelUnder, playerBand, trimTo, cutToFit, sendOffer } from '../src/sim/worldsim';
 import { raidParty, type RaidKind } from '../src/sim/raids';
 import { loadoutFor } from '../src/content/loadouts';
 import { SCENARIO } from '../src/content/scenarios';
@@ -71,7 +71,8 @@ function startBand(key: string): Char[] {
   });
 }
 
-type Foes = () => Char[];
+/** Who the other side is (made after the band, which some of them are fitted to); `hungry`: as they come, not fed for the test. */
+type Foes = (() => Char[]) & { hungry?: boolean };
 /** A squad for the other side, past talking (the toll refused, the demand turned down). */
 const band = (faction: string, kind: Squad['kind'] = 'raid') => { const s = new Squad(); s.faction = faction; s.kind = kind; s.name = faction; s.spoke = true; s.flags.settled = 0; W.addSquad(s); return s; };
 /** `n` of a people's fighters as they come, any day. */
@@ -107,6 +108,18 @@ const roaming = (faction: string, role: any, n: [number, number], day = 1): Foes
   if (!cutToFit(sq, fitAgainst(playerBand(), faction, day, rng))) return [];
   return sq.members.map((id) => W.char(id)!);
 };
+/** The fight the road offers a band for "Win a fight" in a region (see worldsim sendOffer), on the matchup's own dice. */
+const offered = (reg: string): Foes => Object.assign(() => {
+  const sq = sendOffer([ax + 14, az], reg, rng);
+  if (!sq) return [];
+  sq.spoke = true;
+  return sq.members.map((id) => W.char(id)).filter((c): c is Char => !!c);
+}, { hungry: true });
+/** The hunt the road offers for "Hunt something to eat" in a region (see worldsim sendHunt), on the matchup's own dice. */
+const hunted = (reg: string): Foes => Object.assign(() => {
+  const sq = sendOffer([ax + 14, az], reg, rng, true);
+  return sq ? sq.members.map((id) => W.char(id)).filter((c): c is Char => !!c) : [];
+}, { hungry: true });
 /** The first raid on the band's base. */
 const firstRaid = (kind: RaidKind): Foes => () => raidParty(band(kind.faction), kind, 12, true, rng);
 
@@ -115,19 +128,21 @@ function clear() {
   for (const s of [...W.squads.values()]) if (s !== player) W.squads.delete(s.id);
   player.members.length = 0;
 }
-const place = (cs: Char[], dx: number) => cs.forEach((c, i) => {
+const place = (cs: Char[], dx: number, hungry = false) => cs.forEach((c, i) => {
   c.x = ax + dx + (i % 3) * 1.5; c.z = az + Math.floor(i / 3) * 1.5; c.y = T.heightAt(c.x, c.z); c.homeX = c.x; c.homeZ = c.z;
-  c.hunger = 300; c.thinkT = rng.next() * 0.6;
+  if (!hungry) c.hunger = 300;
+  c.thinkT = rng.next() * 0.6;
 });
 
-interface Row { label: string; won: number; routed: number; fought: number; refused: number; t: number; swings: [number, number]; frozen: number; losses: number; deathLosses: number; ourKO: number; ourDead: number; foes: number }
+interface Row { label: string; won: number; routed: number; felled: number; fought: number; refused: number; t: number; swings: [number, number]; frozen: number; losses: number; deathLosses: number; ourKO: number; ourDead: number; foes: number }
 
 /** Fights a start against what `foes` makes, `TRIALS` times over: each fight up to five minutes, or until one side is down. */
-function matchup(label: string, start: string, foes: Foes): Row {
+/** `follow`: seconds a rout is followed (the chase goes on, and one who bleeds out on the run is down too); `ready`: the band as it is by then. */
+function matchup(label: string, start: string, foes: Foes, follow = 0, ready?: (c: Char) => void): Row {
   // each matchup on its own seeds, so the table does not shift when another is added
   rng = new RNG(hashStr(label));
   S.rng = new RNG(hashStr(label) ^ 0x5eed);
-  const row: Row = { label, won: 0, routed: 0, fought: 0, refused: 0, t: 0, swings: [0, 0], frozen: 0, losses: 0, deathLosses: 0, ourKO: 0, ourDead: 0, foes: 0 };
+  const row: Row = { label, won: 0, routed: 0, felled: 0, fought: 0, refused: 0, t: 0, swings: [0, 0], frozen: 0, losses: 0, deathLosses: 0, ourKO: 0, ourDead: 0, foes: 0 };
   for (let k = 0; k < TRIALS; k++) {
     clear();
     S.clock.t = DAY + 10 * HOUR; // day 1, mid-morning
@@ -135,7 +150,8 @@ function matchup(label: string, start: string, foes: Foes): Row {
     const theirs = foes();
     if (!theirs.length) { row.refused++; continue; }
     place(ours, 0);
-    place(theirs, 14);
+    if (ready) ours.forEach(ready);
+    place(theirs, 14, foes.hungry);
     // both sides spoiling for it: no talk of tolls, and the player's people told to attack
     for (const c of theirs) { c.mem.enemies = ours.map((o) => o.id); c.brain.enemy = ours[0].id; }
     for (const c of ours) c.order = { k: 'attack', id: theirs[0].id };
@@ -160,7 +176,9 @@ function matchup(label: string, start: string, foes: Foes): Row {
     row.foes += theirs.length;
     row.swings[0] += sw[0]; row.swings[1] += sw[1];
     if (!sw[0] || !sw[1]) row.frozen++;
-    if (ours.some((c) => c.up) && beaten()) { row.won++; if (theirs.some((c) => c.up)) row.routed++; }
+    const won = ours.some((c) => c.up) && beaten();
+    if (won && follow) for (let f = 0; f < follow && ours.some((c) => c.up) && theirs.every((c) => c.up); f += DT) { simStep(DT, { x: ax, z: az }); tickSquads(DT); }
+    if (won) { row.won++; if (theirs.some((c) => c.up)) row.routed++; if (theirs.some((c) => !c.up)) row.felled++; }
     else { row.losses++; if (ours.some((c) => c.status === 'dead')) row.deathLosses++; }
     row.ourKO += ours.filter((c) => c.status === 'ko').length;
     row.ourDead += ours.filter((c) => c.status === 'dead').length;
@@ -172,10 +190,12 @@ const pct = (r: Row) => (r.fought ? Math.round((r.won / r.fought) * 100) : 0);
 const results: [string, boolean, string][] = [];
 const check = (label: string, ok: boolean, info = '') => { results.push([label, ok, info]); };
 const rows: Row[] = [];
-const run = (label: string, start: string, foes: Foes, aim?: [number, number]) => {
-  const r = matchup(label, start, foes);
+const run = (label: string, start: string, foes: Foes, aim?: [number, number], felled = false, ready?: (c: Char) => void) => {
+  const r = matchup(label, start, foes, felled ? 60 : 0, ready);
   rows.push(r);
-  if (aim) check(`${label}: wins ${aim[1] < 100 ? `${aim[0]}-${aim[1]}` : `at least ${aim[0]}`}%`, r.fought > 0 && pct(r) >= aim[0] && pct(r) <= aim[1], `${r.won}/${r.fought}`);
+  // (felled: a win only with one of them down, as "Win a fight" counts it; a rout is followed a minute first)
+  const won = felled ? r.felled : r.won, p = r.fought ? Math.round((won / r.fought) * 100) : 0;
+  if (aim) check(`${label}: wins ${aim[1] < 100 ? `${aim[0]}-${aim[1]}` : `at least ${aim[0]}`}%${felled ? ', with one of them down' : ''}`, r.fought > 0 && p >= aim[0] && p <= aim[1], `${won}/${r.fought}`);
   return r;
 };
 
@@ -189,6 +209,17 @@ run('Wanderer vs one day-1 Reaver', 'wanderer', fitted('reavers', 'bandit', 1), 
 run('Three Hired Blades vs four day-1 Reavers', 'blades', fitted('reavers', 'bandit', 4), [55, 100]);
 run('Horned Pilgrims vs three day-1 Reavers', 'karuk', fitted('reavers', 'bandit', 3), [35, 100]);
 run('Deserters vs a roaming starveling band met on day 1', 'deserters', roaming('starvelings', 'bandit', [5, 12]), [50, 100]);
+// the fight the road offers for "Win a fight", where each start first looks for it: one to win
+run('Wanderer vs the fight the road offers by Crossroad', 'wanderer', offered('flats'), [85, 100], true);
+run('Freeholders vs the fight the road offers in the Vale', 'freeholders', offered('vale'), [85, 100], true);
+run('Deserters vs the fight the road offers by Hardcoin', 'deserters', offered('flats'), [85, 100], true);
+// the hunt the road offers for "Hunt something to eat": a runaway fed at Brokenchain, and given a spear with it
+// (see sim/dialogue feed); a one-armed starveling in the ash, bare-handed, before they have eaten, still weak
+// from the wound they woke with
+const bc = T.sites.find((x) => x.settlement === 'brokenchain')!, reeds = T.regionAt(bc.x, bc.z).key;
+run(`Chain-Bound, fed and armed at Brokenchain, vs the hunt the road offers there (${reeds})`, 'chainbound', hunted(reeds), [85, 100], true, (c) => { c.hunger = 110; c.eq.weapon = makeItem('spear', 1); });
+// (hurt as the start leaves them: see game/newgame)
+run('Nothing Left, unfed, vs the hunt the road offers in the ash', 'nothing', hunted('ash'), [85, 100], true, (c) => { c.hunger = 40; for (let l = 0; l < 7; l++) if (c.body.has(l)) c.body.hp[l] = c.body.max[l] * (1 - 0.55 * (l <= 1 ? 0.7 : 1)); });
 // shown for comparison: what each start meets on its first days' roads, and the first raid on a homestead
 run('Wanderer vs day-1 Reavers on the road', 'wanderer', road('reavers', 'bandit', [4, 9]));
 run('Wanderer vs day-1 dunehounds on the road', 'wanderer', road('fauna', 'animal', [3, 7], 'dunehound'));
@@ -264,7 +295,7 @@ console.log(`trials per matchup: ${TRIALS}, fights up to ${LIMIT} s on open grou
 console.log(`${'matchup'.padEnd(56)} ${'won'.padStart(9)}  ${'foes'.padStart(4)}  ${'avg'.padStart(5)}  swings us:them  KO/dead (ours)  losses by death`);
 for (const r of rows) {
   const won = r.fought ? `${r.won}/${r.fought} ${String(pct(r)).padStart(3)}%` : 'never sent';
-  const extra = (r.routed ? `  (${r.routed} won by a rout)` : '') + (r.refused ? `  (${r.refused} too much for the band: not sent)` : '');
+  const extra = (r.routed ? `  (${r.routed} won by a rout${r.won - r.felled ? `, ${r.won - r.felled} with none down` : ''})` : '') + (r.refused ? `  (${r.refused} too much for the band: not sent)` : '');
   console.log(`${r.label.padEnd(56)} ${won.padStart(9)}  ${(r.fought ? (r.foes / r.fought).toFixed(1) : '-').padStart(4)}  ${(r.fought ? `${Math.round(r.t / r.fought)} s` : '-').padStart(5)}  ${`${Math.round(r.swings[0] / Math.max(1, r.fought))}:${Math.round(r.swings[1] / Math.max(1, r.fought))}`.padStart(14)}  ${`${r.ourKO}/${r.ourDead}`.padStart(14)}  ${`${r.deathLosses}/${r.losses}`.padStart(15)}${extra}`);
 }
 console.log('');

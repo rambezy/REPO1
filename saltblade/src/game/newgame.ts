@@ -23,6 +23,8 @@ import { makeItem } from '../sim/inventory';
 import { World } from '../sim/world';
 import { postBounties } from '../sim/bounties';
 import { beginObjectives, firstGoalSite, welcomingTown } from '../ui/objectives';
+import { populateTown } from '../sim/populate';
+import type { TownInfo } from '../world/towns';
 import { clamp } from '../core/math';
 
 export function playerSquad(name = 'Wanderers'): Squad {
@@ -249,6 +251,7 @@ export function newGame(setup: NewGameSetup | string) {
       c.homeX = c.x; c.homeZ = c.z;
     }
   }
+  if (sc.ally) placeAlly(sc.ally, rng);
   const lead = people[0];
   // a clear first day where you begin, whatever the region had brewing
   S.weather.calm(lead.x, lead.z);
@@ -257,6 +260,32 @@ export function newGame(setup: NewGameSetup | string) {
   beginObjectives(sc.key);
   W.say(`${W.factionName}: ${sc.name}. ${sc.blurb}`, 'story', S.clock.t);
   void SETTLEMENT;
+}
+
+/**
+ * Someone the start promises at a town's bar (see Scenario ally): the town filled in now (it would be,
+ * once they were near), and the one waiting there sat on a stool nobody else has, ready to join.
+ */
+function placeAlly(a: NonNullable<Scenario['ally']>, rng: RNG) {
+  const W = G.W;
+  const site = siteBy(a.at);
+  const info = site ? (W.towns.get(site.id) as TownInfo | undefined) : undefined;
+  if (!site || !info) return;
+  populateTown(W, info);
+  const seats = info.bars.flatMap((b) => b.seats).filter(([, , , sid]) => !sid || !W.objs.get(sid)?.user);
+  const open = G.nav.nearestOpen(site.x, site.z, 20) ?? [site.x, site.z];
+  const seat: [number, number, number, number] = seats.length ? rng.pick(seats) : [open[0], open[1], 0, 0];
+  const town = [...W.squads.values()].find((q) => q.kind === 'town' && q.site === site.id && q.faction === site.faction);
+  const c = makePerson(W, { faction: 'drifters', role: 'recruit', race: a.races ? rng.pick(a.races) : undefined, female: a.female, level: a.level, loadout: a.loadout, whole: true }, rng);
+  if (town) W.moveToSquad(c, town);
+  const [x, z, rot, sid] = seat;
+  c.x = x; c.z = z; c.y = G.T.heightAt(x, z); c.homeX = x; c.homeZ = z; c.dir = rot; c.homeDir = rot;
+  const stool = sid ? W.objs.get(sid) : undefined;
+  if (stool) { c.mem.sit = true; c.mem.seat = stool.id; c.mem.using = stool.id; stool.user = c.id; }
+  c.site = site.id;
+  c.recruitable = true;
+  c.price = a.price;
+  c.mem.backstory = a.story;
 }
 
 /**

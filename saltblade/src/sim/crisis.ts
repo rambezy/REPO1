@@ -255,7 +255,8 @@ function march(d: CrisisDef, cs: CrisisState, i: number, budget: number, town: S
     if (!base) return null;
     sq = spawnRaid(base.x, base.z, 0, { faction: spec.faction, role: d.wave.role as 'bandit' | 'patrol', demand: 'fight', n: [people, people], name: d.wave.name });
   } else {
-    sq = sendWarParty(spec, people, town, budget);
+    // (on the wave's own dice, like the rest of it: the same waking of the same lair sends the same war party)
+    sq = sendWarParty(spec, people, town, budget, undefined, undefined, rng);
     if (sq) { sq.flags.crisisTown = town.id; sq.flags.sentAt = S.clock.t; }
   }
   if (!sq) return null;

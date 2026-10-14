@@ -8,7 +8,7 @@ import { REGIONS } from '../world/regions';
 import { N, CELL, WORLD } from '../world/consts';
 import { FACTION } from '../content/factions';
 import { SETTLEMENT } from '../content/layout';
-import { selected, issue } from '../game/control';
+import { selected, issue, together } from '../game/control';
 import { playerBase } from '../sim/base';
 import { emit, on } from '../core/events';
 import { drawGoalMarks } from './goalmarks';
@@ -289,7 +289,7 @@ export function openMap() {
     const [x, z] = toWorld(...at(e));
     const who = selected();
     if (!who.length) { tip.textContent = 'Select someone first.'; return; }
-    who.forEach((c, i) => issue(c, { k: 'move', x: x + (i % 3) * 1.5, z: z + Math.floor(i / 3) * 1.5 }));
+    together(() => who.forEach((c, i) => issue(c, { k: 'move', x: x + (i % 3) * 1.5, z: z + Math.floor(i / 3) * 1.5 })));
     emit('notice', `${who.length === 1 ? who[0].name : who.length + ' people'} set off.`, 'info');
   });
   cv.addEventListener('wheel', (e) => {

@@ -38,6 +38,8 @@ export interface Scenario {
   homestead?: boolean;
   research?: string[];
   items?: [string, number][]; // put in the first storage, or split among the people
+  /** someone at the bar of the town the start's first goal sends them to, who will join them (for `price` chits) */
+  ally?: { at: string; price: number; level: number; loadout: string; races?: string[]; female?: boolean; story: string };
   hidden?: boolean;
 }
 
@@ -58,15 +60,15 @@ export const SCENARIOS: Scenario[] = [
     desc: 'The four of you pooled everything for a patch of green country on the edge of the Vale, a long day\'s walk from Aurum. There is a shack, a wheat field, a well and a food store. The Concord taxes everything that grows on its land, and the Reavers want their share too.',
     squad: 'Freeholders', money: 1500,
     people: [
-      { role: 'worker', level: 6, loadout: 'drifters_resident', weapon: 'spear', kit: [['dustbread', 3]] },
-      { role: 'worker', level: 6, loadout: 'drifters_resident', weapon: 'cleaver', kit: [['dustbread', 3]] },
-      { role: 'worker', level: 6, loadout: 'drifters_resident', weapon: 'mining_pick', kit: [['dustbread', 3]] },
-      { role: 'worker', level: 6, loadout: 'drifters_resident', weapon: 'pipe_spear', kit: [['dustbread', 3]] },
+      { role: 'worker', level: 6, loadout: 'drifters_resident', weapon: 'spear', kit: [['dustbread', 3], ['bandages', 1]] },
+      { role: 'worker', level: 6, loadout: 'drifters_resident', weapon: 'cleaver', kit: [['dustbread', 3], ['bandages', 1]] },
+      { role: 'worker', level: 6, loadout: 'drifters_resident', weapon: 'mining_pick', kit: [['dustbread', 3], ['bandages', 1]] },
+      { role: 'worker', level: 6, loadout: 'drifters_resident', weapon: 'pipe_spear', kit: [['dustbread', 3], ['bandages', 1]] },
     ],
     start: { settlement: 'aurum', region: 'vale', off: [-900, 500] },
     homestead: true,
     firstSteps: 'Your claim: a shack, a wheat field, a well and a food store. Right-click the field with someone selected to <b>farm</b> it. <b>Aurum</b> is north-east (<b>M</b> for the map): real weapons for sale, and paid <b>work</b> on its barkeep\'s board. The Concord and the Reavers will both come for a share.',
-    items: [['building_mats', 30], ['wheat', 20], ['dustbread', 10], ['bandages', 6]],
+    items: [['building_mats', 30], ['wheat', 20], ['dustbread', 10], ['bandages', 2]],
   },
   {
     key: 'blades', name: 'Hired Blades', diff: 'Normal',
@@ -133,6 +135,11 @@ export const SCENARIOS: Scenario[] = [
     bounty: { concord: 3000 },
     firstSteps: 'Hardcoin, a free town, is just to the south-east: nobody there reads Concord posters, and its barkeep posts paid <b>work</b>. With 3,000 chits on your heads, keep clear of Concord towns and patrols, or pay a Concord guard off. The camps around Hardcoin are no place for two; the bandits who walk the roads in twos and threes are a fight you can win.',
     rel: { concord: -30, unchained: 20 },
+    // (three hundred chits hire nobody in Hardcoin: one who walked out of Stonegate before them asks for nothing)
+    ally: {
+      at: 'hardcoin', price: 0, level: 13, loadout: 'concord_guard', races: ['valefolk', 'duneborn'],
+      story: 'Stonegate garrison, same as you. I walked out a winter before you did, and I still wear the coat, because it is the only one I have. I have seen your faces on the posters. Anyone the Concord wants that badly, I would walk with. No pay. Just do not ask me to salute.',
+    },
   },
   {
     key: 'chainbound', name: 'Chain-Bound', diff: 'Very hard',
