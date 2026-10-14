@@ -96,6 +96,36 @@ export function welcomingTown(s: Site): boolean {
   return !S.W.playerChars().some((c) => (c.bounty[f] ?? 0) > 0);
 }
 
+const gatesOf = new WeakMap<object, Map<number, { x: number; z: number }[]>>();
+/** A walled town's gates (none for one without walls). */
+function gates(s: Site): { x: number; z: number }[] {
+  let m = gatesOf.get(S.W);
+  if (!m) gatesOf.set(S.W, (m = new Map()));
+  let list = m.get(s.id);
+  if (!list) { list = []; for (const o of S.W.objs.values()) if (o.kind === 'gate' && o.site === s.id) list.push({ x: o.x, z: o.z }); m.set(s.id, list); }
+  return list;
+}
+/**
+ * Where a "reach" goal points from a spot: the nearest town it names, and
+ * of a walled town the gate nearest the spot, just outside it, so the way
+ * there is the way in and not along the wall.
+ */
+export function reachPoint(t: Trigger, x: number, z: number): { x: number; z: number; site: Site; gate: boolean } | null {
+  if (t.k !== 'reach') return null;
+  let best: Site | null = null, bd = Infinity;
+  for (const s of sitesFor(t.site)) {
+    if (t.site === 'town' && !welcomingTown(s)) continue;
+    const d = Math.hypot(s.x - x, s.z - z);
+    if (d < bd) { bd = d; best = s; }
+  }
+  if (!best) return null;
+  let g: { x: number; z: number } | null = null, gd = Infinity;
+  for (const o of gates(best)) { const d = Math.hypot(o.x - x, o.z - z); if (d < gd) { gd = d; g = o; } }
+  if (!g) return { x: best.x, z: best.z, site: best, gate: false };
+  const ox = g.x - best.x, oz = g.z - best.z, od = Math.hypot(ox, oz) || 1;
+  return { x: g.x + (ox / od) * 6, z: g.z + (oz / od) * 6, site: best, gate: true };
+}
+
 /** Where a chain first sends you (its first "reach" goal), nearest to a point; null if it has none. */
 export function firstGoalSite(setKey: string, x: number, z: number): Site | null {
   const when = OBJECTIVES[setKey]?.goals.map((g) => g.when).find((w) => w.k === 'reach');
@@ -208,7 +238,7 @@ function complete(g: Objective) {
   recent.set(g.key, now());
   const note = g.reward ? give(g.reward) : '';
   if (note) rewardNote.set(g.key, note);
-  W.say(`${withKeys(g.text)}: done. ${g.done}${note ? ` (${note})` : ''}`, 'story', S.clock.t);
+  W.say(`${withKeys(g.text)}: done. ${withKeys(g.done)}${note ? ` (${note})` : ''}`, 'story', S.clock.t);
   uiSound('notify');
   if (set.goals.every((x) => st.done[x.key] !== undefined)) {
     st.finished = S.clock.t;
@@ -302,11 +332,25 @@ let nextText: HTMLSpanElement | null = null;
 /** "Win a fight", while it is open: the nearest band your people could beat, and which way (see beatableNear). */
 let aimText: HTMLSpanElement | null = null;
 let aimAt: { x: number; z: number } | null = null;
+/** "Reach ...", while it is open: the way in, a walled town's nearest gate (see reachPoint). */
+let reachText: HTMLSpanElement | null = null;
+let reachGoal: Trigger | null = null;
+let reachAt: { x: number; z: number } | null = null;
 function aimLine() {
+  if (reachText && reachGoal) {
+    const l = S.W.playerChars().find((c) => c.alive && c.up) ?? S.W.playerChars()[0];
+    const p = l ? reachPoint(reachGoal, l.x, l.z) : null;
+    reachAt = p;
+    const t = p ? `${p.gate ? `${p.site.name}'s gate` : p.site.name}, ${bearing(p.x, p.z)}` : '';
+    if (reachText.textContent !== t) reachText.textContent = t;
+    reachText.parentElement?.classList.toggle('aimed', !!p);
+  }
   if (!aimText) return;
   const b = beatableNear();
   aimAt = b;
-  const t = b ? `${b.n === 1 ? 'one' : b.n} ${b.name}, ${bearing(b.x, b.z)}: a fight you can win` : '';
+  // (one near, coming this way, or slower than your people; else only the safest about, which may run; else none)
+  const t = !b ? 'none near: bands walk the roads out of town'
+    : `${b.n === 1 ? 'one' : b.n} ${b.name}, ${bearing(b.x, b.z)}: ${b.why === 'safest' ? 'the safest fight about, if you can catch them' : 'a fight you can win'}`;
   if (aimText.textContent !== t) aimText.textContent = t;
   aimText.parentElement?.classList.toggle('aimed', !!b);
 }
@@ -352,6 +396,8 @@ function refresh() {
   }
   lastKey = key;
   aimText = null;
+  reachText = null;
+  reachGoal = null;
   root.style.display = visible ? '' : 'none';
   root.classList.toggle('fold', fold);
   root.innerHTML = '';
@@ -375,7 +421,7 @@ function refresh() {
       const done = st.done[g.key] !== undefined;
       if (done && !fresh.includes(g)) continue;
       const note = rewardNote.get(g.key);
-      const ack = g.done + (note ? ` (${note})` : '');
+      const ack = withKeys(g.done) + (note ? ` (${note})` : '');
       // a done row's fade carries on from where it was if the list is drawn again
       const style = done ? { animationDelay: `-${Math.round(t - recent.get(g.key)!)}ms` } : undefined;
       const row = h('div', { class: 'obj' + (done ? ' done' : ''), style }, h('i', { class: 'objmark' }), h('span', { class: 'objtext' }, withKeys(g.text)), done ? h('span', { class: 'objack' }, ack) : null);
@@ -385,6 +431,14 @@ function refresh() {
         row.appendChild(aimText);
         row.title = 'Look at them';
         row.onclick = (e) => { e.stopPropagation(); if (aimAt) frame(aimAt.x, aimAt.z, true); };
+      }
+      if (g.when.k === 'reach' && !done && !reachText) {
+        // pointed at the way in: a click looks at it
+        reachText = h('span', { class: 'objaim' });
+        reachGoal = g.when;
+        row.appendChild(reachText);
+        row.title = 'Look at the way in';
+        row.onclick = (e) => { e.stopPropagation(); if (reachAt) frame(reachAt.x, reachAt.z, true); };
       }
       list.appendChild(row);
     }

@@ -30,6 +30,7 @@
     "test:render": "tsx tools/qualitytest.ts && node tools/rendertest.mjs",
     "test:contracts": "tsx tools/contracttest.ts",
     "test:objectives": "tsx tools/objtest.ts",
+    "test:travel": "tsx tools/traveltest.ts",
     "map": "tsx tools/mapshot.ts",
     "artifact": "node tools/make-artifact.mjs"
   },

@@ -44,11 +44,11 @@ import { TIERS, TIER_REACH, STORY, CRISIS } from '../src/content/contracts';
 import { buyPrice, sellPrice, type Shop } from '../src/sim/shops';
 import {
   openJobs, boardFor, forgetBoards, takeContract, abandonContract, tickContracts, activeContracts, contractsState, dangerOf, whyNot, currentGoal, goalMarks, boardTownOf,
-  type Contract,
+  walkOf, FIRST_JOB_M, type Contract,
 } from '../src/sim/contracts';
 import { storyState, storyStates, setStoryStep, tickStories, storyViews } from '../src/sim/stories';
 import { crisisState, wakeCrisis, sendWave, tickCrisis } from '../src/sim/crisis';
-import { campLeft, findItem, siteById, sweepErrandFolk, roadRoute, routeLength, dangerAlong, dangerBetween } from '../src/sim/errands';
+import { campLeft, findItem, siteById, sweepErrandFolk, roadRoute, routeLength, dangerAlong, dangerBetween, noviceBand } from '../src/sim/errands';
 import { search } from '../src/sim/inspect';
 import type { Char } from '../src/sim/char';
 import type { Site } from '../src/world/terrain';
@@ -173,6 +173,18 @@ check('a board is drawn from the town\'s seed and the day: drawn again, it is th
 S.clock.t += DAY;
 const nextDay = openJobs(cr).map((c) => c.id + c.title + c.pay).join('|');
 check('...and the next day it is a new one', nextDay !== firstIds && boardFor(cr).day === S.clock.day, `${openJobs(cr).length} jobs on day ${S.clock.day}`);
+{
+  // the first job on every board is one a band of one or two just setting out can do: near, and rated Fair or better
+  const firsts = lawfulTowns.map((s) => boardFor(s).list[0]);
+  const forTwo = firsts.filter((c) => c.tier === 0 && dangerOf(c, noviceBand(2)).level <= 1 && walkOf(c) <= FIRST_JOB_M);
+  const forOne = firsts.filter((c) => dangerOf(c, noviceBand(1)).level <= 1);
+  const atCr = boardFor(cr).list[0];
+  check('every board\'s first job is short and rated Fair or better for a pair of beginners (and for one alone wherever the land has a beast that small: two towns in five, Crossroad among them)',
+    forTwo.length === firsts.length && forOne.length >= firsts.length * 0.4 && dangerOf(atCr).level <= 1,
+    `${forTwo.length}/${firsts.length} for two, ${forOne.length} for one; Crossroad: ${atCr.title}, ${dangerOf(atCr).word} for a new Wanderer, ${Math.round(walkOf(atCr))} m out`);
+  const names = firsts.filter((c) => c.kind === 'hunt').map((c) => c.e.who);
+  check('...and no two boards are after the same named beast that day', new Set(names).size === names.length, `${names.length} beasts, ${names.length - new Set(names).size} names twice`);
+}
 S.clock.t -= DAY;
 delete W.flags.contracts;
 
@@ -375,7 +387,7 @@ check('a job not done by its day fails, and costs what the board said', lj.state
 S.clock.t = DAY + 10 * HOUR;
 
 // ---------------------------------------------------------------- hunt: a named beast on the road
-const hunt = jobsOf('hunt').find((c) => !!c.e.species)!;
+const hunt = jobsOf('hunt').find((c) => !!c.e.species && !c.e.plain)!;
 raise(hunt.issuer);
 check('a beast hunt can be taken', takeContract(hunt, lead) === '');
 const hb = activeContracts().find((c) => c.id === hunt.id)!;
@@ -389,6 +401,23 @@ put(lead, hkeeper.x + 1.5, hkeeper.z);
 const m5 = W.money;
 talkT = talk(hkeeper, lead);
 check('...back at the board', talkT.pick('I\'ve finished a job for you.') && hb.state === 'done' && W.money === m5 + hb.pay, `+${W.money - m5}`);
+{
+  // a first job's beast is an ordinary one of its kind, as the board rated it
+  const easy = jobsOf('hunt').find((c) => !!c.e.plain)!;
+  const before = dangerOf(easy);
+  raise(easy.issuer);
+  const took = takeContract(easy, lead) === '';
+  const eb = activeContracts().find((c) => c.id === easy.id)!;
+  const q = eb?.e.whoId ? W.char(eb.e.whoId) : undefined;
+  const after = eb ? dangerOf(eb) : before;
+  check('a first job\'s beast is an ordinary one of its kind, and rates as the board said', took && !!q && q.animal === easy.e.species && after.level === before.level && Math.abs(after.ratio - before.ratio) < 0.25 * before.ratio,
+    `${easy.title}: ${before.word} (${before.ratio.toFixed(2)}) on the board, ${after.word} (${after.ratio.toFixed(2)}) out there`);
+  if (q) kill(q);
+  tickContracts(1.1);
+  const k2 = keeperOf(siteById(eb.from)!);
+  put(lead, k2.x + 1.5, k2.z);
+  talk(k2, lead).pick('I\'ve finished a job for you.');
+}
 
 // a band hunt, the leader carried in alive for half again
 const bandJob = jobsOf('hunt').find((c) => !!c.e.faction)!;

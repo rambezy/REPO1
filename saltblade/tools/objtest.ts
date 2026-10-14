@@ -27,8 +27,8 @@ import { makePerson } from '../src/sim/spawn';
 import { populateTown } from '../src/sim/populate';
 import { recruit } from '../src/sim/dialogue';
 import { payForGoods, payForSale, buyInto, sellInto, shopGrid } from '../src/sim/shops';
-import { tickRunaways, ESCAPE_M } from '../src/sim/crime';
-import { wantsFight } from '../src/sim/worldsim';
+import { tickRunaways, tickStealth, ESCAPE_M, SNEAK_QUIET } from '../src/sim/crime';
+import { wantsFight, beatableNear, spawn, SPECS } from '../src/sim/worldsim';
 import { makeItem } from '../src/sim/inventory';
 import { markHousesForSale, buyHouse } from '../src/sim/property';
 import { serialize, apply } from '../src/sim/save';
@@ -37,7 +37,7 @@ import { LI } from '../src/sim/body';
 import { SCENARIOS } from '../src/content/scenarios';
 import { OBJECTIVES, Trigger } from '../src/content/objectives';
 import { withKeys, keymap } from '../src/core/keys';
-import { beginObjectives, setupObjectives, tickObjectives, objectiveView, trackerNext, hideTracker } from '../src/ui/objectives';
+import { beginObjectives, setupObjectives, tickObjectives, objectiveView, trackerNext, hideTracker, reachPoint } from '../src/ui/objectives';
 import { currentGoal } from '../src/sim/contracts';
 import type { Char } from '../src/sim/char';
 
@@ -97,7 +97,7 @@ setupObjectives();
   const unknown = Object.values(OBJECTIVES).flatMap((s) => s.goals.map((g) => g.when.k)).filter((k) => !KINDS.includes(k));
   check('every trigger is one the tracker checks', unknown.length === 0, unknown.length ? `unknown: ${[...new Set(unknown)].join(', ')}` : `${KINDS.length} kinds`);
   // a key named in a goal (or a start's first steps) is the one bound, not a letter written in
-  const texts = [...Object.values(OBJECTIVES).flatMap((s) => s.goals.map((g) => g.text)), ...SCENARIOS.map((s) => s.firstSteps ?? '')];
+  const texts = [...Object.values(OBJECTIVES).flatMap((s) => s.goals.flatMap((g) => [g.text, g.done])), ...SCENARIOS.map((s) => s.firstSteps ?? '')];
   const fixed = texts.filter((t) => /\([A-Z]\)/.test(t) || /[{}]/.test(withKeys(t)));
   keymap.set('sneak', ['y']);
   const rebound = withKeys('Sneak ({sneak})');
@@ -180,9 +180,12 @@ check('...and the goal\'s reward lands in the pack', p.inv.count('bandages') + (
 
 // recruit: a drinker in the bar
 const drinker = [...W.chars.values()].find((c) => c.recruitable && c.site === crossroad.id && !c.cage)!;
+const stool = drinker.mem.using ? W.objs.get(drinker.mem.using) : undefined;
+const posed = `${drinker.mem.sit ? 'sitting' : 'standing'}${stool ? ` at a ${stool.def ?? stool.kind}` : ''}${drinker.act ? `, ${drinker.act}` : ''}`;
 recruit({ p, n: drinker, vars: {} });
 tick();
 check('a recruit completes "Recruit someone"', done().includes('recruit'), drinker.name);
+check('...and gets up from the bar to follow: off the stool, out of their pose', !drinker.mem.using && !drinker.mem.sit && drinker.act === null && (!stool || stool.user !== drinker.id), `was ${posed}`);
 
 // win: a starveling who picked the wrong wanderer
 const foe = makePerson(W, { faction: 'starvelings', role: 'bandit', level: 3, whole: true }, rng);
@@ -284,6 +287,22 @@ W.flags.objectives.done.reach = S.clock.t;
 const fightAfter = wantsFight();
 delete W.flags.objectives.done.reach;
 check('once "Win a fight" is the next goal, the road may bring one, even on the first, gentle day', !fightBefore && fightAfter);
+{
+  // the Wanderer's "Bandage a wound" comes before "Win a fight", and with no wound yet it waits on the fight
+  fresh('wanderer');
+  for (const k of ['reach', 'barkeep', 'deal', 'mine', 'sell_ore', 'recruit']) W.flags.objectives.done[k] = S.clock.t;
+  delete W.flags.objectives.done.bandage;
+  // (everyone whole for this, and as they were after)
+  const kept = W.playerChars().map((c) => [c, [...c.body.hp], [...c.body.bleed]] as const);
+  for (const c of W.playerChars()) for (let l = 0; l < 7; l++) { c.body.hp[l] = c.body.max[l]; c.body.bleed[l] = 0; }
+  const sound = W.playerChars().every((c) => !c.alive || !c.body.needsAid());
+  const unhurt = wantsFight();
+  p.body.bleed[LI.larm] = 0.1;
+  const hurt = wantsFight();
+  for (const [c, hp, bleed] of kept) for (let l = 0; l < 7; l++) { c.body.hp[l] = hp[l]; c.body.bleed[l] = bleed[l]; }
+  check('with nobody hurt, an open "Bandage a wound" waits on "Win a fight": the road may bring one; with a wound to bandage, it does not yet', sound && unhurt && !hurt, `unhurt ${unhurt}, hurt ${hurt}`);
+  fresh('deserters');
+}
 p.bounty.concord = 3000; tick();
 check('a price on your head leaves "Clear your names" open', open().includes('clear'));
 p.cage = 1; p.bounty.concord = 0; tick(); // arrested: the jailer wipes the bounty
@@ -308,8 +327,22 @@ p.mem.enslavedBy = 'chainhouse'; p.mem.slaveSite = cfield.id;
 const pastEdge = (m: number) => { put(p, cfield.x + cfield.r + m, cfield.z); tickRunaways(1.1); tick(); return Math.round(Math.hypot(p.x - cfield.x, p.z - cfield.z) - cfield.r); };
 const near = pastEdge(ESCAPE_M - 60);
 check('a runaway still within 300 m of Chainfield is not clear of it', open().includes('escape') && !!p.mem.slaveSite, `${near} m past the edge`);
+p.move = 'sneak';
 const far = pastEdge(ESCAPE_M + 15);
 check('300 m past its edge completes "Get clear of Chainfield"', done().includes('escape') && !p.mem.slaveSite, `${far} m past the edge`);
+const told = notices.filter((n) => /escaped/.test(n)).pop() ?? '';
+// (the sim writes the key as {sneak}; where a notice is shown it becomes the key as bound)
+check('a runaway who crept clear stands up to run, and is told the key to sneak again', p.move === 'run' && told.includes('{sneak} to sneak again') && withKeys(told).includes(`${withKeys('{sneak}')} to sneak again`), `${p.move}: ${withKeys(told)}`);
+// left sneaking with nothing about: they stand up and run after a while, with a word why
+{
+  const spot = nav.nearestOpen(cfield.x + cfield.r + ESCAPE_M + 400, cfield.z, 80)!;
+  put(p, spot[0], spot[1]); p.move = 'sneak'; p.order = null;
+  let about = 0; W.hash.near(p.x, p.z, 120, (o) => { if (o !== p) about++; });
+  const n0 = notices.length;
+  let t = 0; while (p.move === 'sneak' && t < 120) { tickStealth(0.5); t += 0.5; }
+  const said = notices.slice(n0).find((n) => /nobody about/.test(n)) ?? '';
+  check('sneaking with nobody about, they stand up and run within a minute, and are told so', p.move === 'run' && t >= SNEAK_QUIET && t <= SNEAK_QUIET + 1 && said.includes('{sneak}'), `${t} s, ${about} others near: ${withKeys(said)}`);
+}
 p.bounty = {}; delete p.mem.runawayT;
 const hideout = T.sites.find((s) => s.key === 'brokenchain' || s.settlement === 'brokenchain');
 if (hideout) { put(p, hideout.x, hideout.z); tick(); }
@@ -395,6 +428,66 @@ fresh('nothing');
   const data = JSON.parse(JSON.stringify(serialize()));
   const W3 = new World(); apply(data, W3);
   check('a hidden tracker stays hidden in the save', W3.flags.objectives?.hidden === true);
+}
+
+// walled towns: the Wanderer starts on the road out of a gate, "Reach" points at the nearest gate, and the walk in is a straight one
+{
+  const sc = SCENARIOS.find((x) => x.key === 'wanderer')!;
+  const [ox, oz] = sc.start.off!;
+  const at = nav.nearestOpen(crossroad.x + ox, crossroad.z + oz, 30)!;
+  const rp = reachPoint({ k: 'reach', site: 'crossroad' }, at[0], at[1]);
+  const bark = [...W.chars.values()].find((c) => c.role === 'barkeep' && c.site === crossroad.id)!;
+  const len = (a: [number, number], b: { x: number; z: number }) => { const pts = nav.fine(a[0], a[1], b.x, b.z, 60, 120000, false); let d = 0; if (!pts) return Infinity; for (let i = 2; i < pts.length; i += 2) d += Math.hypot(pts[i] - pts[i - 2], pts[i + 1] - pts[i - 1]); return d; };
+  const walk = len(at, bark), straight = Math.hypot(bark.x - at[0], bark.z - at[1]);
+  check('the Wanderer starts by a Crossroad gate, "Reach Crossroad" points at it, and the walk to the barkeep is nearly straight',
+    !!rp && rp.gate && Math.hypot(rp.x - at[0], rp.z - at[1]) < 120 && walk < straight * 1.35,
+    `gate ${rp ? Math.round(Math.hypot(rp.x - at[0], rp.z - at[1])) : '-'} m away; ${Math.round(walk)} m walked for ${Math.round(straight)} m straight`);
+  // the other way: from out past the wall between gates, it points at the nearest gate, not through the wall
+  const side = nav.nearestOpen(crossroad.x + 170, crossroad.z + 40, 30)!;
+  const rq = reachPoint({ k: 'reach', site: 'crossroad' }, side[0], side[1])!;
+  const gs = [...W.objs.values()].filter((o) => o.kind === 'gate' && o.site === crossroad.id);
+  const nearest = Math.min(...gs.map((g) => Math.hypot(g.x - side[0], g.z - side[1])));
+  check('...and from anywhere, it points at the gate nearest them', rq.gate && Math.abs(Math.hypot(rq.x - side[0], rq.z - side[1]) - nearest) < 8, `${gs.length} gates; nearest ${Math.round(nearest)} m`);
+}
+
+// "Win a fight" names, in order: a band within 300 m, then one coming this way, then one slower than your people
+// within 900 m (an attack order runs it down); failing all those, the safest fight about, and says so
+{
+  const spot = nav.nearestOpen(crossroad.x + 1500, crossroad.z + 900, 60)!;
+  put(p, spot[0], spot[1]);
+  const away = W.playerChars().filter((c) => c !== p && c.alive).map((c) => { const was: [number, number] = [c.x, c.z]; put(c, crossroad.x - 2500, crossroad.z - 2500); return [c, was] as const; });
+  const sv = SPECS.find((s) => s.key === 'starvelings')!;
+  const bands: Char[][] = [];
+  const band = (dx: number, dz: number, n: number, speed: number, toward: boolean) => {
+    const at = nav.nearestOpen(p.x + dx, p.z + dz, 30)!;
+    const q = spawn(sv, { x: at[0], z: at[1], route: [at[0], at[1]], cap: n, level: 3 })!;
+    const ms = q.members.map((id) => W.char(id)!);
+    for (const m of ms) { m.speed = speed; m.dir = toward ? Math.atan2(p.x - m.x, p.z - m.z) : Math.atan2(m.x - p.x, m.z - p.z); }
+    bands.push(ms);
+    return ms;
+  };
+  const down = (ms: Char[]) => { for (const m of ms) m.status = 'ko'; };
+  const near = band(250, 0, 1, 0, false), coming = band(0, 600, 1, 1.8, true), slower = band(-700, 0, 1, 1.5, false), quick = band(0, -800, 2, 6, false), lone = band(-600, -600, 1, 6, false);
+  band(1000, 0, 1, 1.8, true); // too far, whatever it does
+  const seen: string[] = [];
+  const look = () => { const b = beatableNear(); seen.push(b ? `${b.why} ${Math.round(b.d)} m` : 'none'); return b; };
+  const a1 = look(); down(near);
+  const a2 = look(); down(coming);
+  const a3 = look(); down(slower);
+  const a4 = look(); down(lone);
+  const a5 = look(); down(quick);
+  const a6 = look();
+  check('"Win a fight" prefers a band near, then one coming, then one slower than yours, then the safest about (the lone runner before the pair); nothing past 900 m',
+    a1?.why === 'near' && a2?.why === 'coming' && a3?.why === 'slower' && a4?.why === 'safest' && a4.n === 1 && a5?.why === 'safest' && a5.n === 2 && !a6, seen.join(' | '));
+  // nor a band that means no harm to yours: the Scorched Hand, say, who want tribute and are the law in Mudwater
+  const sh = SPECS.find((s) => s.key === 'scorched')!;
+  const at = nav.nearestOpen(p.x + 200, p.z, 30)!;
+  const q = spawn(sh, { x: at[0], z: at[1], route: [at[0], at[1]], cap: 1, level: 3 })!;
+  const named = beatableNear();
+  check('...nor a band that means yours no harm (the Scorched Hand, at peace with you)', !named && !W.rel.hostile('player', 'scorched'), named ? `${named.why}: ${named.name}` : 'none');
+  for (const id of q.members) { const m = W.char(id); if (m) { m.status = 'dead'; W.removeChar(m); } }
+  for (const ms of bands) for (const m of ms) { m.status = 'dead'; W.removeChar(m); }
+  for (const [c, was] of away) put(c, was[0], was[1]);
 }
 
 const failed = results.filter((x) => !x[1]);

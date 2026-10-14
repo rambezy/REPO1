@@ -71,6 +71,7 @@ export function findEnemy(c: Char, radius: number): Char | null {
     if (onlyUp && o.status !== 'up') return;
     if (o.shackled && o.mem.enslavedBy === c.faction && !((o.bounty[c.faction] ?? 0) > 0)) return; // their own chained slaves are worked, not fought (a runaway is another matter)
     if (o.mem.grace?.[c.faction] > S.clock.t && !S.W.rel.hostile(c.faction, o.faction)) return; // fined and turned loose: the law leaves them be a while
+    if (heldBy(o, c.faction) || heldBy(c, o.faction)) return; // their catch, down or just come round, and the catch, dazed: each lets the other be (see deliverCaptive)
     if (!hostile(c, o)) return;
     if (forsaken(c, o)) return;
     if (!canSee(c, o) && o.lastHitBy !== c.id && c.lastHitBy !== o.id) return;
@@ -129,6 +130,12 @@ export function fight(c: Char, t: Char, dt: number) {
 
 /** Seconds of running after someone, with no blow struck either way, before giving it up. */
 export const CHASE_GIVE_UP = 30;
+/** An attack order's chase is judged in stretches this long (seconds)... */
+const CHASE_WINDOW = 5;
+/** ...and one that closes the gap by less than this (metres) brought them no nearer. */
+const CHASE_GAIN = 1;
+/** Farther off than this (metres), a stretch that brings them nearer than ever wipes the slate; nearer, a target kept just out of reach (round a wall) is not being caught. */
+const CHASE_NEAR = 10;
 /** How far a chase may draw one of the world's people from their own: the leader they keep with, their home, or where the fight began. */
 export const LEASH = 60;
 /** ...and how far the law runs a wanted man: the length of a town. */
@@ -143,15 +150,29 @@ const lawAfter = (c: Char, t: Char) => (c.role === 'guard' || c.role === 'patrol
  * ledge), could be chased for ever. Time counts while the target is on the move or the chaser is
  * getting no nearer.
  */
-function outrun(c: Char, t: Char, dt: number): boolean {
+function outrun(c: Char, t: Char, dt: number, ordered = false): boolean {
   const B = c.brain;
   const d = dist(c, t);
-  if (B.chase !== t.id) { B.chase = t.id; B.chaseT = 0; B.chaseBest = d; }
+  if (B.chase !== t.id) { B.chase = t.id; B.chaseT = 0; B.chaseBest = d; B.chaseMark = d; B.chaseMarkT = 0; B.chaseFloor = d; }
   const struck = Math.max(t.lastHitBy === c.id ? t.lastHitT : -1e9, c.lastHitBy === t.id ? c.lastHitT : -1e9);
-  if (S.time - struck < 1) { B.chaseT = 0; B.chaseBest = d; }
+  if (S.time - struck < 1) { B.chaseT = 0; B.chaseBest = d; B.chaseMark = d; B.chaseMarkT = 0; B.chaseFloor = d; }
   else if (d > reach(c)) {
-    // a runner getting away, or a chaser stood stuck no nearer (walking a long way round is still chasing)
-    if (t.speed > 1 || (d > B.chaseBest - 0.05 && c.speed < 0.5)) B.chaseT += dt;
+    if (ordered) {
+      // told to attack someone, your people keep after them while they gain on them, however far (a band
+      // walking off is caught up with): only stretches of a few seconds that bring them no nearer count, so
+      // a runner as quick as they are, or one they cannot get at, is still let go. (A fight they took up
+      // themselves is let go as before: they are not to wander off after every runner.)
+      // (a stretch that brings them nearer than they have ever been, while still some way off, wipes the slate:
+      // a long chase with a detour or two is still closing; one round and round a wall, close by, is not)
+      B.chaseMarkT = (B.chaseMarkT ?? 0) + dt;
+      if (B.chaseMarkT >= CHASE_WINDOW) {
+        const floor = B.chaseFloor ?? B.chaseMark ?? d;
+        if (d < floor - CHASE_GAIN && d > CHASE_NEAR) B.chaseT = 0;
+        else if (d > (B.chaseMark ?? d) - CHASE_GAIN) B.chaseT += B.chaseMarkT;
+        B.chaseFloor = Math.min(floor, d);
+        B.chaseMark = d; B.chaseMarkT = 0;
+      }
+    } else if (t.speed > 1 || (d > B.chaseBest - 0.05 && c.speed < 0.5)) B.chaseT += dt; // a runner getting away, or a chaser stood stuck no nearer (walking a long way round is still chasing)
     B.chaseBest = Math.min(B.chaseBest, d);
   }
   return B.chaseT > CHASE_GIVE_UP;
@@ -277,7 +298,7 @@ function playerAI(c: Char, dt: number, think: boolean) {
   if (order && order.k === 'attack') {
     const t = S.W.char(order.id);
     if (!t || !t.alive || (t.status !== 'up' && !B.finish)) { c.order = null; }
-    else if (t.up && outrun(c, t, dt)) { c.order = null; letGo(c, t); gaveUp(c, t); }
+    else if (t.up && outrun(c, t, dt, true)) { c.order = null; letGo(c, t); gaveUp(c, t); }
     else { fight(c, t, dt); return; }
   }
   const enemy = S.W.char(B.enemy);
@@ -467,7 +488,7 @@ function postFight(c: Char): boolean {
   const f = FACTION[c.faction];
   let best: Char | null = null, bd = 30 * 30, kind = '';
   S.W.hash.near(c.x, c.z, 30, (o, d2) => {
-    if (o === c || o.carriedBy || o.cage || o.status === 'dead') return;
+    if (o === c || o.carriedBy || o.cage || o.status === 'dead' || heldBy(o, c.faction)) return;
     if (o.status === 'ko' || o.body.bleeding() > 0.15) {
       if (o.faction === c.faction && o.body.needsAid() && findMedkit(c, o.robot, o) && d2 < bd) { best = o; bd = d2; kind = 'aid'; return; }
       if (o.status !== 'ko') return;
@@ -564,6 +585,8 @@ function runTask(c: Char, dt: number): boolean {
 
 export function pickUp(c: Char, o: Char) {
   if (c.carrying || o.carriedBy) return false;
+  // carried off by anyone else (a rescue, another catch), the catch is nobody's any more
+  if (o.mem.heldBy && o.mem.heldBy !== c.faction) { delete o.mem.heldBy; delete o.mem.heldUntil; }
   c.carrying = o.id;
   o.carriedBy = c.id;
   o.path = null;
@@ -588,9 +611,15 @@ function captureDestination(c: Char, kind: string, o: Char): { x: number; z: num
     const w = workSpot(site!.id, c.x, c.z);
     if (w) return { x: w.x, z: w.z, site: site!.id };
   }
-  // aim for a cage in that site if there is one
-  const cage = findFreeCage(site!.id, site!.x, site!.z);
+  // aim for a cage in that site if there is one (the Mawkin pen only yours: anyone else would starve in it)
+  const cage = kind === 'eat' && o.faction !== 'player' ? null : findFreeCage(site!.id, site!.x, site!.z);
   if (cage) return { x: cage.x, z: cage.z, site: site!.id };
+  if (kind === 'eat') {
+    // no pen: left at the camp's edge, on the side they were brought in by, where coming round is a chance
+    const dx = c.x - site!.x, dz = c.z - site!.z, d = Math.hypot(dx, dz) || 1, r = Math.max(10, site!.r * 0.9);
+    const p = S.nav.nearestOpen(site!.x + (dx / d) * r, site!.z + (dz / d) * r, 12);
+    if (p) return { x: p[0], z: p[1], site: site!.id };
+  }
   return { x: site!.x, z: site!.z, site: site!.id };
 }
 
@@ -680,8 +709,18 @@ export function findFreeCage(siteId: number, x: number, z: number) {
 function deliverCaptive(c: Char, o: Char, kind: string, siteId = 0) {
   dropCarried(c);
   const site = S.T.sites.find((s) => s.id === siteId) ?? S.T.nearestSite(c.x, c.z) ?? null;
-  const cage = kind === 'eat' ? null : findFreeCage(0, c.x, c.z);
+  const cage = kind === 'eat' && o.faction !== 'player' ? null : findFreeCage(kind === 'eat' ? site?.id ?? 0 : 0, c.x, c.z);
   const cell = cage && Math.hypot(cage.x - c.x, cage.z - c.z) < 8 ? cage : null;
+  if (kind === 'eat') {
+    // the catch is theirs now: penned if the camp keeps a pen (a lock can be worked from inside), else
+    // left where it fell, not to be carried about again; it is let be a while after it wakes (see heldBy)
+    const first = o.mem.heldBy !== c.faction || (o.mem.heldUntil !== undefined && S.clock.t >= o.mem.heldUntil);
+    o.mem.heldBy = c.faction;
+    delete o.mem.heldUntil;
+    if (cell && o.status !== 'dead') { cell.occupant = o.id; o.cage = cell.id; o.x = cell.x; o.z = cell.z; o.mem.prisonerOf = c.faction; }
+    if (first && o.faction === 'player') S.fx.notice(`${o.name} has been dragged off by the ${FACTION[c.faction]?.short ?? 'enemy'}${o.cage ? ' and penned' : ''}.`, 'bad');
+    return;
+  }
   if (kind === 'capture') {
     if (!notForChains(o)) { enslave(o, c.faction, site); return; }
     // a name worth something, or a lord: held in a cage for whoever comes for them, or let go
@@ -715,7 +754,18 @@ function deliverCaptive(c: Char, o: Char, kind: string, siteId = 0) {
     }
     return;
   }
-  if (kind === 'eat' && o.faction === 'player') S.fx.notice(`${o.name} has been dragged off by the ${FACTION[c.faction]?.short ?? 'enemy'}.`, 'bad');
+}
+
+/**
+ * Carried off by the Mawkin (or their like): theirs while they are down, so nobody carries them
+ * about again, and let be for an hour after they come round (stamped as they wake: see health),
+ * a chance to slip away. Carried off by anyone else, they are nobody's (see pickUp).
+ */
+export function heldBy(o: Char, faction: string): boolean {
+  if (o.mem.heldBy !== faction) return false;
+  // down and not come round since the catch, or still within the hour: a fall long after is a fresh catch
+  if (o.status !== 'up') return o.mem.heldUntil === undefined || S.clock.t < o.mem.heldUntil;
+  return o.mem.heldUntil !== undefined && S.clock.t < o.mem.heldUntil;
 }
 
 const RAGE_LINES = ['Red in the blood!', 'Can\'t feel a thing!', 'Come on, then! COME ON!', 'Nothing hurts! NOTHING!', 'I\'ll pull your arms off!'];

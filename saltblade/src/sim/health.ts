@@ -3,7 +3,7 @@ import { Char } from './char';
 import { Body, LI, LIMB_NAMES } from './body';
 import { RACE } from '../content/races';
 import { ITEM } from '../content/items';
-import { RATE } from './clock';
+import { RATE, HOUR } from './clock';
 import { S } from './ctx';
 import { train } from './train';
 import { makeItem, type Grid, type Item } from './inventory';
@@ -132,6 +132,8 @@ export function tickHealth(c: Char, dt: number) {
       if (margin > 4) {
         c.status = 'up';
         c.act = null;
+        // someone's catch has an hour's grace from now (see ai's heldBy), once per catch, not after every fall
+        if (c.mem.heldBy && c.mem.heldUntil === undefined) c.mem.heldUntil = S.clock.t + HOUR;
         if (c.faction === 'player') S.W.say(`${c.name} gets back up.`, 'info', S.clock.t);
       }
     }

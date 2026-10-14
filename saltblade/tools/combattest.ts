@@ -293,6 +293,49 @@ const runAt = (c: Char, speed: number) => { let best = 0, bd = Infinity; for (le
   clearArena();
 }
 {
+  // ...but someone walking off at a steady pace that a runner gains on is caught up with, however far:
+  // the order is kept while it gains (the band the goal tracker names, walking its round)
+  const a = person('player', 'player', 0, 0, { loadout: 'merc' });
+  const b = person('drifters', 'resident', 60, 0);
+  b.combatMode = 'passive';
+  a.order = { k: 'attack', id: b.id };
+  const said: string[] = [], notice = S.fx.notice;
+  S.fx.notice = (text: string) => { said.push(text); };
+  const pace = 2.4;
+  let t = 0;
+  while (t < 120 && a.order && b.lastHitBy !== a.id) {
+    simStep(dt, { x: a.x, z: a.z }); tickSquads(dt);
+    if (b.lastHitBy !== a.id) { b.x += pace * dt; b.y = T.heightAt(b.x, b.z); b.speed = pace; b.path = null; }
+    t += dt;
+  }
+  S.fx.notice = notice;
+  check('an attack order on someone walking off more slowly is kept till they are caught', b.lastHitBy === a.id && !said.some((x) => /gave up the chase/.test(x)), `${a.moveSpeed('run').toFixed(1)} m/s after ${pace} m/s from 60 m: ${b.lastHitBy === a.id ? `caught after ${t.toFixed(0)} s` : a.order ? 'still at it' : 'given up'}`);
+  clearArena();
+}
+{
+  // ...and one who stops and starts (fifteen seconds a little quicker than the runner, ten at a walk) is still being
+  // closed on: the stretches that bring the runner nearer than ever wipe out the ones that do not, so a long chase
+  // is not given up while it closes, though more than half a minute of it gains nothing
+  const a = person('player', 'player', 0, 0, { loadout: 'merc' });
+  const b = person('drifters', 'resident', 50, 0);
+  b.combatMode = 'passive';
+  a.order = { k: 'attack', id: b.id };
+  const said: string[] = [], notice = S.fx.notice;
+  S.fx.notice = (text: string) => { said.push(text); };
+  const quick = a.moveSpeed('run') * 1.25, slow = 1;
+  let t = 0;
+  while (t < 200 && a.order && b.lastHitBy !== a.id) {
+    b.knockT = 1; // (it goes only where it is put)
+    simStep(dt, { x: a.x, z: a.z }); tickSquads(dt);
+    const pace = t % 25 < 15 ? quick : slow;
+    if (b.lastHitBy !== a.id) { b.x += pace * dt; b.y = T.heightAt(b.x, b.z); b.speed = pace; b.path = null; }
+    t += dt;
+  }
+  S.fx.notice = notice;
+  check('an attack order on someone who stops and starts is kept while it closes, past half a minute of stretches gaining nothing', b.lastHitBy === a.id && t > 45 && !said.some((x) => /gave up the chase/.test(x)), `${a.moveSpeed('run').toFixed(1)} m/s after ${quick.toFixed(1)}/${slow} m/s by turns from 50 m: ${b.lastHitBy === a.id ? `caught after ${t.toFixed(0)} s` : a.order ? 'still at it' : `given up after ${t.toFixed(0)} s`}`);
+  clearArena();
+}
+{
   // ...and an order on someone who cannot be got at, standing in a pen with no way in, is given up too
   const a = person('player', 'player', 0, 0, { loadout: 'merc' });
   const b = person('drifters', 'resident', 12, 0);

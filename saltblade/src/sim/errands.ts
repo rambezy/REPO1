@@ -48,6 +48,8 @@ export interface Errand {
   faction?: string;
   size?: number;
   level?: number;
+  /** a quarry that is an ordinary one of its kind, not the worst of them (an easy first job) */
+  plain?: boolean;
   /** what a band carries, a few each */
   loot?: string;
   /** the squad brought in for it */
@@ -91,6 +93,16 @@ export function rate(t: number, band: Band = playerBand()): Rating {
   let level = 0;
   for (let i = 0; i < DANGER_AT.length; i++) if (ratio >= DANGER_AT[i]) level = i;
   return { level, ...DANGER[level], ratio };
+}
+
+let novice: Band | undefined;
+/** A band just setting out: `n` of the people a new game starts with (as the Wanderer comes). The first job on a board is one they can do. */
+export function noviceBand(n = 1): Band {
+  if (!novice) {
+    const c = makePerson(new World(), { faction: 'drifters', role: 'merc', level: 8, loadout: 'drifters_wanderer', whole: true }, new RNG(hash3(8, 77, 5)));
+    novice = { n: 1, power: c.power(), level: (c.sk[SK.melee_atk] + c.sk[SK.melee_def] + c.sk[SK.toughness] + c.sk[SK.strength] + c.sk[SK.dexterity]) / 5 };
+  }
+  return { n, power: novice.power * n, level: novice.level };
 }
 
 const powers = new Map<string, number>();
@@ -373,7 +385,8 @@ export function spawnQuarry(e: Errand, owner: string): boolean {
   lead.name = e.who ?? lead.name;
   lead.title = e.species ? '' : e.title ?? '';
   lead.mem.errand = owner;
-  if (lead.animal) {
+  if (lead.animal && e.plain) { /* an ordinary beast: as it comes */ }
+  else if (lead.animal) {
     for (let l = 0; l < 7; l++) { lead.body.max[l] = Math.round(lead.body.max[l] * BOSS_HP); lead.body.hp[l] = lead.body.max[l]; }
     lead.body.bloodMax = Math.round(lead.body.bloodMax * BOSS_HP); lead.body.blood = lead.body.bloodMax;
     for (let k = 0; k < lead.sk.length; k++) lead.sk[k] = Math.min(100, lead.sk[k] * BOSS_SKILL);

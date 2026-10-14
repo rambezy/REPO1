@@ -20,8 +20,8 @@ import { buildTown } from '../src/world/towns';
 import { buildSite } from '../src/world/sites';
 import { SETTLEMENT } from '../src/content/layout';
 import { populateTown } from '../src/sim/populate';
-import { enslave } from '../src/sim/ai';
-import { knockOut } from '../src/sim/health';
+import { enslave, heldBy, pickUp } from '../src/sim/ai';
+import { knockOut, dropCarried } from '../src/sim/health';
 import { Squad } from '../src/sim/squad';
 import { makePerson } from '../src/sim/spawn';
 import { SK } from '../src/sim/skills';
@@ -233,6 +233,68 @@ step(2);
 check('a caged slave from an older save is let out to the fields', !k.cage && !c3.occupant && k.shackled && k.mem.slaveSite === cf.id && fieldDist(k) < 30, `${fieldDist(k).toFixed(0)} m from a field`);
 const all = [p, k].map((c) => captivity(c));
 check('no state leaves everyone with nothing: each is free, passes, or has an order', all.every((c) => c.kind === 'free' || c.passes || !!c.order), all.map((c) => c.kind).join(', '));
+
+// ---------------------------------------------------------------- the Mawkin's catch: carried home once, told once, never carried about again
+{
+  const camp = T.sites.find((s) => s.kind === 'camp_mawkin')!;
+  const pens = [...W.objs.values()].filter((o) => o.kind === 'cage' && o.site === camp.id);
+  const msq = new Squad(); msq.faction = 'mawkin'; msq.kind = 'camp'; msq.name = 'Mawkin'; W.addSquad(msq);
+  const m = makePerson(W, { faction: 'mawkin', role: 'bandit', level: 30, whole: true }, rng);
+  W.moveToSquad(m, msq);
+  const at = { x: camp.x, z: camp.z };
+  /** One of yours (or `who`) knocked out beside a Mawkin outside the camp; steps until they are up again, or `until` holds (or `max` s). */
+  const caught = (max: number, who?: Char, until?: (v: Char) => boolean) => {
+    const v = who ?? mine(camp.x + camp.r + 30, camp.z);
+    if (who) { v.x = camp.x + camp.r + 30; v.z = camp.z; v.y = T.heightAt(v.x, v.z); }
+    m.x = v.x + 3; m.z = v.z; m.y = T.heightAt(m.x, m.z); m.homeX = camp.x; m.homeZ = camp.z; m.brain = {};
+    v.body.hp[1] = -6; knockOut(v);
+    const said0 = notices.filter((n) => /dragged off by the Mawkin/.test(n)).length;
+    let pickups = 0, was = false, t = 0, woke = -1;
+    for (; t < max && (v.status !== 'up' || t < 5) && !until?.(v); t += 0.1) { simStep(0.1, at); tickSquads(0.1); const now = !!v.carriedBy; if (now && !was) pickups++; was = now; }
+    if (v.status === 'up') woke = S.clock.t;
+    return { v, pickups, said: notices.filter((n) => /dragged off by the Mawkin/.test(n)).length - said0, t, woke };
+  };
+  // the camp's pens all taken: the catch is left lying where it was carried, and let be
+  for (const o of pens) o.occupant = -1;
+  const a = caught(1500);
+  check('the Mawkin carry their catch home once, and it is said once', a.pickups === 1 && a.said === 1, `${a.pickups} pick-up${a.pickups === 1 ? '' : 's'}, ${a.said} notice${a.said === 1 ? '' : 's'} in ${a.t.toFixed(0)} s`);
+  const fromMiddle = Math.hypot(a.v.x - camp.x, a.v.z - camp.z);
+  check('...and with no pen free, the catch comes round where it was left: at the camp\'s edge, not by its fire', a.v.status === 'up' && !a.v.cage && !a.v.carriedBy && fromMiddle > camp.r * 0.6 && fromMiddle < camp.r * 1.3, `${a.v.status}, ${fromMiddle.toFixed(0)} m from the camp's middle (its edge at ${camp.r.toFixed(0)} m)`);
+  check('...and the hour of grace runs from waking', a.v.mem.heldUntil !== undefined && Math.abs(a.v.mem.heldUntil - HOUR - a.woke) <= 0.2 * HOUR, `${a.v.mem.heldUntil === undefined ? 'none' : ((a.v.mem.heldUntil - a.woke) / HOUR).toFixed(2) + ' h'}`);
+  const hit0 = a.v.lastHitT;
+  for (let i = 0; i < 300; i++) { simStep(0.1, at); tickSquads(0.1); }
+  check('...and is let be a while after waking, a chance to slip away', a.v.lastHitT === hit0 && a.v.status === 'up', `hit since: ${a.v.lastHitT !== hit0}; the Mawkin was hit by ${m.lastHitBy === a.v.id ? 'them' : m.lastHitBy}, they by ${a.v.lastHitBy === m.id ? 'the Mawkin' : a.v.lastHitBy}; their enemy ${a.v.brain.enemy}, order ${a.v.order?.k}`);
+  S.clock.t = a.v.mem.heldUntil! + 1;
+  check('...and after it, the hold is gone: the Mawkin may take them again', !heldBy(a.v, 'mawkin'));
+  // and they do: a fall beside a Mawkin long after is a fresh catch, carried home and told again (the old mark is no shield)
+  const again = caught(1500, a.v);
+  check('...and a later fall beside a Mawkin is a fresh catch, carried home and told again', again.pickups === 1 && again.said === 1, `${again.pickups} pick-up${again.pickups === 1 ? '' : 's'}, ${again.said} notice${again.said === 1 ? '' : 's'}`);
+  a.v.x = camp.x + 3000; a.v.z = camp.z; // (out of the way)
+  // rescued before they wake: carried off by one of yours, the catch is nobody's (no hold left to leak into later days)
+  {
+    const r = caught(900, undefined, (v) => heldBy(v, 'mawkin') && !v.carriedBy);
+    const held = heldBy(r.v, 'mawkin') && r.v.status !== 'up';
+    const friend = mine(r.v.x + 1, r.v.z);
+    pickUp(friend, r.v);
+    check('a catch carried off by one of yours before it wakes is nobody\'s any more', held && r.v.mem.heldBy === undefined && !heldBy(r.v, 'mawkin'), `held before ${held}, after ${r.v.mem.heldBy ?? 'none'}`);
+    dropCarried(friend);
+    r.v.x = camp.x + 3100; friend.x = camp.x + 3100;
+  }
+  // a pen free: the catch is penned, and the card offers the lock from inside
+  for (const o of pens) o.occupant = 0;
+  if (pens.length) {
+    const b = caught(400);
+    const told = notices.filter((n) => /dragged off by the Mawkin/.test(n)).pop() ?? '';
+    check('with a pen free, the catch is penned, told once', !!b.v.cage && b.pickups === 1 && b.said === 1 && /penned/.test(told), `caged ${!!b.v.cage}, ${b.pickups} pick-ups, ${b.said} notices: ${told}`);
+    check('...and the card offers the lock from inside', captivity(b.v).kind === 'caged' && captivity(b.v).order?.k === 'lockpick', captivity(b.v).text);
+    // someone not yours, though: the pens are for yours (anyone else would starve in one), so left at the edge
+    const npc = makePerson(W, { faction: 'drifters', role: 'wanderer', level: 5, whole: true }, rng);
+    const free0 = pens.filter((o) => !o.occupant).length;
+    const n = caught(900, npc, (v) => heldBy(v, 'mawkin') && !v.carriedBy);
+    const nd = Math.hypot(npc.x - camp.x, npc.z - camp.z);
+    check('a catch not of yours is never penned: left at the camp\'s edge, pens kept free', heldBy(npc, 'mawkin') && !npc.cage && pens.filter((o) => !o.occupant).length === free0 && nd > camp.r * 0.6 && nd < camp.r * 1.3, `caged ${!!npc.cage}, ${nd.toFixed(0)} m from the middle, ${free0} pens free before and ${pens.filter((o) => !o.occupant).length} after`);
+  }
+}
 
 const failed = results.filter((x) => !x[1]);
 console.log(`\n${results.length - failed.length}/${results.length} checks passed.`);

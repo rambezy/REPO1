@@ -19,6 +19,7 @@ import { taxFor } from './raids';
 import { UNIQUE_BY_KEY, uniqueReady } from './uniques';
 import { PIT_TIERS, startBout, boutRunning, tierOpen } from './arena';
 import { WORK_CHOICES, WORK_NODES, contractTree } from './contracts';
+import { leaveFurniture } from './use';
 
 export interface DCtx { p: Char; n: Char; vars: Record<string, any>; }
 export interface DChoice { t: string | ((c: DCtx) => string); next?: string; if?: (c: DCtx) => boolean; fx?: (c: DCtx) => void | string; end?: boolean; }
@@ -40,6 +41,10 @@ export function recruit(c: DCtx) {
   n.dirty = true;
   n.brain = {};
   n.order = null;
+  // up off the bar stool and out of whatever they were at: they follow you now
+  leaveFurniture(n);
+  n.mem.sit = false;
+  n.act = null;
   S.W.moveToSquad(n, sq);
   S.W.say(`${n.name} joined ${S.W.factionName}.`, 'good', S.clock.t);
   S.fx.notice(`${n.name} has joined you.`, 'good');

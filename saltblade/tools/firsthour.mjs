@@ -84,6 +84,19 @@ if (what === 'starts' || what === 'all') {
       const items = await page.evaluate(() => [...document.querySelectorAll('.ctxmenu .ctxitem')].map((e) => e.textContent.trim()));
       check('chainbound: right-clicking yourself offers "Pick my shackles"', items.some((t) => /Pick my shackles/.test(t)), items.join(' | ') || 'no menu');
       await page.keyboard.press('Escape');
+      // shackles picked while the "Shackles" card waits its turn behind the start cards: it is dropped, not shown late, and can come again
+      const queued = await page.waitForFunction(() => JSON.parse(localStorage.getItem('sb-hints') ?? '[]').includes('shackles'), null, { timeout: 120000 }).then(() => true).catch(() => false);
+      await page.evaluate(() => { for (const c of __sb.G.W.playerChars()) c.shackled = false; });
+      const titles = [];
+      for (let i = 0; i < 8; i++) {
+        const tt = await page.waitForFunction(() => document.querySelector('.hintbox .hinttitle')?.textContent || null, null, { timeout: 30000 }).then((h) => h.jsonValue()).catch(() => null);
+        if (!tt) break;
+        titles.push(tt);
+        await page.evaluate(() => document.querySelector('.hintbox')?.click());
+        await stepped(1);
+      }
+      const forgot = await page.evaluate(() => !JSON.parse(localStorage.getItem('sb-hints') ?? '[]').includes('shackles'));
+      check('chainbound: a card gone stale in the queue is dropped (shackles picked before its turn)', queued && !titles.includes('Shackles') && forgot, `queued ${queued}, then shown: ${titles.join(' | ') || 'none'}; forgotten ${forgot}`);
     }
   }
 }

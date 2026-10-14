@@ -8,7 +8,7 @@ import { input } from './input';
 
 export type ActionId =
   | 'pan_up' | 'pan_down' | 'pan_left' | 'pan_right' | 'rotate_left' | 'rotate_right' | 'tilt_up' | 'tilt_down' | 'follow'
-  | 'pause' | 'speed1' | 'speed2' | 'speed3' | 'speed4'
+  | 'pause' | 'speed1' | 'speed2' | 'speed3' | 'speed4' | 'travel'
   | 'select_all' | 'sneak' | 'walk' | 'hold' | 'drop' | 'next_squad'
   | 'char' | 'build' | 'research' | 'map' | 'factions' | 'log' | 'journal' | 'codex' | 'back'
   | 'quicksave' | 'quickload' | 'perf' | 'fullscreen' | 'build_rotate';
@@ -50,6 +50,7 @@ export const ACTIONS: ActionDef[] = [
   { id: 'speed2', name: 'Fast', group: 'Time', keys: ['@Digit2'], row: 'speed' },
   { id: 'speed3', name: 'Faster', group: 'Time', keys: ['@Digit3'], row: 'speed' },
   { id: 'speed4', name: 'Fastest', group: 'Time', keys: ['@Digit4'], row: 'speed' },
+  { id: 'travel', name: 'Travel speed (15× on a long walk, back to 1× when anything happens)', group: 'Time', keys: ['@Digit5'] },
   { id: 'select_all', name: 'Select everyone', group: 'Squad', keys: ['Ctrl+a'] },
   { id: 'sneak', name: 'Sneak', group: 'Squad', keys: ['t'] },
   { id: 'walk', name: 'Walk instead of run', group: 'Squad', keys: ['r'] },

@@ -164,7 +164,8 @@ async function start() {
   // the next frame is asked for before this one runs, so no error can stop the loop
   const frame = (now: number) => {
     requestAnimationFrame(frame);
-    const dt = Math.max(0, Math.min(0.1, (now - last) / 1000));
+    frameGap = Math.max(0, now - last);
+    const dt = Math.min(0.1, frameGap / 1000);
     last = now;
     try { step(dt); } catch (e) { report(e, 'The main loop'); }
   };
@@ -187,6 +188,8 @@ function drips(dt: number) {
 
 const perf = { sim: 0, views: 0, render: 0, frame: 0, fps: 60, pop: 0, chars: 0, structs: 0, terrain: 0, props: 0, misc: 0 };
 const ema = (a: number, b: number) => a + (b - a) * 0.05;
+/** real ms between frames, unclamped, and its average: F3's fps (the sim's dt is clamped to 0.1 s, which would floor it at 10) */
+let frameGap = 0, gapAvg = 1000 / 60;
 
 /** Where the sim keeps detailed time this frame: the camera's focus. */
 let focus = { x: 0, z: 0 };
@@ -273,7 +276,8 @@ function step(dt: number) {
   perf.render = ema(perf.render, t3 - t2);
   if (!G.glLost) guard(PART.labels, labels, dt);
   perf.frame = ema(perf.frame, performance.now() - t0);
-  if (dt > 0) perf.fps = ema(perf.fps, 1 / dt);
+  // (a gap of more than five seconds is the tab put away, not a frame)
+  if (frameGap > 0 && frameGap < 5000) { gapAvg = ema(gapAvg, frameGap); perf.fps = 1000 / gapAvg; }
 }
 
 const charViews = (dt: number) => G.charViews.update(dt * (G.speed ? 1 : 0.0001), G.W, G.R.camera.position, G.cam.target, sel, hoverId);

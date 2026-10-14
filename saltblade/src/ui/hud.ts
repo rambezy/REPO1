@@ -6,6 +6,7 @@ import { S } from '../sim/ctx';
 import { on, emit } from '../core/events';
 import { sel, selected, setSpeed } from '../game/control';
 import { aboutWhom, frameChar } from '../game/framing';
+import { TRAVEL_SPEED, toggleTravel, setupTravel, walkMinutes, minutesText, isTravelling } from '../game/travel';
 import { portrait } from '../render/portrait';
 import { Char } from '../sim/char';
 import { Squad } from '../sim/squad';
@@ -13,7 +14,7 @@ import { fmt } from '../core/math';
 import { totalBounty } from '../sim/crime';
 import { drugStatus } from '../sim/drugs';
 import { FACTION } from '../content/factions';
-import { keymap, ActionId } from '../core/keys';
+import { keymap, ActionId, withKeys } from '../core/keys';
 
 /** The first key bound to an action, for a hint. */
 const kb = (a: ActionId) => keymap.labels(a)[0] ?? '—';
@@ -38,6 +39,10 @@ export function buildHUD() {
     b.onclick = () => setSpeed(s);
     speedBox.appendChild(b);
   }
+  // travel speed: a long walk at 15×, back to 1× when anything happens (see game/travel)
+  const tb = h('button', { class: 'spd', 'data-s': String(TRAVEL_SPEED), 'data-t': 'Travel speed: 15× on a long walk, back to 1× when anything happens', 'data-a': 'travel' }, '15×');
+  tb.onclick = () => toggleTravel();
+  speedBox.appendChild(tb);
   const menuBar = h('div', { class: 'hud-menu' });
   const btn = (label: string, action: ActionId, ev: string) => {
     const b = h('button', { class: 'mbtn', 'data-t': label, 'data-a': action }, h('span', {}, label), h('kbd', {}));
@@ -74,6 +79,8 @@ export function buildHUD() {
   for (const el of [topL, topR, squadBar, selBox, squadTabs]) shield(el);
   on('squad', () => { tabsKey = ''; squadKey = ''; });
   on('notice', (text: string, kind: string) => notify(text, kind));
+  // (after the notices: a notice that ends travel speed is shown before the line that says so)
+  setupTravel();
   on('sel', () => { refreshSelBox(); refreshCards(true); });
   on('speed', refreshSpeed);
   refreshSpeed();
@@ -87,6 +94,8 @@ function refreshSpeed() {
 }
 
 export function notify(text: string, kind = 'info') {
+  // the sim writes keys as {action}: here they become the keys the player has bound
+  text = withKeys(text);
   const n = h('div', { class: 'notice ' + kind }, text);
   // about one of your people: a click looks at them
   const who = G.mode === 'play' ? aboutWhom(text) : null;
@@ -275,6 +284,16 @@ function activity(c: Char): string {
   return c.hasGoal ? 'Walking' : 'Idle';
 }
 
+/** A walk's time left, for the slowest of the selected on one: "· ~40 min" (game time). */
+function eta(who: Char[]) {
+  const el = selBox.querySelector('.seleta');
+  if (!el) return;
+  let m: number | null = null;
+  for (const c of who) { const w = walkMinutes(c); if (w !== null && (m === null || w > m)) m = w; }
+  const t = m === null ? '' : ` · ${minutesText(m)}${isTravelling() ? ' (travelling)' : ''}`;
+  if (el.textContent !== t) el.textContent = t;
+}
+
 function refreshSelBox() {
   const who = selected();
   if (!who.length) { selBox.style.display = 'none'; return; }
@@ -282,11 +301,12 @@ function refreshSelBox() {
   const c = who[0];
   const multi = who.length > 1 ? ` <span class="dim">+${who.length - 1}</span>` : '';
   const key = JSON.stringify([who.map((w) => w.id), c.move, c.mem.walk, c.order?.k, c.combatMode, activity(c), c.mem.high || c.mem.craving ? drugStatus(c) : 0]);
-  if (selBox.dataset.k === key) return;
+  if (selBox.dataset.k === key) { eta(who); return; }
   selBox.dataset.k = key;
   selBox.innerHTML = '';
   selBox.appendChild(h('div', { class: 'selname', html: `${esc(c.name)}${multi}` }));
-  selBox.appendChild(h('div', { class: 'selact' }, activity(c)));
+  selBox.appendChild(h('div', { class: 'selact' }, activity(c), h('span', { class: 'dim seleta' })));
+  eta(who);
   for (const st of c.mem.high || c.mem.craving ? drugStatus(c) : []) selBox.appendChild(h('div', { class: `seldrug ${st.kind}` }, st.text));
   const row = h('div', { class: 'selrow' });
   const tog = (label: string, on: boolean, title: string, fn: () => void) => {

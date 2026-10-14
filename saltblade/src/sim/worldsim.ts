@@ -12,7 +12,7 @@ import { FACTION } from '../content/factions';
 import { ITEM } from '../content/items';
 import { SETTLEMENT } from '../content/layout';
 import { ANIMAL } from '../content/animals';
-import { strengthOf } from './combat';
+import { strengthOf, hostile } from './combat';
 import { makeShop } from './shops';
 import { Grid, type Item } from './inventory';
 import { anchors } from './sim';
@@ -303,9 +303,22 @@ function whereIs(sq: Squad): { x: number; z: number } {
 
 /** How near the nearest of the player's people (on their feet or not, free) is to a point. */
 function playerDist(x: number, z: number): number {
-  let d = Infinity;
-  for (const c of S.W.playerChars()) if (c.alive && !c.animal && !c.cage) d = Math.min(d, Math.hypot(c.x - x, c.z - z));
-  return d;
+  return nearestOfMine(x, z)?.d ?? Infinity;
+}
+/** The nearest of the player's people (on their feet or not, free) to a point, and how far. */
+function nearestOfMine(x: number, z: number): { c: Char; d: number } | null {
+  let best: { c: Char; d: number } | null = null;
+  for (const c of S.W.playerChars()) {
+    if (!c.alive || c.animal || c.cage) continue;
+    const d = Math.hypot(c.x - x, c.z - z);
+    if (!best || d < best.d) best = { c, d };
+  }
+  return best;
+}
+/** On the move and heading for someone, give or take fifty degrees. */
+function headingFor(a: Char, b: Char): boolean {
+  const dx = b.x - a.x, dz = b.z - a.z, d = Math.hypot(dx, dz) || 1;
+  return a.speed > 0.3 && (Math.sin(a.dir) * dx + Math.cos(a.dir) * dz) / d > 0.64;
 }
 
 /**
@@ -325,17 +338,25 @@ function fitEarly(sq: Squad) {
   if (!cutToFit(sq, fitAgainst(playerBand(), spec.faction, S.clock.day, new RNG(sq.id))) && !sq.active) despawn(sq);
 }
 
+/** Why "Win a fight" names a band: near, coming this way, slower than your people, or only the safest fight about. */
+export type Aim = 'near' | 'coming' | 'slower' | 'safest';
 /**
- * The nearest band within `r` that means the player's people harm and that they could beat: no more
- * of them, and no stronger between them, than the roads would send against the band today (see
- * fitAgainst). People first (they carry something worth looting after); beasts only when no such
- * band is about, and never those on the wing, which no one on foot can bring to a fight. For the
+ * A band that means the player's people harm and that they could beat: no more of them, and no
+ * stronger between them, than the roads would send against the band today (see fitAgainst). Never
+ * those on the wing, which no one on foot can bring to a fight. In order: one within `r`; one coming
+ * this way; one within `far` that moves more slowly than your people, whom an attack order runs down
+ * (see ai's outrun); and failing all those, the safest fight within `far`, which may be a chase.
+ * Within each, people first (they carry something worth looting after), then the nearest. For the
  * goal tracker's "Win a fight".
  */
-export function beatableNear(r = 900): { x: number; z: number; n: number; name: string; d: number } | null {
+export function beatableNear(r = 300, far = 900): { x: number; z: number; n: number; name: string; d: number; why: Aim } | null {
   const band = playerBand();
   if (!band.n) return null;
-  let best: { x: number; z: number; n: number; name: string; d: number; beast: boolean } | null = null;
+  // how fast your people can run, the slowest of them
+  let pace = Infinity;
+  for (const c of S.W.playerChars()) if (c.alive && c.up && !c.cage && !c.carriedBy) pace = Math.min(pace, c.moveSpeed('run'));
+  const AIMS: Aim[] = ['near', 'coming', 'slower', 'safest'];
+  let best: { x: number; z: number; n: number; name: string; d: number; why: Aim; rank: number; beast: boolean; risk: number } | null = null;
   for (const sq of S.W.squads.values()) {
     if (sq.faction === 'player' || !sq.flags.spec) continue;
     const spec = specOf(sq.flags.spec);
@@ -344,13 +365,23 @@ export function beatableNear(r = 900): { x: number; z: number; n: number; name: 
     if (!up.length) continue;
     const beast = !!spec.species;
     if (beast && WINGED.has(ANIMAL[spec.species!].shape)) continue;
-    const d = playerDist(up[0].x, up[0].z);
-    if (d > r || (best && (beast ? !best.beast || d >= best.d : !best.beast && d >= best.d))) continue;
+    const near = nearestOfMine(up[0].x, up[0].z);
+    if (!near || near.d > far) continue;
+    // (a band of bandits who only want tribute, and whose people you have no quarrel with, is no fight to go looking for)
+    if (!hostile(up[0], near.c)) continue;
+    const d = near.d;
+    const why: Aim = d <= r ? 'near' : headingFor(up[0], near.c) ? 'coming' : Math.max(...up.map((c) => c.speed)) < pace * 0.85 ? 'slower' : 'safest';
+    const rank = AIMS.indexOf(why);
+    if (best && rank > best.rank) continue;
     const fit = fitAgainst(band, sq.faction === 'fauna' ? spec.faction : sq.faction, S.clock.day, new RNG(sq.id));
-    if (up.length > Math.max(1, fit.n) || up.reduce((n, c) => n + threat(c), 0) > fit.budget * fit.slack) continue;
-    best = { x: up[0].x, z: up[0].z, n: up.length, name: sq.name, d, beast };
+    const total = up.reduce((n, c) => n + threat(c), 0);
+    if (up.length > Math.max(1, fit.n) || total > fit.budget * fit.slack) continue;
+    const risk = total / Math.max(1, band.power);
+    // (the same reason: people before beasts, then the nearest; only the safest fight is chosen by how safe it is)
+    if (best && rank === best.rank && (why === 'safest' ? risk >= best.risk : beast ? !best.beast || d >= best.d : !best.beast && d >= best.d)) continue;
+    best = { x: up[0].x, z: up[0].z, n: up.length, name: sq.name, d, why, rank, beast, risk };
   }
-  return best;
+  return best && { x: best.x, z: best.z, n: best.n, name: best.name, d: best.d, why: best.why };
 }
 const WINGED = new Set(['bat', 'fly']);
 
@@ -373,12 +404,21 @@ export function trimTo(sq: Squad, fit: Fit): boolean {
 // wanderers, or a trader with guards) from beyond sight, past the player's
 // people and on. What happens then is up to them, and to you.
 
-/** The player's next goal is to win a fight (see content/objectives): the road may as well bring one. */
+/**
+ * The player's next goal is to win a fight (see content/objectives): the road may as well bring one. A
+ * wound to bandage first, with nobody of theirs hurt, waits on the fight: that is where wounds come from.
+ */
 export function wantsFight(): boolean {
   const st = S.W.flags.objectives as { set?: string; done?: Record<string, number> } | undefined;
   const set = st?.set ? OBJECTIVES[st.set] : undefined;
   if (!set || !st?.done || typeof st.done !== 'object') return false;
-  return set.goals.find((g) => st.done![g.key] === undefined)?.when.k === 'win';
+  for (const g of set.goals) {
+    if (st.done[g.key] !== undefined) continue;
+    if (g.when.k === 'win') return true;
+    if (g.when.k === 'bandage' && !S.W.playerChars().some((c) => c.alive && c.body.needsAid())) continue;
+    return false;
+  }
+  return false;
 }
 
 /** Squads that mean harm to whoever they meet. */
@@ -421,9 +461,12 @@ function tickPassers() {
   if (!lead) return;
   if (S.T.siteAt(lead.x, lead.z, 60)?.kind === 'town') return; // towns are busy enough
   // company already on the way (grazing herds don't count: they are everywhere, and slow; nor does a band
-  // beaten where it lay, which is going nowhere and would otherwise keep the roads empty for days)
+  // beaten where it lay, which is going nowhere and would otherwise keep the roads empty for days; nor, for
+  // a band out to win a fight, traders and patrols, which pass Crossroad's roads all day)
+  const fightWanted = wantsFight();
   for (const s of W.squads.values()) {
     if (!s.flags.spec || s.faction === 'player') continue;
+    if (fightWanted) { const sp = specOf(s.flags.spec); if (sp && !hostileKind(sp)) continue; }
     if (s.kind === 'herd') { const a = W.char(s.members[0]); if (!a?.animal || ANIMAL[a.animal].diet === 'grazer') continue; }
     if (!s.members.some((id) => W.char(id)?.up)) continue;
     // (a squad in play is where its leader is: its own mark is only kept up while he is on the road, not off on some task)
@@ -432,11 +475,12 @@ function tickPassers() {
   }
   // the first half day brings only the harmless: traders, wanderers, grazing beasts; unless the band is out
   // to win a fight (its next goal), when the road brings one it can win more often than not (see fitAgainst)
-  const fightWanted = wantsFight();
   const gentle = S.clock.t - (W.flags.passersFrom ?? 0) < 12 * HOUR && !fightWanted;
   // (the same kind twice running is less likely: the waste has more than one story)
   let pool = passerSpecs(S.T.regionAt(lead.x, lead.z).key, gentle);
-  if (fightWanted && rng.chance(0.7) && pool.some(([sp]) => hostileKind(sp))) pool = pool.filter(([sp]) => hostileKind(sp));
+  // (one that means them harm: not bandits who only want tribute and have no quarrel with them)
+  const harm = (sp: Spec) => hostileKind(sp) && (!!sp.species || W.rel.hostile('player', sp.faction));
+  if (fightWanted && pool.some(([sp]) => harm(sp))) pool = pool.filter(([sp]) => harm(sp));
   const spec = rng.weighted(pool.map(([sp, w]) => [sp, sp.key === W.flags.lastPasser ? w * 0.25 : w] as [Spec, number]));
   for (let i = 0; i < 16; i++) {
     const a = rng.range(0, Math.PI * 2), d = rng.range(540, 680);
@@ -595,7 +639,10 @@ export function tickWorld(dt: number) {
       const all = [...SPECS, ...BEASTS];
       const spec = rng.weighted(all.map((s) => [s, s.weight] as const));
       if ((W.flags.quiet?.[spec.faction] ?? 0) > S.clock.t && rng.chance(0.7)) continue; // leaderless, they keep to home
-      spawn(spec);
+      // weighed as it is born: one that comes into being near the player's people on the first days is cut to
+      // fit there and then, not a world-tick later (with all of its number, for a moment, within sight)
+      const sq = spawn(spec);
+      if (sq) fitEarly(sq);
     }
   }
   if (rng.chance(0.2)) abstractFights();

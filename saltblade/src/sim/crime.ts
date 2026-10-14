@@ -6,6 +6,7 @@ import { FACTION } from '../content/factions';
 import { canSee, enslave } from './ai';
 import { freeFromCage } from './orders';
 import { HOUR } from './clock';
+import { hostile } from './combat';
 
 export type CrimeKind = 'theft' | 'assault' | 'murder' | 'trespass' | 'kidnap' | 'runaway' | 'freeing' | 'drugs' | 'heresy' | 'pickpocket' | 'escape';
 
@@ -109,7 +110,11 @@ export function tickRunaways(dt: number) {
       delete c.mem.slaveSpot;
       delete c.mem.enslavedBy;
       S.W.say(`${c.name} escaped ${site.name}.`, 'story', S.clock.t);
-      S.fx.notice(`${c.name} has escaped ${site.name}!`, 'good');
+      // clear of the camp: no more creeping, up and running (they can sneak again if they like)
+      const crept = c.move === 'sneak';
+      if (crept) standUp(c);
+      // ({sneak} is written in as the player has it bound, where the notice is shown)
+      S.fx.notice(`${c.name} has escaped ${site.name}!${crept ? ' Up and running now ({sneak} to sneak again).' : ''}`, 'good');
       if (!S.W.flags.escaped) S.W.flags.escaped = S.clock.t;
       continue;
     }
@@ -157,18 +162,37 @@ export function captivity(c: Char): Captivity {
 }
 
 let sneakT = 0;
-/** Marks your sneaking people as seen or hidden, so the view can show it. */
+/** Seconds of sneaking with nobody about (no one to see, nothing hostile near) before your people stand up and run again. */
+export const SNEAK_QUIET = 45;
+/** Marks your sneaking people as seen or hidden, so the view can show it; those with nobody about for a while stand up. */
 export function tickStealth(dt: number) {
   sneakT -= dt;
   if (sneakT > 0) return;
+  const step = 0.4 - sneakT;
   sneakT = 0.4;
+  const stood: Char[] = [];
   for (const c of S.W.playerChars()) {
-    if (c.move !== 'sneak' || c.status !== 'up') { if (c.mem.seenBy !== undefined) delete c.mem.seenBy; continue; }
-    let by = 0;
-    S.W.hash.near(c.x, c.z, 48, (o) => {
-      if (by || o.faction === 'player' || o.animal || !o.awake) return;
-      if (canSee(o, c)) by = o.id;
+    if (c.move !== 'sneak' || c.status !== 'up') { if (c.mem.seenBy !== undefined) delete c.mem.seenBy; delete c.mem.quietT; continue; }
+    let by = 0, about = false;
+    S.W.hash.near(c.x, c.z, 120, (o, d2) => {
+      if (o.faction === 'player' || !o.alive || !o.up) return;
+      // anyone awake who could see them, a sleeper close enough to wake, anything hostile in a wider ring: they stay low
+      if (o.animal ? hostile(o, c) : (o.awake && d2 < 80 * 80) || d2 < 30 * 30 || hostile(o, c)) about = true;
+      if (!by && d2 < 48 * 48 && !o.animal && o.awake && canSee(o, c)) by = o.id;
     });
     c.mem.seenBy = by;
+    c.mem.quietT = about ? 0 : (c.mem.quietT ?? 0) + step;
+    if (c.mem.quietT >= SNEAK_QUIET) { standUp(c); stood.push(c); }
   }
+  // (good news, not a warning: it does not end travel speed)
+  if (stood.length) S.fx.notice(`${names(stood)} ${stood.length > 1 ? 'have' : 'has'} had nobody about for a while and stand${stood.length > 1 ? '' : 's'} up to run ({sneak} to sneak again).`, 'good');
 }
+
+/** Back on their feet at a run, from sneaking. */
+function standUp(c: Char) {
+  c.move = 'run';
+  delete c.mem.quietT;
+  delete c.mem.seenBy;
+  c.dirty = true;
+}
+const names = (cs: Char[]) => (cs.length < 3 ? cs.map((c) => c.name).join(' and ') : `${cs.slice(0, -1).map((c) => c.name).join(', ')} and ${cs[cs.length - 1].name}`);

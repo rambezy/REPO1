@@ -85,6 +85,34 @@ check('the slow and good lines leave room between them', SLOW_MS > GOOD_MS && GO
   check('a healthy machine never steps', r.path.length === 0 && L.rung === 0);
 }
 
+// below 10 fps every rung reads as the hitch cap, so no step can prove itself: windows at the cap step down without proof
+{
+  const L = new QualityLadder();
+  const r = run(L, steady(400), 120);
+  check('frames always at the cap (400 ms on every rung) step down to the bottom and stay there, remembering none of it', L.rung === RUNGS.length - 1 && r.share[RUNGS.length - 1] >= 0.5 && r.remembered === -1 && r.path.every((p, i) => p.startsWith(`${i + 1}@`)), `${r.path.join(' ')}; remembered ${r.remembered}`);
+}
+{
+  const L = new QualityLadder();
+  const r = run(L, (rung) => 300 - rung * 30, 120);
+  check('a GPU at 300 ms on top and 150 at the bottom reaches the bottom within a minute and a half', L.rung === RUNGS.length - 1 && r.at[RUNGS.length - 2] <= 90, r.path.join(' '));
+}
+{
+  const L = new QualityLadder();
+  const r = run(L, (rung) => 250 * cost(rung), 180);
+  check('a GPU at 250 ms steps down blind while at the cap, then by proof, and settles where it pays (rung 4)', L.rung === 4 && r.share[4] >= 0.6 && r.remembered === 4, `rung 4 ${pct(r.share[4])}; ${r.path.join(' ')}`);
+}
+{
+  // a real hitch still counts, capped: a 300 ms frame in a window of good ones is no slow second, and a second of them is
+  const L = new QualityLadder();
+  run(L, steady(16.7), 5, false);
+  let moved = !!L.feed(300)?.moved;
+  moved = run(L, steady(16.7), 5, false).path.length > 0 || moved;
+  const M = new QualityLadder();
+  run(M, steady(16.7), 5, false);
+  const r = run(M, steady(320), 3, false);
+  check('one 300 ms frame among good ones does not step down, but a run of them does', !moved && L.rung === 0 && r.path[0]?.startsWith('1@'), `${moved ? 'stepped on one' : 'held on one'}; a run: ${r.path.join(' ') || 'held'}`);
+}
+
 // one hitch in good frames is not a slow second; frames between the lines hold
 {
   const L = new QualityLadder();

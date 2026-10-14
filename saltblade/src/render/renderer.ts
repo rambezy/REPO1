@@ -116,6 +116,8 @@ export class Renderer {
   private floatOK: boolean;
   private ladder: QualityLadder | null = null;
   private lastT = 0;
+  /** True while frame times say nothing about the machine (travel speed's 15× sim): the auto ladder is not fed. */
+  ladderHold: (() => boolean) | null = null;
 
   constructor(public canvas: HTMLCanvasElement) {
     // no antialiasing on the canvas itself: every pass goes through the composer, whose own target multisamples
@@ -257,7 +259,7 @@ export class Renderer {
   render() {
     const now = performance.now();
     // a gap of more than five seconds is a pause (a breakpoint, the tab put away), not a slow frame
-    if (this.autoLive && this.lastT && now - this.lastT < 5000) this.feed(now - this.lastT);
+    if (this.autoLive && this.lastT && now - this.lastT < 5000 && !this.ladderHold?.()) this.feed(now - this.lastT);
     this.lastT = now;
     this.sun.castShadow = this.shadowsOn;
     this.gl.info.reset();

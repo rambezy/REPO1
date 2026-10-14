@@ -25,11 +25,11 @@ import {
   HAUL, DELIVER, CONTRABAND, ESCORT, HUNT_BEAST, HUNT_BAND, CAMP, TAKEN, PAID, NO_WORK, NO_BEASTS, LOCKED, RECIPIENT, TRAVELLER,
   BEAST_NAMES, EPITHETS, BAND_NAME, BAND_SPEC, TRADES, TRAVELLERS, REWARD_ITEMS, CAMP_FOLK,
 } from '../content/contracts';
-import { SPECS, threat } from './worldsim';
+import { SPECS, threat, playerBand, type Band } from './worldsim';
 import { findFreeCage } from './ai';
 import { dropCarried } from './health';
 import {
-  Errand, Rating, rate, roadThreat, campThreat, campEstimate, campLeft, beastThreat, bandThreat, BOSS_HP, BOSS_SKILL, roadRoute, routeLength, siteById, carried, takeGoods,
+  Errand, Rating, rate, roadThreat, noviceBand, campThreat, campEstimate, campLeft, beastThreat, bandThreat, BOSS_HP, BOSS_SKILL, roadRoute, routeLength, siteById, carried, takeGoods,
   findItem, dropItem, give, startErrand, checkErrand, releaseErrand, errandWhere, errandProgress, bearing, upMine, nearestMine, sweepErrandFolk, dangerAlong, dangerBetween,
 } from './errands';
 import { tickStories, storyTree, storyErrand, storyErrandDone, storyGoal, storyViews, storyCamps } from './stories';
@@ -269,8 +269,8 @@ function throughHostileTown(route: number[], f: string): boolean {
   return false;
 }
 
-/** Hunting grounds: just off a road out of town, a walk away. */
-function huntGround(site: Site, tier: number, rng: RNG): { x: number; z: number; other: Site } | null {
+/** Hunting grounds: just off a road out of town, a walk away (no further than `near`, if given). */
+function huntGround(site: Site, tier: number, rng: RNG, near = 0): { x: number; z: number; other: Site } | null {
   const key = site.settlement ?? site.key;
   const roads = S.T.roads.filter((r) => r.a === key || r.b === key);
   if (!roads.length) return null;
@@ -279,7 +279,7 @@ function huntGround(site: Site, tier: number, rng: RNG): { x: number; z: number;
     const other = S.T.sites.find((s) => (s.settlement ?? s.key) === (rd.a === key ? rd.b : rd.a));
     if (!other) continue;
     const n = rd.pts.length / 2, fromStart = rd.a === key;
-    const want = rng.range(Math.max(450, TIER_REACH[tier][0] * 0.6), Math.min(2600, TIER_REACH[tier][1] * 0.7));
+    const want = near ? rng.range(300, near) : rng.range(Math.max(450, TIER_REACH[tier][0] * 0.6), Math.min(2600, TIER_REACH[tier][1] * 0.7));
     for (let k = 0; k < n; k += 4) {
       const i = fromStart ? k : n - 1 - k;
       const px = rd.pts[i * 2], pz = rd.pts[i * 2 + 1];
@@ -334,7 +334,7 @@ const makeHunt: Maker = (site, tier, rng, used) => {
   const who = rng.pick(BEAST_NAMES[sp] ?? BEAST_NAMES.default);
   const pay = round10(threat * [3.2, 3.6, 4, 4.5][tier] + 100);
   return {
-    kind: 'hunt', title: `${who}, a ${ANIMAL[sp].name.toLowerCase()}`, pay, bond: 0, days: 3 + (tier >= 2 ? 1 : 0), threat,
+    kind: 'hunt', title: `${who}, ${an(ANIMAL[sp].name.toLowerCase())}`, pay, bond: 0, days: 3 + (tier >= 2 ? 1 : 0), threat,
     brief: fill(rng.pick(HUNT_BEAST[f] ?? HUNT_BEAST.default), { target: who, species: ANIMAL[sp].name.toLowerCase(), Species: ANIMAL[sp].name, road, pay }),
     e: { kind: 'hunt', site: site.id, x: g.x, z: g.z, who, species: sp, size: k },
   };
@@ -376,6 +376,37 @@ const makeCamp: Maker = (site, tier, rng, used) => {
   };
 };
 
+/**
+ * A first job: a beast that has been at the road out of town, near it, of a
+ * kind a lone beginner should beat (the worst of its kind if they can take
+ * that, else an ordinary one); failing that, one a pair of them should.
+ */
+const makeFirstHunt = (site: Site, rng: RNG, used: Set<string>, posted: Set<string>): Made | null => {
+  const g = huntGround(site, 0, rng, 1100);
+  if (!g) return null;
+  const kinds = S.T.regionAt(g.x, g.z).fauna.map(([sp]) => sp).filter((sp) => ANIMAL[sp] && ANIMAL[sp].diet !== 'grazer' && !used.has('beast:' + sp));
+  const within = (most: number) => kinds.flatMap((sp): [string, boolean][] => (beastThreat(sp, true) <= most ? [[sp, false]] : beastThreat(sp) <= most ? [[sp, true]] : []));
+  const one = within(noviceBand(1).power * 0.68);
+  const fits = one.length ? one : within(noviceBand(2).power * 0.68);
+  if (!fits.length) return null;
+  // (a name not already on another board today: neighbouring towns are not all after the same beast; a kind
+  // with a name to spare first, else the town that posts it tells it apart)
+  const freeNames = (sp: string) => (BEAST_NAMES[sp] ?? BEAST_NAMES.default).filter((n) => !posted.has('name:' + n));
+  const named = fits.filter(([sp]) => freeNames(sp).length > 0);
+  const [sp, plain] = rng.pick(named.length ? named : fits);
+  used.add('beast:' + sp);
+  const threat = beastThreat(sp, !plain);
+  const free = freeNames(sp);
+  const who = free.length ? rng.pick(free) : `${rng.pick(BEAST_NAMES[sp] ?? BEAST_NAMES.default)} of ${site.name}`;
+  const pay = round10(threat * 3.2 + 100);
+  const f = site.faction!;
+  return {
+    kind: 'hunt', title: `${who}, ${an(ANIMAL[sp].name.toLowerCase())}`, pay, bond: 0, days: 3, threat,
+    brief: fill(rng.pick(HUNT_BEAST[f] ?? HUNT_BEAST.default), { target: who, species: ANIMAL[sp].name.toLowerCase(), Species: ANIMAL[sp].name, road: `on the road to ${g.other.name}`, pay }),
+    e: { kind: 'hunt', site: site.id, x: g.x, z: g.z, who, species: sp, size: 0, ...(plain ? { plain } : {}) },
+  };
+};
+
 const MAKERS: Record<ContractKind, Maker> = { haul: makeHaul, deliver: makeDeliver, escort: makeEscort, hunt: makeHunt, camp: makeCamp };
 
 /** A town's jobs for a day, from its own seed and the day (never the world's dice); `posted` holds the camps other boards already have. */
@@ -385,7 +416,15 @@ function postJobs(site: Site, day: number, posted: Set<string>): Contract[] {
   const out: Contract[] = [];
   const used = new Set<string>(posted);
   const n = rng.int(3, 5);
+  const post = (made: Made, tier: number, i: number) => {
+    const pool = REWARD_ITEMS[f];
+    const item: [string, number, number] | undefined = pool && rng.chance(TIER_ITEM[tier]) ? (() => { const [id, k] = rng.pick(pool); return [id, k, TIER_GRADE[tier]] as [string, number, number]; })() : undefined;
+    out.push({ ...made, title: cap(made.title), brief: cap(made.brief), id: `${site.id}.${day}.${i}`, tier, from: site.id, issuer: f, standing: TIER_STANDING[tier], penalty: TIER_PENALTY[tier], item });
+    if (made.kind === 'camp') posted.add('camp:' + made.e.site);
+  };
   for (let i = 0; i < n; i++) {
+    // the first is always one a band of one or two fresh out can do: short, near, and rated Fair or better for them
+    if (i === 0) { const made = firstJob(site, rng, used, day, posted); if (made) { post(made, 0, i); continue; } }
     const tier = i === 0 ? 0 : rng.weighted(TIER_ODDS.map((w, k) => [k, w] as [number, number]));
     const weights = (KINDS[f] ?? KINDS.default).map(([k, w]) => [k, w] as [string, number]);
     for (let tries = 0; tries < 5 && weights.length; tries++) {
@@ -393,14 +432,58 @@ function postJobs(site: Site, day: number, posted: Set<string>): Contract[] {
       weights.splice(weights.findIndex(([k]) => k === kind), 1);
       const made = MAKERS[kind](site, tier, rng, used, day);
       if (!made) continue;
-      const pool = REWARD_ITEMS[f];
-      const item: [string, number, number] | undefined = pool && rng.chance(TIER_ITEM[tier]) ? (() => { const [id, k] = rng.pick(pool); return [id, k, TIER_GRADE[tier]] as [string, number, number]; })() : undefined;
-      out.push({ ...made, title: cap(made.title), brief: cap(made.brief), id: `${site.id}.${day}.${i}`, tier, from: site.id, issuer: f, standing: TIER_STANDING[tier], penalty: TIER_PENALTY[tier], item });
-      if (made.kind === 'camp') posted.add('camp:' + made.e.site);
+      post(made, tier, i);
       break;
     }
   }
   return out;
+}
+
+type Made = NonNullable<ReturnType<Maker>>;
+/** "a bat", "an ash jackal" */
+const an = (w: string) => `${/^[aeiou]/i.test(w) ? 'an' : 'a'} ${w}`;
+/** How far a first job walks you from its board: to the quarry or the town it is for, or to where a haul's goods are cheap and back. */
+export function walkOf(c: Contract): number {
+  const from = siteById(c.from);
+  if (!from) return Infinity;
+  if (c.kind === 'hunt') return Math.hypot(c.e.x! - from.x, c.e.z! - from.z);
+  if (c.kind === 'haul') { const src = nearestCheap(c); return src ? 2 * Math.hypot(src.x - from.x, src.z - from.z) : Infinity; }
+  const to = siteById(c.e.site);
+  return to ? Math.hypot(to.x - from.x, to.z - from.z) : Infinity;
+}
+/** A first job is short: about this far, one way. */
+export const FIRST_JOB_M = 1600;
+/**
+ * The first job on a board: the odd job, of a few drawn, that a band of one
+ * or two just setting out could best do (rated Fair or better for them, and
+ * short). Drawn from the board's own dice, so it is the same every time.
+ */
+function firstJob(site: Site, rng: RNG, used: Set<string>, day: number, posted: Set<string>): Made | null {
+  const f = site.faction!;
+  const cands: { made: Made; used: Set<string>; score: number }[] = [];
+  // a few of each: a beast near town, a parcel to a town near, goods from one; the roads mostly rate Even for one alone
+  // (whoever works them comes at about your strength), so the beast is often the only one Fair for them
+  for (let tries = 0; tries < 9; tries++) {
+    const u = new Set(used);
+    const kind = (['hunt', 'deliver', 'haul'] as const)[tries % 3];
+    const made = kind === 'hunt' ? makeFirstHunt(site, rng, u, posted) : MAKERS[kind](site, 0, rng, u, day);
+    if (!made) continue;
+    const c = { ...made, id: '', tier: 0, from: site.id, issuer: f, standing: 0, penalty: 0 } as Contract;
+    // Fair or better for one alone is best, for a pair next; and short
+    const one = dangerOf(c, noviceBand(1)).level, two = dangerOf(c, noviceBand(2)).level;
+    const score = Math.max(0, two - 1) * 1e6 + Math.max(0, one - 1) * 1e5 + Math.max(0, walkOf(c) - FIRST_JOB_M);
+    cands.push({ made, used: u, score });
+  }
+  if (!cands.length) return null;
+  // of the best of them, a kind drawn at random: the first job is not always a hunt
+  const top = Math.min(...cands.map((x) => x.score));
+  const best = cands.filter((x) => x.score === top);
+  const kinds = [...new Set(best.map((x) => x.made.kind))];
+  const kind = kinds[rng.int(0, kinds.length - 1)];
+  const pick = best.find((x) => x.made.kind === kind)!;
+  for (const k of pick.used) used.add(k);
+  if (pick.made.kind === 'hunt' && pick.made.e.who) posted.add('name:' + pick.made.e.who);
+  return pick.made;
 }
 
 /**
@@ -437,22 +520,22 @@ export const openJobs = (site: Site) => {
 };
 
 // ---------------------------------------------------------------- weighing a job
-/** How dangerous a job is for your band as it is now, and what the danger is. */
-export function dangerOf(c: Contract): Rating & { what: string } {
+/** How dangerous a job is for your band as it is now (or another band), and what the danger is. */
+export function dangerOf(c: Contract, band: Band = playerBand()): Rating & { what: string } {
   const e = c.e;
-  if (c.kind === 'camp') { const s = siteById(e.site); const ct = s ? campThreat(s) : { threat: c.threat, count: 0, scouted: false, folk: '' }; return { ...rate(ct.threat), what: ct.scouted ? `${ct.count} ${ct.folk} still standing` : `${ct.folk}, about ${ct.count} of them` }; }
+  if (c.kind === 'camp') { const s = siteById(e.site); const ct = s ? campThreat(s) : { threat: c.threat, count: 0, scouted: false, folk: '' }; return { ...rate(ct.threat, band), what: ct.scouted ? `${ct.count} ${ct.folk} still standing` : `${ct.folk}, about ${ct.count} of them` }; }
   if (c.kind === 'hunt') {
     const sq = e.squad ? W().squads.get(e.squad) : undefined;
     let t = c.threat;
-    if (sq) { t = 0; for (const id of sq.members) { const m = W().char(id); if (m?.up) t += threat(m) * (m.animal && m.id === e.whoId ? BOSS_HP * BOSS_SKILL : 1); } }
-    return { ...rate(t), what: e.species ? `${e.who}${e.size ? ` and ${e.size} of its pack` : ''}` : `${e.who} and ${e.size} ${BAND_NAME[e.faction!] ?? ''}` };
+    if (sq) { t = 0; for (const id of sq.members) { const m = W().char(id); if (m?.up) t += threat(m) * (m.animal && m.id === e.whoId && !e.plain ? BOSS_HP * BOSS_SKILL : 1); } }
+    return { ...rate(t, band), what: e.species ? `${e.who}${e.size ? ` and ${e.size} of its pack` : ''}` : `${e.who} and ${e.size} ${BAND_NAME[e.faction!] ?? ''}` };
   }
   // on the road: what works the regions between here and there
   const a = siteById(c.kind === 'haul' ? e.site : c.from), b = siteById(e.site);
   const from = c.kind === 'haul' ? nearestCheap(c) ?? a : a;
-  if (!from || !b) return { ...rate(0), what: '' };
-  const r = roadThreat(from.x, from.z, b.x, b.z);
-  return { ...rate(r.threat), what: r.who ? `${r.who} work that road` : 'a quiet road' };
+  if (!from || !b) return { ...rate(0, band), what: '' };
+  const r = roadThreat(from.x, from.z, b.x, b.z, band);
+  return { ...rate(r.threat, band), what: r.who ? `${r.who} work that road` : 'a quiet road' };
 }
 /** Where a haul's goods are cheap, nearest first. */
 function nearestCheap(c: Contract): Site | undefined {
@@ -807,7 +890,7 @@ export function contractStep(c: Contract): string {
     case 'haul': { const have = carried(c.e.good!); return have >= c.e.n! ? `Bring the ${ITEM[c.e.good!].name} to ${keeper}.` : `Get ${c.e.n} ${ITEM[c.e.good!].name} (you carry ${have}) and bring them to ${keeper}.`; }
     case 'deliver': return `Take the parcel to ${c.e.who} in ${to?.name ?? '?'}.`;
     case 'escort': return `See ${c.e.who} safe to ${to?.name ?? '?'}. They walk only with your people beside them.`;
-    case 'hunt': return `Bring down ${c.e.who}, ${c.e.species ? `a ${ANIMAL[c.e.species]?.name.toLowerCase()}` : c.e.title}, ${bearing(c.e.x!, c.e.z!)} of your people.`;
+    case 'hunt': return `Bring down ${c.e.who}, ${c.e.species ? an(ANIMAL[c.e.species]?.name.toLowerCase() ?? 'beast') : c.e.title}, ${bearing(c.e.x!, c.e.z!)} of your people.`;
     case 'camp': return `Clear ${to?.name ?? 'the camp'}, ${to ? bearing(to.x, to.z) : ''} of your people.`;
   }
   return c.title;

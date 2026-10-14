@@ -23,6 +23,8 @@ export const GOOD_MS = 18;
 const PAYS = 0.9;
 /** a single hitch (a save, a model build) is capped so it cannot stand in for a slow second; below the cap, frames down to 10 fps still tell the rungs apart */
 const HITCH_CAP = 100;
+/** A window averaging this near the cap is frames at or past it (10 fps or worse): every rung reads the same there, so a step down cannot prove itself and is kept without proof */
+const AT_CAP = HITCH_CAP * 0.9;
 const WINDOW_MS = 1000;
 
 export interface RungChange {
@@ -47,6 +49,11 @@ export interface RungChange {
  * locks that rung for a while, doubling the lock each time. So frames that do
  * not depend on the rung at all (a 30 Hz display, a simulation that is the
  * bottleneck) never drag the picture to the bottom.
+ *
+ * Below 10 fps every frame reads as the cap, on every rung, so no step could
+ * ever prove itself: windows that sit at the cap step down without proof, one
+ * rung a window, until the frames come back under it or the bottom is reached.
+ * Such steps are not remembered for the next session.
  */
 export class QualityLadder {
   rung: number;
@@ -86,6 +93,15 @@ export class QualityLadder {
     if (this.trial) {
       const tr = this.trial;
       if (avg <= tr.base * PAYS) { this.trial = null; return { rung: this.rung, avg, moved: false, remember: true }; }
+      // still at the cap, as before the step: there is nothing to judge by, so the step stands and the next is
+      // taken; but nothing unproven is remembered for the next session (a long stretch of slow frames, at 15×
+      // say, is no proof of the machine)
+      if (avg >= AT_CAP && tr.base >= AT_CAP) {
+        this.trial = null;
+        if (this.rung >= RUNGS.length - 1) return null;
+        this.trial = { from: this.rung, base: avg, extra: false };
+        return this.move(this.rung + 1, avg, false);
+      }
       if (!tr.extra && this.rung < RUNGS.length - 1) { tr.extra = true; return this.move(this.rung + 1, avg); }
       // it did not help: back up, and stay there for a while
       this.trial = null;

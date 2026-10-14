@@ -163,7 +163,7 @@ export const OBJECTIVES: Record<string, ObjectiveSet> = {
     title: 'Runaway',
     goals: [
       { key: 'shackles', text: 'Pick your shackles (right-click yourself)', done: 'Quietly done. Shackled people crawl; you can run now.', when: { k: 'unshackle' } },
-      { key: 'sneak', text: 'Sneak ({sneak})', done: 'Low and slow. Sight is short at night; the dogs still smell you.', when: { k: 'sneak' } },
+      { key: 'sneak', text: 'Sneak ({sneak})', done: 'Low and slow. Sight is short at night; the dogs still smell you. Once clear, {sneak} again to run.', when: { k: 'sneak' } },
       { key: 'escape', text: 'Get 300 m clear of Chainfield', done: 'Out. The Chainhouse hunts runaways, so keep moving west.', when: { k: 'escape' } },
       { key: 'brokenchain', text: 'Find Brokenchain, in the reeds to the west', done: 'The Unchained ask no questions of a runaway.', when: { k: 'reach', site: 'brokenchain' } },
       TALK_ANY,
@@ -177,7 +177,7 @@ export const OBJECTIVES: Record<string, ObjectiveSet> = {
     goals: [
       { key: 'clot', text: 'Stop the bleeding', done: 'The blood stops. You are still alive.', when: { k: 'clot' } },
       { key: 'road', text: 'Find a road', done: 'Roads lead to towns and to the people who walk them. Not all of them friendly.', when: { k: 'road' } },
-      { key: 'sneak', text: 'Sneak past something hungry ({sneak})', done: 'What cannot see you cannot eat you.', when: { k: 'sneak' } },
+      { key: 'sneak', text: 'Sneak past something hungry ({sneak})', done: 'What cannot see you cannot eat you. {sneak} again to run.', when: { k: 'sneak' } },
       { ...EAT, text: 'Find food' },
       { key: 'town', text: 'Reach a town', done: 'Walls. Beds. People who will sell you a hand, in time.', when: { k: 'reach', site: 'town' } },
       { key: 'money', text: 'Earn 100 chits', done: 'The first hundred is the hardest. Sell what you find; mine what you can.', when: { k: 'money', n: 100 } },

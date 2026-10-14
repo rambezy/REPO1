@@ -53,6 +53,7 @@ export function giveOrder(c: Char, o: Order | null) {
   if (c.bed || c.mem.using) leaveFurniture(c);
   c.mem.sit = false;
   c.order = o;
+  delete c.mem.moveTry; // (a new order is a new walk: see 'move' below)
   toolsDown(c);
   if (o && o.k === 'move') c.brain.enemy = 0;
   if (o && (o.k === 'move' || o.k === 'attack')) { c.path = null; c.hasGoal = false; }
@@ -64,11 +65,20 @@ export function runOrder(c: Char, dt: number) {
   // a pose left over from a job or an earlier order would hold them in place (see tickMove)
   if (!WORK_ORDERS.has(o.k)) toolsDown(c);
   switch (o.k) {
-    case 'move':
-      if (!c.hasGoal && near(c, o.x, o.z, 1.5)) { c.order = null; return; }
-      if (!c.hasGoal) { goTo(c, o.x, o.z); if (c.move !== 'sneak') c.move = c.mem.walk ? 'walk' : 'run'; }
-      if (c.mem.pathFail) { c.mem.pathFail = 0; c.order = null; S.fx.notice(`${c.name} can't find a way there.`, 'info'); }
+    case 'move': {
+      if (!c.hasGoal && near(c, o.x, o.z, 1.5)) { c.order = null; delete c.mem.moveTry; return; }
+      if (!c.hasGoal) {
+        // a walk that ended short of the spot, and got them no nearer the next time: as near as they can get
+        const d = Math.hypot(o.x - c.x, o.z - c.z);
+        const tried = c.mem.moveTry as { x: number; z: number; d: number } | undefined;
+        if (tried && tried.x === o.x && tried.z === o.z && d > tried.d - 1) { delete c.mem.moveTry; c.order = null; S.fx.notice(`${c.name} can't find a way there.`, 'info'); return; }
+        c.mem.moveTry = { x: o.x, z: o.z, d };
+        goTo(c, o.x, o.z);
+        if (c.move !== 'sneak') c.move = c.mem.walk ? 'walk' : 'run';
+      }
+      if (c.mem.pathFail) { c.mem.pathFail = 0; delete c.mem.moveTry; c.order = null; S.fx.notice(`${c.name} can't find a way there.`, 'info'); }
       return;
+    }
     case 'hold':
       stop(c);
       return;

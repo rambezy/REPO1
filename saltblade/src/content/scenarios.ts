@@ -48,7 +48,8 @@ export const SCENARIOS: Scenario[] = [
     desc: 'You walk into Crossroad with a cheap blade, a few days of food and a purse of chits. Nobody here knows your name yet. Find work, find people, find trouble. The world goes on either way.',
     squad: 'Nameless', money: 1000,
     people: [{ level: 8, loadout: 'drifters_wanderer', kit: [['dried_meat', 3], ['bandages', 2]] }],
-    start: { settlement: 'crossroad', off: [170, 40] },
+    // on the road out of Crossroad's east gate, so the way into town is the way in and not along the wall
+    start: { settlement: 'crossroad', off: [159, -57] },
     firstSteps: 'Crossroad is just to the west: a smith, and a bar with people looking for work. To earn, take a <b>job</b> off the barkeep\'s board, <b>mine</b> ore (right-click a rock) and sell it, loot the bandits you beat, or take a bounty from a town guard.',
   },
   {
@@ -140,7 +141,7 @@ export const SCENARIOS: Scenario[] = [
     squad: 'Runaways', money: 0,
     people: [{ level: 5, loadout: 'slave', shackled: true, enslavedBy: 'chainhouse', hunger: 120 }],
     start: { settlement: 'chainfield', off: [0, 0], inside: true },
-    firstSteps: 'You are a slave in Chainfield. When no overseer is looking, right-click yourself to <b>pick your shackles</b>, then slip away, best at night and sneaking (<b>T</b>). Runaways are hunted; the Unchained keep a hidden camp, Brokenchain, in the reeds to the west.',
+    firstSteps: 'You are a slave in Chainfield. When no overseer is looking, right-click yourself to <b>pick your shackles</b>, then slip away, best at night and sneaking (<b>{sneak}</b>). Runaways are hunted; the Unchained keep a hidden camp, Brokenchain, in the reeds to the west.',
   },
   {
     key: 'nothing', name: 'Nothing Left', diff: 'Brutal',
