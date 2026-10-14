@@ -60,12 +60,9 @@ const TERRAIN_FRAG = /* glsl */ `
   float tMid = 1.0 - smoothstep(500.0, 1600.0, tVd);
   vec2 tp = vWPos.xz;
   float tN1 = sbN(tp * 0.043), tN2 = sbN(tp * 0.21);
-  // (low quality, SB_TLOW: only the macro noise, rock, grass and paths, about what the ground cost before)
-  #ifdef SB_TLOW
-    float tN5 = 0.5;
-  #else
-    float tN5 = sbN(tp * 0.075 + 13.0);
-  #endif
+  // (low quality, SB_TLOW: the broad noises, the scrub, the metre grain close in, rock, grass and paths;
+  // none of the plates, puddles, ash, rust or finer grain, which is where the ground's cost is)
+  float tN5 = sbN(tp * 0.075 + 13.0);
   #ifdef SB_TNEAR
     float tFine = 1.0 - smoothstep(70.0, 260.0, tVd);
     float n3r = sbN(tp * 0.93), n3 = mix(0.5, n3r, tFine);
@@ -76,6 +73,10 @@ const TERRAIN_FRAG = /* glsl */ `
     #else
       float tNear = 0.0, n4 = 0.5;
     #endif
+  #elif defined(SB_TLOW)
+    float tFine = 1.0 - smoothstep(60.0, 180.0, tVd);
+    float n3r = sbN(tp * 0.93), n3 = mix(0.5, n3r, tFine);
+    float tNear = 0.0, n4 = 0.5;
   #else
     float tFine = 0.0, tNear = 0.0, n3r = 0.5, n3 = 0.5, n4 = 0.5;
   #endif
@@ -85,10 +86,8 @@ const TERRAIN_FRAG = /* glsl */ `
   // patches you still see from high up: lighter and darker ground, and scrub in the dry country
   tDn += (tN5 - 0.5) * 0.36 * tMid;
   tCol *= 0.83 + 0.34 * tDn;
-  #ifndef SB_TLOW
-    float tScrub = smoothstep(0.6, 0.78, tN1 * 0.45 + tN5 * 0.55 + (tN2 - 0.5) * 0.2) * max(vDet.x * 0.7, vDet.y * 0.5) * tMid;
-    tCol = mix(tCol, tCol * vec3(0.8, 0.78, 0.66), tScrub * 0.6);
-  #endif
+  float tScrub = smoothstep(0.6, 0.78, tN1 * 0.45 + tN5 * 0.55 + (tN2 - 0.5) * 0.2) * max(vDet.x * 0.7, vDet.y * 0.5) * tMid;
+  tCol = mix(tCol, tCol * vec3(0.8, 0.78, 0.66), tScrub * 0.6);
   // rock where the ground is steep, banded with strata, its edge broken up
   float tRockT = smoothstep(0.07, 0.27, tSteep + (tN2 - 0.5) * 0.1);
   float strata = 0.5 + 0.5 * sbSin(vWPos.y * 5.6 + tN2 * 4.0 + (tp.x + tp.y) * 0.02);

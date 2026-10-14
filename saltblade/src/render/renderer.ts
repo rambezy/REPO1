@@ -5,8 +5,10 @@
 //
 // Quality is 'auto' by default: the renderer times its own frames and feeds
 // them to the ladder in quality.ts, which walks down its rungs (fewer samples,
-// a smaller shadow map, fewer pixels) while frames run long, and back up,
-// slowly, once they have been short for a while.
+// a smaller shadow map, fewer pixels, and at the bottom no shadows at all)
+// while frames run long, and back up, slowly, once they have been short for
+// a while. Low keeps the ground dressed (see groundCover and terrainMesh): a
+// cheap machine should see a bare frame rate, not a bare world.
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -261,7 +263,8 @@ export class Renderer {
     // a gap of more than five seconds is a pause (a breakpoint, the tab put away), not a slow frame
     if (this.autoLive && this.lastT && now - this.lastT < 5000 && !this.ladderHold?.()) this.feed(now - this.lastT);
     this.lastT = now;
-    this.sun.castShadow = this.shadowsOn;
+    // low quality spends its budget on the ground cover instead of a shadow pass
+    this.sun.castShadow = this.shadowsOn && this.level !== 'low';
     this.gl.info.reset();
     const u = this.grade!.uniforms;
     u.uTime.value = (now - this.t0) / 1000;

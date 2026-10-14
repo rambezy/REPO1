@@ -5,7 +5,7 @@ import { G } from '../state';
 import { S } from '../sim/ctx';
 import { on, emit } from '../core/events';
 import { sel, selected, setSpeed } from '../game/control';
-import { aboutWhom, frameChar } from '../game/framing';
+import { aboutWhom, frameChar, frameFight } from '../game/framing';
 import { TRAVEL_SPEED, toggleTravel, setupTravel, walkMinutes, minutesText, isTravelling } from '../game/travel';
 import { portrait } from '../render/portrait';
 import { Char } from '../sim/char';
@@ -103,7 +103,8 @@ export function notify(text: string, kind = 'info') {
     n.classList.add('goto');
     n.appendChild(h('button', { class: 'gotobtn', title: `Look at ${who.name}` }, 'Go to'));
     shield(n);
-    n.onclick = () => frameChar(who, true);
+    // (one of yours in a fight: the whole fight, not only them)
+    n.onclick = () => { if (!((who.drawn || who.atk || who.status === 'ko') && frameFight(who))) frameChar(who, true); };
   }
   notices.appendChild(n);
   while (notices.children.length > 6) notices.firstChild!.remove();

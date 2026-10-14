@@ -15,7 +15,7 @@ import { S } from '../src/sim/ctx';
 import { Clock, HOUR, DAY } from '../src/sim/clock';
 import { RNG } from '../src/core/rng';
 import { Weather } from '../src/sim/weather';
-import { simStep } from '../src/sim/sim';
+import { simStep, updateActivation } from '../src/sim/sim';
 import { tickSquads } from '../src/sim/squads';
 import { structuresIn, townRings } from '../src/sim/structures';
 import { applyDamage, shoot, dist } from '../src/sim/combat';
@@ -23,7 +23,8 @@ import { LEASH, LAW_LEASH, CHASE_GIVE_UP } from '../src/sim/ai';
 import { LI } from '../src/sim/body';
 import { SK } from '../src/sim/skills';
 import { Squad } from '../src/sim/squad';
-import { makePerson } from '../src/sim/spawn';
+import { makePerson, makeAnimal } from '../src/sim/spawn';
+import { knockOut } from '../src/sim/health';
 import { makeItem } from '../src/sim/inventory';
 import type { Char } from '../src/sim/char';
 
@@ -352,6 +353,32 @@ const runAt = (c: Char, speed: number) => { let best = 0, bd = Infinity; for (le
   nav.invalidate(b.x - 10, b.z - 10, b.x + 10, b.z + 10);
   check('an attack order on someone who cannot be got at is given up', !a.order && said.some((x) => /gave up the chase/.test(x)), `${a.order ? 'still at it' : `dropped after ${t.toFixed(0)} s`}, ${dist(a, b).toFixed(1)} m off behind the pen's wall`);
   clearArena();
+}
+
+// 12. the downed can be finished: nobody dies in the fall itself (see combat's DOWN_GRACE), but a deliberate
+// "Finish them" with a club, which never bleeds, kills a knocked-out foe within a couple of minutes, and a
+// hound left with one eats it
+{
+  clearArena();
+  const a = person('player', 'player', 0, 0, { loadout: 'merc' });
+  arm(a, 'iron_club');
+  const v = person('reavers', 'bandit', 2, 0, { level: 18, loadout: 'reavers_bandit' });
+  updateActivation({ x: ax, z: az });
+  knockOut(v, 'test');
+  a.brain.finish = v.id; a.order = { k: 'attack', id: v.id }; a.mem.enemies = [v.id];
+  let t = 0;
+  while (t < 240 && v.status !== 'dead') { step(0.5); t += 0.5; if (v.status === 'up') knockOut(v, 'again'); }
+  check('"Finish them" with an iron club kills a downed foe within about two minutes', v.status === 'dead' && t <= 150, `${t.toFixed(0)} s`);
+  clearArena();
+  const w = person('reavers', 'bandit', 0, 0, { level: 18, loadout: 'reavers_bandit' });
+  const hound = makeAnimal(W, 'dunehound', rng, 10);
+  hound.x = w.x + 2; hound.z = w.z; hound.y = T.heightAt(hound.x, hound.z); hound.homeX = hound.x; hound.homeZ = hound.z; hound.hunger = 50;
+  hound.mem.enemies = [w.id]; hound.brain.enemy = w.id;
+  updateActivation({ x: ax, z: az });
+  knockOut(w, 'test');
+  let th = 0;
+  while (th < 240 && w.status !== 'dead') { step(0.5); th += 0.5; }
+  check('a dunehound kills the downed person it is left with', w.status === 'dead' && th <= 120, `${th.toFixed(0)} s`);
 }
 
 const failed = results.filter((r) => !r[1]);

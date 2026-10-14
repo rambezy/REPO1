@@ -95,6 +95,8 @@ export class Char {
   blockT = 0;
   stagger = 0;
   knockT = 0; // knocked flat, still conscious
+  /** sim time of the last knockout (not saved: after a load an old one is long past) */
+  downAt = -1e9;
   drawn = false;
   lastHitBy = 0;
   lastHitT = -999;
@@ -277,7 +279,7 @@ export class Char {
     return f;
   }
 
-  /** Seconds per attack with the current weapon. */
+  /** Seconds per attack with the current weapon: a wind-up and a swing slow enough to be read, never a flurry. */
   attackTime(): number {
     const w = this.weaponStats();
     const dex = this.skill('dexterity');
@@ -289,7 +291,7 @@ export class Char {
       speed *= 1 - this.armourPenalty('dex');
       if (w.kind === 'unarmed') speed *= 1 + this.skill('unarmed') * 0.006;
     }
-    return Math.max(0.45, 1.25 / speed);
+    return Math.max(0.55, 1.5 / speed);
   }
 
   hasArms() { return this.body.armOK(LI.larm) || this.body.armOK(LI.rarm); }

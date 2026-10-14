@@ -198,6 +198,44 @@ run('Freeholders vs their first raid (starvelings)', 'freeholders', firstRaid(ST
 run('Hired Blades vs day-1 Reavers on the road', 'blades', road('reavers', 'bandit', [4, 9]));
 run('Horned Pilgrims vs day-1 Reavers on the road', 'karuk', road('reavers', 'bandit', [4, 9]));
 run('Old Iron vs day-1 Sentinels on the road', 'constructs', road('machines', 'construct', [2, 3]));
+
+// mid-game: seasoned bands against what the roads send them later, each fight followed two minutes past
+// its end, so that whoever bleeds out or is finished on the ground is counted. Blows land heavier now (see
+// combat's BLOW); the dead must stay as rare as they were, which the blows on the fallen and the cap on a
+// single blow see to.
+const mercs = (level: number, n: number) => Array.from({ length: n }, () => { const c = makePerson(W, { faction: 'drifters', role: 'merc', race: 'valefolk', level, loadout: 'merc', whole: true }, rng); c.faction = 'player'; c.role = 'player'; W.moveToSquad(c, player); return c; });
+const reavers = (level: number, n: number) => { const sq = band('reavers'); return Array.from({ length: n }, () => { const c = makePerson(W, { faction: 'reavers', role: 'bandit', race: 'duneborn', level, loadout: 'reavers_bandit' }, rng); W.moveToSquad(c, sq); return c; }); };
+interface Mid { label: string; fights: number; withDeath: number; dead: number; deadAfter: number; t: number[] }
+function midgame(label: string, mineL: number, mineN: number, foeL: number, foeN: number, trials = TRIALS): Mid {
+  const m: Mid = { label, fights: 0, withDeath: 0, dead: 0, deadAfter: 0, t: [] };
+  for (let k = 0; k < trials; k++) {
+    clear();
+    rng = new RNG(hashStr(label + k)); S.rng = new RNG(hashStr(label + k) ^ 0x5eed);
+    S.clock.t = DAY + 10 * HOUR;
+    const a = mercs(mineL, mineN), b = reavers(foeL, foeN);
+    place(a, 0); place(b, 10);
+    for (const c of b) { c.mem.enemies = a.map((o) => o.id); c.brain.enemy = a[0].id; }
+    for (const c of a) { c.mem.enemies = b.map((o) => o.id); c.order = { k: 'attack', id: b[0].id }; }
+    updateActivation({ x: ax, z: az });
+    const standing = (cs: Char[]) => cs.some((c) => c.up && !c.brain.flee);
+    let t = 0;
+    while (t < LIMIT && standing(a) && standing(b)) { simStep(DT, { x: ax, z: az }); tickSquads(DT); t += DT; }
+    m.fights++; m.t.push(t);
+    const dead = () => [...a, ...b].filter((c) => c.status === 'dead').length;
+    m.dead += dead();
+    for (let after = 0; after < 120; after += DT) { simStep(DT, { x: ax, z: az }); tickSquads(DT); }
+    const d = dead();
+    m.deadAfter += d;
+    if (d) m.withDeath++;
+  }
+  return m;
+}
+const mid = [midgame('Four level-30 mercs vs five level-22 Reavers', 30, 4, 22, 5), midgame('Four level-20 mercs vs four level-20 Reavers', 20, 4, 20, 4)];
+check('mid-game losses are knockouts, not deaths: no more than one fight in three has a death, two minutes after', mid.every((m) => m.withDeath <= m.fights / 3), mid.map((m) => `${m.label}: ${m.deadAfter} dead (${m.dead} by the end) in ${m.withDeath} of ${m.fights} fights, median ${[...m.t].sort((p, q) => p - q)[Math.floor(m.t.length / 2)].toFixed(0)} s`).join('; '));
+// ...but rare is not never: a lopsided brawl must still leave someone dead, or a later change could quietly
+// make death impossible (the floor on blows to the falling, the cap on a single blow, and what the finishers do).
+const brawl = midgame('Eight level-32 mercs vs twelve level-18 Reavers', 32, 8, 18, 12, Math.min(TRIALS, 8));
+check('a lopsided brawl still kills: at least one of the fallen is dead two minutes after', brawl.deadAfter >= 1, `${brawl.deadAfter} dead (${brawl.dead} by the end) in ${brawl.withDeath} of ${brawl.fights} fights`);
 run('Scrap and Sinew vs day-1 rustspiders on the road', 'scrappers', road('fauna', 'animal', [2, 5], 'rustspider'));
 run('Deserters vs day-1 Sentinels on the road', 'deserters', road('machines', 'construct', [2, 3]));
 run('Deserters vs day-1 Reavers on the road', 'deserters', road('reavers', 'bandit', [4, 9]));

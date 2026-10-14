@@ -19,6 +19,7 @@ import { hostile } from '../sim/combat';
 import { S } from '../sim/ctx';
 import { angleTo, wrapAngle } from '../core/math';
 import { Trails } from './trails';
+import { G } from '../state';
 import type { WeaponKind } from '../sim/look';
 
 const bodyMat = charMaterial();
@@ -32,12 +33,31 @@ const ringMats = {
   hover: new THREE.MeshBasicMaterial({ color: 0xe8e0c8, transparent: true, opacity: 0.5, depthWrite: false, fog: false }),
   enemy: new THREE.MeshBasicMaterial({ color: 0xe0503a, transparent: true, opacity: 0.6, depthWrite: false, fog: false }),
   target: new THREE.MeshBasicMaterial({ color: 0xff7a48, transparent: true, opacity: 0.95, depthWrite: false, fog: false }),
+  // a hostile with a blow coming for one of yours: the enemy ring, but solid
+  attacker: new THREE.MeshBasicMaterial({ color: 0xe0503a, transparent: true, opacity: 0.9, depthWrite: false, fog: false }),
 };
 // the rings take their colours from the palette, which a colour-blind mode swaps
-const paintRings = () => { ringMats.sel.color.set(palette.friend); ringMats.hover.color.set(palette.hover); ringMats.enemy.color.set(palette.foe); ringMats.target.color.set(palette.attack); };
+const paintRings = () => { ringMats.sel.color.set(palette.friend); ringMats.hover.color.set(palette.hover); ringMats.enemy.color.set(palette.foe); ringMats.attacker.color.set(palette.foe); ringMats.target.color.set(palette.attack); };
 paintRings();
 watchPalette(paintRings);
 export type RingKind = keyof typeof ringMats | 'none';
+
+// a soft dark disc under everyone on low quality, which has no shadow pass to set them on the ground:
+// one instanced draw for the lot
+const BLOBS = 400;
+const blobGeo = new THREE.CircleGeometry(0.5, 14).rotateX(-Math.PI / 2);
+function blobTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 32;
+  const g = c.getContext('2d')!;
+  const r = g.createRadialGradient(16, 16, 2, 16, 16, 16);
+  r.addColorStop(0, 'rgba(0,0,0,0.45)'); r.addColorStop(0.55, 'rgba(0,0,0,0.3)'); r.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = r;
+  g.fillRect(0, 0, 32, 32);
+  return new THREE.CanvasTexture(c);
+}
+const blobMat = typeof document !== 'undefined' ? new THREE.MeshBasicMaterial({ map: blobTexture(), transparent: true, depthWrite: false, fog: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 }) : null;
+const blobM = new THREE.Matrix4();
 
 /** How far from your people a hostile gets a ring without a fight on. */
 const THREAT_R = 32;
@@ -356,8 +376,41 @@ export class CharViews {
   private targets = new Set<number>(); // whoever the selected are fighting
   private players: Char[] = [];
 
+  /** the blob shadows of low quality (see blobMat) */
+  blobs: THREE.InstancedMesh | null = null;
+
   constructor() {
     this.group.add(this.trails.mesh);
+    if (blobMat) {
+      this.blobs = new THREE.InstancedMesh(blobGeo, blobMat, BLOBS);
+      this.blobs.frustumCulled = false;
+      this.blobs.count = 0;
+      this.blobs.visible = false;
+      this.group.add(this.blobs);
+    }
+  }
+
+  /** Lays a blob under everyone shown, on low quality; none otherwise. */
+  private layBlobs(W: World) {
+    const b = this.blobs;
+    if (!b) return;
+    const low = G.R?.level === 'low';
+    b.visible = low;
+    if (!low) { b.count = 0; return; }
+    let n = 0;
+    for (const [, v] of this.views) {
+      if (n >= BLOBS) break;
+      const c = v.c;
+      if (!c.alive || c.carriedBy || c.cage || !v.root.visible) continue;
+      const lying = c.status !== 'up' || c.knockT > 0 || !!c.bed;
+      const s = (c.animal ? ANIMAL[c.animal].size * 1.3 : c.look.bulk * 0.8) * (lying ? 1.5 : 1);
+      blobM.makeScale(s, 1, s);
+      blobM.setPosition(c.x, c.y + 0.03, c.z);
+      b.setMatrixAt(n++, blobM);
+    }
+    b.count = n;
+    b.instanceMatrix.needsUpdate = true;
+    void W;
   }
 
   update(dt: number, W: World, cam: THREE.Vector3, focus: THREE.Vector3, sel: Set<number>, hover: number) {
@@ -409,6 +462,7 @@ export class CharViews {
       }
     }
     this.trails.update(dt);
+    this.layBlobs(W);
   }
 
   private tick(v: CharView, dt: number, W: World, sel: Set<number>, hover: number) {
@@ -416,11 +470,13 @@ export class CharViews {
     v.update(dt, W);
     v.updateThreat(dt, this.players, W);
     v.sampleTrail(this.trails);
-    const kind: RingKind = sel.has(c.id) ? 'sel' : hover === c.id ? 'hover' : this.targets.has(c.id) && c.alive ? 'target' : v.threat ? 'enemy' : 'none';
+    // (an attacker: a hostile, up and at it, whose target is one of yours)
+    const attacking = v.threat && c.up && (c.drawn || !!c.atk) && !!c.target && W.char(c.target)?.faction === 'player';
+    const kind: RingKind = sel.has(c.id) ? 'sel' : hover === c.id ? 'hover' : this.targets.has(c.id) && c.alive ? 'target' : attacking ? 'attacker' : v.threat ? 'enemy' : 'none';
     v.setRing(kind);
     if (v.ring.visible) {
-      if (kind === 'enemy') this.ringStats.enemy++; else if (kind === 'target') this.ringStats.target++;
-      const s = (c.animal ? ANIMAL[c.animal].size * 1.1 : c.look.bulk) * (kind === 'target' ? 1.15 : 1);
+      if (kind === 'enemy' || kind === 'attacker') this.ringStats.enemy++; else if (kind === 'target') this.ringStats.target++;
+      const s = (c.animal ? ANIMAL[c.animal].size * 1.1 : c.look.bulk) * (kind === 'target' ? 1.15 : kind === 'attacker' ? 1.1 : 1);
       v.ring.scale.setScalar(s);
       v.ring.position.set(c.x, c.y + 0.06, c.z);
     }

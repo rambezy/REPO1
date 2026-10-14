@@ -7,7 +7,7 @@
 import { input } from './input';
 
 export type ActionId =
-  | 'pan_up' | 'pan_down' | 'pan_left' | 'pan_right' | 'rotate_left' | 'rotate_right' | 'tilt_up' | 'tilt_down' | 'follow'
+  | 'pan_up' | 'pan_down' | 'pan_left' | 'pan_right' | 'rotate_left' | 'rotate_right' | 'tilt_up' | 'tilt_down' | 'follow' | 'fight'
   | 'pause' | 'speed1' | 'speed2' | 'speed3' | 'speed4' | 'travel'
   | 'select_all' | 'sneak' | 'walk' | 'hold' | 'drop' | 'next_squad'
   | 'char' | 'build' | 'research' | 'map' | 'factions' | 'log' | 'journal' | 'codex' | 'back'
@@ -44,6 +44,7 @@ export const ACTIONS: ActionDef[] = [
   { id: 'tilt_up', name: 'Tilt up', group: 'Camera', keys: ['@PageUp'], hold: true, row: 'tilt' },
   { id: 'tilt_down', name: 'Tilt down', group: 'Camera', keys: ['@PageDown'], hold: true, row: 'tilt' },
   { id: 'follow', name: 'Follow the selected person', group: 'Camera', keys: ['f'] },
+  { id: 'fight', name: 'Look at the fight your people are in', group: 'Camera', keys: ['g'] },
   { id: 'pause', name: 'Pause', group: 'Time', keys: ['Space'] },
   // the speeds go by position: on AZERTY the digit row types & é " ' without Shift
   { id: 'speed1', name: 'Normal speed', group: 'Time', keys: ['@Digit1'], row: 'speed' },

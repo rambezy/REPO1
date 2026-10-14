@@ -82,12 +82,16 @@ export function tickMove(c: Char, dt: number): number {
       if (l > 0) { dx /= l; dz /= l; }
     }
   }
-  // separation from neighbours
+  // separation from neighbours: elbow room, and in a fight more of it from your own side, so a brawl
+  // is a ring of figures that can be told apart and not a knot (the enemy within reach is not pushed off)
   let sx = 0, sz = 0;
-  S.W.hash.near(c.x, c.z, 1.1, (o, d2) => {
+  const fighting = c.drawn && c.up;
+  S.W.hash.near(c.x, c.z, fighting ? 1.7 : 1.1, (o, d2) => {
     if (o === c || o.status === 'dead' || o.carriedBy || o.cage) return;
+    const r = fighting && o.faction === c.faction && o.drawn ? 1.7 : 1.1;
+    if (d2 >= r * r) return;
     const d = Math.sqrt(d2) || 0.01;
-    const push = (1.1 - d) / 1.1;
+    const push = (r - d) / r;
     const w = o.status !== 'up' ? 0.4 : 1;
     sx += ((c.x - o.x) / d) * push * w;
     sz += ((c.z - o.z) / d) * push * w;

@@ -95,6 +95,8 @@ export function allies(c: Char, radius: number): Char[] {
 export function fight(c: Char, t: Char, dt: number) {
   c.target = t.id;
   if (!c.drawn && (c.mem.sit || c.mem.using)) { c.mem.sit = false; leaveFurniture(c); }
+  // (when this fight began: the lane and the steps go by it, so a fight runs the same whenever it starts)
+  if (!c.drawn) c.brain.fightAt = S.time;
   c.drawn = true;
   if (c.knockT > 0 || c.stagger > 0) return;
   const d = dist(c, t);
@@ -114,18 +116,38 @@ export function fight(c: Char, t: Char, dt: number) {
   const r = reach(c);
   // (a blow at someone getting away faster than the attacker can follow would only fall short: keep after them)
   if (d <= r && blowWillLand(c, t)) {
+    // a step round the target under way is finished first (see sidestep)
+    if (c.brain.stepping) { if (c.hasGoal && S.time - c.brain.stepAt < 0.7) return; c.brain.stepping = false; }
     stop(c);
     c.dir = angleTo(c.x, c.z, t.x, t.z);
     if (c.atkCD <= 0 && c.canUseWeapon()) startAttack(c, t, !c.animal && c.weaponStats().kind === 'unarmed' && S.rng.chance(0.25));
     else if (c.atkCD <= 0 && !c.canUseWeapon() && !c.animal) startAttack(c, t, true); // kick
+    // (every other beat, by the clock and who they are, not the world's dice: a step is only a step)
+    else if (c.atkCD > 0.3 && !c.animal && !c.holdPos && S.time - (c.brain.stepAt ?? -9) > 2.5 && (Math.floor(S.time - (c.brain.fightAt ?? 0)) + c.id) % 2 === 0) sidestep(c, t, r);
   } else if (!c.holdPos || d < 6) {
-    // approach to just inside reach; of someone getting away, to where they will be by then
+    // approach to just inside reach; of someone getting away, to where they will be by then. From a way
+    // off, fighters fan out into three lanes, so they arrive round their target and not in a file behind one another
     const lead = receding(c, t) > 0.3 ? Math.min(1, d / Math.max(1, c.moveSpeed('run'))) : 0;
     const px = t.x + t.vx * lead, pz = t.z + t.vz * lead;
-    const a = angleTo(px, pz, c.x, c.z);
+    const a = angleTo(px, pz, c.x, c.z) + (d > r * 2.5 ? (((c.id + Math.floor(c.brain.fightAt ?? 0)) % 3) - 1) * 0.6 : 0);
     goTo(c, px + Math.sin(a) * (r * 0.7), pz + Math.cos(a) * (r * 0.7));
     c.move = 'run';
   }
+}
+
+/**
+ * In the beat after a swing, a step round the target to one side (the side by who they are): a
+ * brawl spreads into a ring of separate figures instead of a knot, and the next blow comes from a
+ * new angle. Nowhere a foot cannot go.
+ */
+function sidestep(c: Char, t: Char, r: number) {
+  const a = angleTo(t.x, t.z, c.x, c.z) + (c.id % 2 ? 0.55 : -0.55);
+  const px = t.x + Math.sin(a) * r * 0.8, pz = t.z + Math.cos(a) * r * 0.8;
+  if (!S.nav.walkable(px, pz)) return;
+  goTo(c, px, pz);
+  c.move = 'walk';
+  c.brain.stepping = true;
+  c.brain.stepAt = S.time;
 }
 
 /** Seconds of running after someone, with no blow struck either way, before giving it up. */

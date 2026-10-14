@@ -16,12 +16,18 @@ const SUB_FONT = '500 10px "Barlow Condensed", sans-serif';
 const FLOAT_FONT = '700 13px "Barlow Condensed", sans-serif';
 const BUBBLE_FONT = '500 12px Barlow, sans-serif';
 const BAR_W = 44, BAR_H = 4;
+/** Within this of the camera's focus everyone in a fight is named and barred, not only on hover... */
+const FIGHT_R = 60;
+/** ...and only a fight within this of it gets lines drawn (one from across the map is clutter) */
+const LINE_R = 90;
+/** target lines drawn at most in a frame */
+const MAX_LINES = 18;
 
 // the colours that carry meaning come from the palette (a colour-blind mode swaps them); the translucent
 // ones are made up front rather than every frame
 const rgba = (hex: string, a: number) => `rgba(${parseInt(hex.slice(1, 3), 16)},${parseInt(hex.slice(3, 5), 16)},${parseInt(hex.slice(5, 7), 16)},${a})`;
 let lineLead = '', lineOurs = '', lineFoe = '', marqueeLine = '', marqueeFill = '';
-const paint = () => { lineLead = rgba(palette.friend, 0.75); lineOurs = rgba(palette.friend, 0.45); lineFoe = rgba(palette.foe, 0.55); marqueeLine = rgba(palette.friend, 0.9); marqueeFill = rgba(palette.friend, 0.12); };
+const paint = () => { lineLead = rgba(palette.friend, 0.9); lineOurs = rgba(palette.friend, 0.45); lineFoe = rgba(palette.foe, 0.7); marqueeLine = rgba(palette.friend, 0.9); marqueeFill = rgba(palette.friend, 0.12); };
 paint();
 watchPalette(paint);
 
@@ -142,7 +148,8 @@ export class Overlay {
     return false;
   }
 
-  draw(W: World, cam: THREE.PerspectiveCamera, sel: Set<number>, hover: number, dt: number) {
+  /** `focus` is the ground point the camera looks at: the fight there is the one that is laid out in full. */
+  draw(W: World, cam: THREE.PerspectiveCamera, sel: Set<number>, hover: number, dt: number, focus_?: { x: number; z: number }) {
     const t0 = performance.now();
     this.W = W;
     this.frame++;
@@ -182,7 +189,7 @@ export class Overlay {
     focus.clear();
     for (const id of sel) { focus.add(id); const c = W.char(id); if (c && c.target) focus.add(c.target); }
     if (hover) focus.add(hover);
-    this.drawLines(W, cam, sel, w, h);
+    this.drawLines(W, cam, sel, w, h, focus_);
 
     // gather the labels
     this.n = 0;
@@ -199,11 +206,13 @@ export class Overlay {
       const isSel = sel.has(c.id), isHover = hover === c.id, important = focus.has(c.id);
       const hurt = c.body.total() < 0.99 || c.body.bleeding() > 0.01;
       const fighting = c.drawn || !!c.atk;
+      // in the fight the camera is on, everyone is named and barred: who is winning must read at a glance
+      const inFight = fighting && c.alive && !!focus_ && (c.x - focus_.x) ** 2 + (c.z - focus_.z) ** 2 < FIGHT_R * FIGHT_R;
       const alpha = Math.max(0.25, Math.min(1, 1.4 - d / 120));
       const who: Importance = important ? 'selected' : c.faction === 'player' ? 'mine' : fighting && (W.rel.hostile('player', c.faction) || !!c.target) ? 'foe' : 'other';
       const bar = (hurt || fighting || isSel || isHover) && c.alive && d < 110;
-      const nameA = nameAlpha(d, important, h);
-      const wantName = (isSel || isHover || this.showAllNames || c.barkT > 0) && nameA > 0.02;
+      const nameA = nameAlpha(d, important || inFight, h);
+      const wantName = (isSel || isHover || this.showAllNames || c.barkT > 0 || inFight) && nameA > 0.02;
       const sub = wantName && (isHover || isSel) && !c.animal && c.faction !== 'player' ? FACTION[c.faction] : undefined;
       const sneak = c.faction === 'player' && c.move === 'sneak' && c.status === 'up' && c.mem.seenBy !== undefined ? (c.mem.seenBy ? 2 : 1) : 0;
       const zz = c.sleeping && c.status === 'up';
@@ -223,6 +232,8 @@ export class Overlay {
         }
         if (sneak) { it.sneak = sneak; bw = Math.max(bw, 24); bh += 20; }
         it.x = sx; it.y = sy + (bar ? 8 : 0); it.w = bw; it.h = bh;
+        // (in the fight in view a tag may climb a little to find room: a knot of fighters would otherwise lose most of its names)
+        it.slots = inFight ? 2 : 0;
         it.priority = labelPriority(who, 'tag', this.shownBefore.has(it.id)) + (wantName && !bar ? nameA * 0.4 : 0);
         if (this.offscreen(it, w, h)) it = null;
         else { c.view.tagTop = it.y - it.h; c.view.tagFrame = this.frame; }
@@ -304,32 +315,48 @@ export class Overlay {
     this.ms += (performance.now() - t0 - this.ms) * 0.05;
   }
 
-  /** A faint line from each of your fighters to its target, and from enemies to whoever of yours they are on. */
-  private drawLines(W: World, cam: THREE.PerspectiveCamera, sel: Set<number>, w: number, h: number) {
+  /**
+   * A line from each of your fighters to its target, and from enemies to whoever of yours they are on.
+   * The selected person's is the strongest and ends in an arrowhead; the rest end in a dot. Only the
+   * fight the camera is on gets them, and never more than a handful.
+   */
+  private drawLines(W: World, cam: THREE.PerspectiveCamera, sel: Set<number>, w: number, h: number, focus?: { x: number; z: number }) {
     const g = this.ctx;
     let n = 0;
-    g.lineWidth = 1.5;
-    for (const c of W.active) {
+    // the selected first, so the cap never cuts theirs
+    for (let pass = 0; pass < 2; pass++) for (const c of W.active) {
+      if (n >= MAX_LINES) break;
       if (!c.view || !c.target || !c.up || !(c.drawn || c.atk)) continue;
+      const ours = c.faction === 'player';
+      if ((pass === 0) !== (ours && sel.has(c.id))) continue;
       const t = W.char(c.target);
       if (!t || !t.view || !t.alive || t.carriedBy) continue;
-      const ours = c.faction === 'player';
       if (!ours && t.faction !== 'player') continue;
+      if (focus && (c.x - focus.x) ** 2 + (c.z - focus.z) ** 2 > LINE_R * LINE_R && (t.x - focus.x) ** 2 + (t.z - focus.z) ** 2 > LINE_R * LINE_R) continue;
       if (!this.project(c.x, c.y + 0.08, c.z, cam, w, h)) continue;
       const ax = this.sx, ay = this.sy;
       if (!this.project(t.x, t.y + 0.08, t.z, cam, w, h)) continue;
       const bx = this.sx, by = this.sy;
       if ((ax < 0 && bx < 0) || (ax > w && bx > w) || (ay < 0 && by < 0) || (ay > h && by > h)) continue;
       const lead = ours && sel.has(c.id);
+      g.lineWidth = lead ? 2.5 : ours ? 1.5 : 1.8;
       g.strokeStyle = ours ? (lead ? lineLead : lineOurs) : lineFoe;
+      const L = Math.hypot(bx - ax, by - ay) || 1, ux = (bx - ax) / L, uy = (by - ay) / L;
+      // stop short of the target's ring, so the end reads as a point, not a smear under the feet
+      const ex = bx - ux * 6, ey = by - uy * 6;
       g.beginPath();
       g.moveTo(ax, ay);
-      g.lineTo(bx, by);
+      g.lineTo(lead ? ex - ux * 6 : ex, lead ? ey - uy * 6 : ey);
       g.stroke();
-      // a dot where it lands, so the direction reads
       g.fillStyle = g.strokeStyle;
       g.beginPath();
-      g.arc(bx, by, lead ? 3 : 2.2, 0, Math.PI * 2);
+      if (lead) {
+        // an arrowhead: the direction of the order reads from across the screen
+        g.moveTo(ex, ey);
+        g.lineTo(ex - ux * 11 - uy * 5, ey - uy * 11 + ux * 5);
+        g.lineTo(ex - ux * 11 + uy * 5, ey - uy * 11 - ux * 5);
+        g.closePath();
+      } else g.arc(ex, ey, ours ? 2.2 : 2.8, 0, Math.PI * 2);
       g.fill();
       n++;
     }

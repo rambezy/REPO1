@@ -8,12 +8,18 @@ import { clamp, lerp } from '../core/math';
 import type { Terrain } from '../world/terrain';
 import { WORLD } from '../world/consts';
 
+/** where along the line of sight (as fractions of it, from the target) the ground is checked, and how far under it the line must stay */
+const LOS = [0.3, 0.5, 0.7, 0.86];
+const LOS_CLEAR = 1.4;
+/** the lift moves at most this fast (m/s) up and down, and holds its recent peak this long (s) so passing ridges do not bob it */
+const LIFT_UP = 25, LIFT_DOWN = 10, LIFT_HOLD = 0.5;
+
 export class RTSCamera {
   target = new THREE.Vector3(WORLD / 2, 20, WORLD / 2);
   yaw = 0.7;
   pitch = 0.82;
-  dist = 55;
-  wantDist = 55;
+  dist = 45;
+  wantDist = 45;
   wantYaw = 0.7;
   wantPitch = 0.82;
   follow: (() => { x: number; y: number; z: number } | null) | null = null;
@@ -21,20 +27,38 @@ export class RTSCamera {
   keyPan = true;
   shake = 0;
   private ty = 20;
+  /** extra height the eye is lifted so the line of sight clears a ridge between it and the target (rate-limited) */
+  private lift = 0;
+  private liftPeak = 0;
+  private liftHold = 0;
+  private lastDt = 0.016;
+  /** the camera's own clock (seconds), and when the player last moved it by hand */
+  private now = 0;
+  private inputAt = -Infinity;
+  /** a punch-in: how long is left of it and how far in it goes (a fraction of the distance) */
+  private punchT = 0;
+  private punchK = 0;
+  /** punch-ins taken so far (for probes) */
+  punches = 0;
+  private static PUNCH = 0.55;
   /** A point the view is easing toward (see glideTo), given up the moment the player pans. */
   private glide: { x: number; z: number; track?: () => { x: number; z: number } | null } | null = null;
 
   update(dt: number, T: Terrain) {
+    this.now += dt;
+    this.lastDt = dt;
+    let touched = false;
     const w = input.takeWheel();
-    if (w) this.wantDist = clamp(this.wantDist * Math.pow(1.13, w), 3.5, 1400);
+    if (w) { this.wantDist = clamp(this.wantDist * Math.pow(1.13, w), 3.5, 1400); touched = true; }
     const [rx, ry] = input.takeRot();
+    if (rx || ry) touched = true;
     this.wantYaw -= rx * 0.006;
     this.wantPitch = clamp(this.wantPitch + ry * 0.005, 0.12, 1.45);
     if (!input.typing()) {
-      if (keymap.down('rotate_left')) this.wantYaw += dt * 1.6;
-      if (keymap.down('rotate_right')) this.wantYaw -= dt * 1.6;
-      if (keymap.down('tilt_up')) this.wantPitch = clamp(this.wantPitch + dt, 0.12, 1.45);
-      if (keymap.down('tilt_down')) this.wantPitch = clamp(this.wantPitch - dt, 0.12, 1.45);
+      if (keymap.down('rotate_left')) { this.wantYaw += dt * 1.6; touched = true; }
+      if (keymap.down('rotate_right')) { this.wantYaw -= dt * 1.6; touched = true; }
+      if (keymap.down('tilt_up')) { this.wantPitch = clamp(this.wantPitch + dt, 0.12, 1.45); touched = true; }
+      if (keymap.down('tilt_down')) { this.wantPitch = clamp(this.wantPitch - dt, 0.12, 1.45); touched = true; }
     }
     this.yaw = lerp(this.yaw, this.wantYaw, 1 - Math.exp(-dt * 14));
     this.pitch = lerp(this.pitch, this.wantPitch, 1 - Math.exp(-dt * 14));
@@ -56,14 +80,14 @@ export class RTSCamera {
     // a finger dragging the ground along
     const [tdx, tdy] = input.takePan();
     if (tdx || tdy) {
-      this.follow = null; this.glide = null;
+      this.follow = null; this.glide = null; touched = true;
       const k = (this.dist * 1.6) / window.innerHeight;
       const s = Math.sin(this.yaw), c = Math.cos(this.yaw);
       this.target.x -= (tdx * c + tdy * s) * k;
       this.target.z -= (-tdx * s + tdy * c) * k;
     }
     if (px || pz) {
-      this.follow = null; this.glide = null;
+      this.follow = null; this.glide = null; touched = true;
       const sp = (12 + this.dist * 1.25) * (input.shift ? 2.5 : 1) * dt;
       const s = Math.sin(this.yaw), c = Math.cos(this.yaw);
       // forward is away from the camera
@@ -90,16 +114,52 @@ export class RTSCamera {
     this.ty = lerp(this.ty, gy, 1 - Math.exp(-dt * 6));
     this.target.y = this.ty;
     if (this.shake > 0) this.shake = Math.max(0, this.shake - dt * 2);
+    // the player's hand on the camera ends a punch-in, and keeps one from starting for a moment
+    if (touched) { this.inputAt = this.now; this.punchT = 0; }
+    if (this.punchT > 0) this.punchT = Math.max(0, this.punchT - dt);
+  }
+
+  /**
+   * A short punch-in on the first blow of a fight in view: the eye comes in by `k` of its distance
+   * and back over half a second. Nothing while the player is moving the camera themselves, nor just
+   * after; false then, so the caller can tell.
+   */
+  punch(k = 0.12): boolean {
+    if (this.now - this.inputAt < 1.5 || this.punchT > 0) return false;
+    this.punchT = RTSCamera.PUNCH;
+    this.punchK = k;
+    this.punches++;
+    return true;
   }
 
   apply(cam: THREE.PerspectiveCamera, T: Terrain) {
     const cp = Math.cos(this.pitch), sp = Math.sin(this.pitch);
-    const lookY = this.target.y + 1.2 * Math.min(1, 30 / this.dist);
-    let x = this.target.x + Math.sin(this.yaw) * cp * this.dist;
-    let z = this.target.z + Math.cos(this.yaw) * cp * this.dist;
-    let y = lookY + sp * this.dist;
+    // the punch-in eases in and out; the distance it is read from is this frame's
+    const punch = this.punchT > 0 ? Math.sin(Math.PI * (1 - this.punchT / RTSCamera.PUNCH)) * this.punchK : 0;
+    const dist = this.dist * (1 - punch);
+    const lookY = this.target.y + 1.2 * Math.min(1, 30 / dist);
+    let x = this.target.x + Math.sin(this.yaw) * cp * dist;
+    let z = this.target.z + Math.cos(this.yaw) * cp * dist;
+    let y = lookY + sp * dist;
     const ground = Math.max(T.heightAt(x, z), 0) + 1.6;
     if (y < ground) y = ground;
+    // a ridge between the eye and what it looks at would fill the view with its inside: the eye is
+    // lifted until the line of sight clears the ground along the way, by a margin, and eased so a pan
+    // over broken country does not jolt
+    let need = 0;
+    for (const f of LOS) {
+      const gh = Math.max(T.heightAt(this.target.x + (x - this.target.x) * f, this.target.z + (z - this.target.z) * f), 0) + LOS_CLEAR;
+      const lineY = lookY + (y - lookY) * f;
+      if (gh > lineY) need = Math.max(need, (gh - lineY) / f);
+    }
+    // never more than half the distance (a wall of a ridge is better than a view from the moon), held at
+    // its recent peak for a moment, and moved toward at a walking rate: no lurch, no bobbing over ridges
+    need = Math.min(need, dist * 0.5);
+    const dt = this.lastDt;
+    if (need >= this.liftPeak) { this.liftPeak = need; this.liftHold = LIFT_HOLD; }
+    else if ((this.liftHold -= dt) <= 0) this.liftPeak = need;
+    this.lift += clamp(this.liftPeak - this.lift, -LIFT_DOWN * dt, LIFT_UP * dt);
+    y += this.lift;
     if (this.shake > 0) {
       x += (Math.random() - 0.5) * this.shake * 0.4;
       y += (Math.random() - 0.5) * this.shake * 0.4;

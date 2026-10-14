@@ -32,6 +32,7 @@
     "test:stories": "tsx tools/storytest.ts",
     "test:objectives": "tsx tools/objtest.ts",
     "test:travel": "tsx tools/traveltest.ts",
+    "test:pace": "tsx tools/pacetest.ts",
     "map": "tsx tools/mapshot.ts",
     "artifact": "node tools/make-artifact.mjs"
   },

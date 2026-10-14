@@ -2,6 +2,7 @@
 // right-click orders, context menus and time controls.
 import * as THREE from 'three';
 import { G } from '../state';
+import { frameFight } from './framing';
 import { input } from '../core/input';
 import { keymap } from '../core/keys';
 import { uiScale, uiW, uiH } from '../ui/dom';
@@ -371,6 +372,7 @@ export function attachControl() {
   keymap.on('walk', withSelected((who) => { const walk = !who[0].mem.walk; who.forEach((c) => { c.mem.walk = walk; if (c.move !== 'sneak') c.move = walk ? 'walk' : 'run'; }); emit('sel'); }));
   keymap.on('hold', withSelected((who) => { who.forEach((c) => issue(c, c.order?.k === 'hold' ? null : { k: 'hold' })); emit('sel'); }));
   keymap.on('follow', withSelected((who) => { const c = who[0]; G.cam.follow = G.cam.follow ? null : () => (c.alive ? c : null); }));
+  keymap.on('fight', () => { frameFight(); });
   keymap.on('drop', () => { selected().forEach((c) => c.carrying && dropCarried(c)); });
   on('order', (c: Char, o: Order) => issue(c, o));
 }

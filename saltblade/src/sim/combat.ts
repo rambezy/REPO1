@@ -14,6 +14,15 @@ import { angleTo, wrapAngle, clamp } from '../core/math';
 import { buildingAt } from './structures';
 
 export const RADIUS = 0.38;
+/**
+ * Blows land this much heavier than the weapon tables say, and come slower (see Char.attackTime and
+ * the beat after a swing in tickAttack): a fight is settled by fewer exchanges, each of which reads.
+ */
+const BLOW = 1.6;
+/** A blow of this much (after armour and toughness) reels its target, spoils their swing, and can put them down. */
+const HARD = 12;
+/** Seconds after a knockout in which blows cannot kill: the pile-on as someone falls is a beating, not an execution. */
+const DOWN_GRACE = 2;
 
 export function dist(a: Char, b: Char) { return Math.hypot(a.x - b.x, a.z - b.z); }
 
@@ -126,7 +135,8 @@ export function tickAttack(c: Char, dt: number) {
   }
   if (a.t >= 1) {
     c.atk = null;
-    c.atkCD = S.rng.range(0.05, 0.35);
+    // a beat to recover, and to shift a step, before the next (see ai's sidestep)
+    c.atkCD = S.rng.range(0.35, 0.75);
   }
 }
 
@@ -223,8 +233,11 @@ export function resolveBlow(a: Char, d: Char, variant: number, kick = false) {
   if (d.robot) { cut *= w.vsRobot; blunt *= w.vsRobot; }
   else if (d.animal) { cut *= w.vsAnimal; blunt *= w.vsAnimal; }
   else { cut *= w.vsHuman; blunt *= w.vsHuman; }
-  if (downed && !a.animal) { cut *= 1.2; blunt *= 1.2; }
-  applyDamage(d, limb, cut, blunt, a, w.bleed, true, w.pierce);
+  // the weight of a blow is for someone on their feet: one on the ground takes blows as they always
+  // did, and (see applyDamage) is beaten senseless by them, never to death
+  if (downed) { if (!a.animal) { cut *= 1.2; blunt *= 1.2; } } else { cut *= BLOW; blunt *= BLOW; }
+  // (the weight goes into the wound, not the bleeding: a blow opens no wider a vein than it did)
+  const dmg = applyDamage(d, limb, cut, blunt, a, downed ? w.bleed : w.bleed / BLOW, true, w.pierce);
   // learning
   const dif = versus(att, def);
   if (!a.animal) {
@@ -233,10 +246,11 @@ export function resolveBlow(a: Char, d: Char, variant: number, kick = false) {
     train(a, 'melee_atk', 0.7, dif);
     if (w.weight > 8) train(a, 'strength', 0.5, dif); else train(a, 'dexterity', 0.4, dif);
   }
-  // knockdown
-  if (w.knock && d.status === 'up' && !downed) {
-    const p = w.knock * (0.6 + a.skill('strength') / 100) * (1 - d.skill('toughness') / 220);
-    if (S.rng.chance(p)) {
+  // knockdown: a knocking weapon's blow, or a hard one to the legs (a very hard one anywhere) off the feet
+  if (d.status === 'up' && !downed) {
+    let p = w.knock ? w.knock * (0.6 + a.skill('strength') / 100) : dmg >= HARD && (limb >= LI.lleg || dmg >= HARD * 2) ? 0.2 : 0;
+    p *= 1 - d.skill('toughness') / 220;
+    if (p > 0 && S.rng.chance(p)) {
       d.knockT = S.rng.range(1.8, 3.2);
       d.atk = null;
       S.fx.sound('thud', d.x, d.z);
@@ -244,8 +258,10 @@ export function resolveBlow(a: Char, d: Char, variant: number, kick = false) {
   }
   if (d.status === 'up') {
     d.act = 'hit'; d.actT = 0; d.actDur = 0.35;
-    if (d.atk && d.atk.t < 0.45 && S.rng.chance(0.5)) d.atk = null; // interrupted
-    d.stagger = 0.25;
+    // a hard blow reels its target and spoils the swing they were winding up; a lighter one only sometimes
+    const hard = dmg >= HARD;
+    if (d.atk && d.atk.t < 0.45 && (hard || S.rng.chance(0.5))) d.atk = null;
+    d.stagger = hard ? 0.6 : 0.35;
   }
   // provoke beasts and remember who hit
   d.lastHitBy = a.id;
@@ -258,11 +274,11 @@ function GRADESMUL(a: Char) {
   return GRADES[a.eq.weapon.q].dmg;
 }
 
-/** Applies damage to a body part after armour and toughness. */
 /** The most one body part can bleed, in blood a second. */
 const BLEED_CAP = 0.9;
 
-export function applyDamage(d: Char, limb: number, cut: number, blunt: number, by: Char | null, bleedMul = 1, fx = true, pierce = 0) {
+/** Applies damage to a body part after armour and toughness; returns what got through. */
+export function applyDamage(d: Char, limb: number, cut: number, blunt: number, by: Char | null, bleedMul = 1, fx = true, pierce = 0): number {
   const b = d.body;
   const [ac, ab] = d.armourAt(limb);
   const cutIn = cut * (1 - ac * (1 - pierce));
@@ -271,10 +287,23 @@ export function applyDamage(d: Char, limb: number, cut: number, blunt: number, b
   let ct = cutIn;
   const tough = 1 - Math.min(0.5, d.skill('toughness') * 0.003);
   ct *= tough; bl *= tough;
-  const dmg = ct + bl;
+  let dmg = ct + bl;
   const prost = b.isProst(limb);
   const was = b.hp[limb];
+  const vital = limb <= LI.chest && !prost;
+  const down = d.status !== 'up' || d.knockT > 0;
+  // no single blow kills someone standing whole: the head or chest can lose at most short of twice its
+  // measure in one, which from full health is a knockout and no more
+  if (vital && !down && by) {
+    const most = b.max[limb] * 1.9;
+    if (dmg > most) { const k = most / dmg; ct *= k; bl *= k; dmg = most; }
+  }
   b.hp[limb] -= dmg;
+  // nobody is killed in the fall: knocked flat, or in the first moments of a knockout, a blow leaves the head
+  // and chest short of the mark. After that the downed take blows as they always did, so a deliberate finish,
+  // a beast at its meal and a machine's beam end as they did
+  const falling = d.knockT > 0 || (d.status === 'ko' && S.time - d.downAt < DOWN_GRACE);
+  if (vital && falling && by) b.hp[limb] = Math.max(b.hp[limb], -b.max[limb] * 0.95);
   // wounds on one part run together: past a point more cuts there tear the same flesh, not new veins
   if (!b.robotic && !prost) b.bleed[limb] = Math.min(BLEED_CAP, b.bleed[limb] + ct * 0.013 * bleedMul * (RACE[d.look.race]?.bleed ?? 1) * (d.animal ? ANIMAL[d.animal].bleedMul ?? 1 : 1));
   // toughness grows from punishment (see toughen: a beating teaches, a second one straight after hardly more)
@@ -307,6 +336,7 @@ export function applyDamage(d: Char, limb: number, cut: number, blunt: number, b
       onKnockedOut(d, by);
     }
   }
+  return dmg;
 }
 
 /** Relations shift when people are hurt. */

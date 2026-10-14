@@ -37,6 +37,7 @@ export function knockOut(c: Char, why = '') {
   if (c.status !== 'up') return;
   c.status = 'ko';
   c.body.koT = 0;
+  c.downAt = S.time;
   c.atk = null;
   c.act = null;
   c.path = null;

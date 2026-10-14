@@ -9,7 +9,7 @@ import { Char } from '../sim/char';
 import { leaderFell, creditDefence } from '../sim/worldevents';
 import { ANIMAL } from '../content/animals';
 import { ITEM } from '../content/items';
-import { impact } from '../render/impact';
+import { impact, reducedMotion } from '../render/impact';
 import { hitRule, koRule, limbRule, resetAutopause } from './autopause';
 
 /** Height of someone's middle, for effects. */
@@ -30,12 +30,23 @@ function freshBlow(c: Char): Char | null {
   return S.W.char(v.hitBy) ?? null;
 }
 
+/** When the last blow of the player's fights fell (real seconds): a blow long after it opens a new fight. */
+let lastBlowAt = -1e9;
+const FIGHT_GAP = 12;
+
 export function setupFx() {
-  on('game:start', resetAutopause);
-  on('world:reset', resetAutopause);
+  on('game:start', () => { resetAutopause(); lastBlowAt = -1e9; });
+  on('world:reset', () => { resetAutopause(); lastBlowAt = -1e9; });
   S.fx = {
     hit(c: Char, by: Char, dmg: number, blocked: boolean, limb?: number) {
       if (!c.view) return;
+      // the first blow of a fight in view brings the camera in a little, once; a quiet dozen seconds opens the next
+      if (by !== c && felt(c, by)) {
+        // (by the clock on the wall, not the sim's: at travel speed a lull of a second is not a new fight)
+        const opening = G.realTime - lastBlowAt > FIGHT_GAP;
+        lastBlowAt = G.realTime;
+        if (opening && G.mode === 'play' && G.cam && !reducedMotion()) G.cam.punch();
+      }
       // a blow on a prosthetic strikes metal, low on a leg
       const prost = limb !== undefined && c.body.isProst(limb);
       const y = prost && limb! >= 5 && c.status === 'up' ? c.y + 0.5 : midY(c), L = Math.hypot(c.x - by.x, c.z - by.z) || 1, dir: [number, number] = [(c.x - by.x) / L, (c.z - by.z) / L];

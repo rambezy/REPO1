@@ -671,12 +671,147 @@ function dressYard(g: KitBuilder, b: WObj, d: BuildingData, t: number, style: st
   }
 }
 
+const PORCH_STYLES = new Set(['shanty', 'swamp', 'stone', 'concord']);
+const AWNING_STYLES = new Set(['adobe', 'ember', 'karuk']);
+const FENCE_STYLES = new Set(['shanty', 'stone', 'swamp', 'concord', 'adobe']);
+const HOMES = new Set(['house', 'farmhouse', 'hut']);
+const STORES = new Set(['warehouse', 'workshop', 'shop']);
+/**
+ * What stands against a building and round it, in the town's own look: a porch or an awning over the
+ * front door, a bench beside it, a fence along the yard, crates stacked by a store, barrels by a bar,
+ * a line of washing, a cart, a signboard. Decoration, in the shell's own mesh (no draw of its own),
+ * placed by the building's hash so a town is the same every time it is built.
+ */
+function dressOutside(g: KitBuilder, b: WObj, d: BuildingData, t: number, kit: Kit, trim: number, rd: () => number) {
+  if (!b.id || !G.T) return;
+  const use = d.use;
+  if (use === 'stall' || use === 'pen' || use === 'tower' || use === 'ruin' || use === 'dome' || use === 'tent') return;
+  const hw = d.w / 2, hd = d.d / 2;
+  const c = Math.cos(b.rot), s = Math.sin(b.rot);
+  // the ground, relative to the floor, at a point in the building's own frame (null where it falls or rises too far)
+  const ground = (lx: number, lz: number): number | null => {
+    const wx = b.x + lx * c + lz * s, wz = b.z - lx * s + lz * c;
+    const ly = G.T.heightAt(wx, wz) - b.y;
+    return ly < -1.2 || ly > 0.35 ? null : ly;
+  };
+  const front = d.doors.find((x) => x.side === 's') ?? null;
+  // (fence and bench wood is lighter than the trim: unshadowed on low quality, the trim's brown reads as black)
+  const plank = dk(trim, 1.2), fence = d.style === 'shanty' ? 0x8a7458 : dk(trim, 1.35);
+  // a porch over the front door, or a cloth awning in the hot country
+  if (front && PORCH_STYLES.has(d.style) && rd() < 0.5) {
+    const pw = front.w + 2.2, pd = 1.8, px = front.off;
+    const ly = ground(px, hd + pd / 2);
+    if (ly !== null && !d.doors.some((x) => x.side !== 's' && Math.abs(x.off) > hw - 2)) {
+      g.S(S.plank).push().translate(px, ly + 0.07, hd + pd / 2).box(pw, 0.14, pd, { color: dk(trim, 0.85) }).pop();
+      for (const sx of [-1, 1]) g.push().translate(px + sx * (pw / 2 - 0.2), ly, hd + pd - 0.25).block(0.16, 2.5 - ly, 0.16, { color: trim }).pop();
+      // (the slab starts at the wall's outer face: nothing of it shows in the room when the roof is cut away)
+      g.S(d.style === 'shanty' ? S.corrugated : S.plank).push().translate(px, 2.66, hd + 0.03 + (pd + 0.4) / 2).rotateX(0.14).box(pw + 0.4, 0.1, pd + 0.4, { color: dk(d.roofCol, 0.9) }).pop();
+      g.S(S.plank).push().translate(px, 2.42, hd + pd + 0.35).box(pw + 0.4, 0.16, 0.05, { color: plank }).pop();
+    }
+  } else if (front && AWNING_STYLES.has(d.style) && rd() < 0.55) {
+    frame(g, 's', hw, hd);
+    drawAwning(g, front.off, front.w + 1.4, 2.6, 1.3, 'cloth', [0xa8442e, 0x3a5a6a, 0x8a7a4a, 0xb89a5a][Math.floor(rd() * 4)]);
+    g.pop();
+  }
+  // a bench beside the door
+  if (front && (HOMES.has(use) || use === 'bar') && rd() < 0.5) {
+    const bx = front.off + (front.w / 2 + 1.3) * (rd() < 0.5 ? -1 : 1);
+    const ly = Math.abs(bx) < hw - 0.8 ? ground(bx, hd + 0.4) : null;
+    if (ly !== null && !nearDoor(d.doors, 's', bx, 0.9)) {
+      g.S(S.plank).push().translate(bx, ly + 0.44, hd + 0.42).box(1.3, 0.07, 0.38, { color: plank }).pop();
+      for (const sx of [-0.5, 0.5]) g.push().translate(bx + sx, ly, hd + 0.42).block(0.08, 0.42, 0.3, { color: dk(trim, 0.8) }).pop();
+    }
+  }
+  // a fence along one side of a home's yard
+  if (HOMES.has(use) && FENCE_STYLES.has(d.style) && rd() < 0.45) {
+    const sx = rd() < 0.5 ? 1 : -1, x = sx * (hw + 1.6);
+    const len = Math.min(d.d + 1, 7), z0 = -len / 2, y0 = ground(x, z0), y1 = ground(x, len / 2);
+    if (y0 !== null && y1 !== null && Math.abs(y0 - y1) < 0.5) {
+      const ly = (y0 + y1) / 2;
+      if (d.style === 'adobe') g.S(S.plaster).push().translate(x, ly + 0.4, 0).box(0.3, 0.8, len, { color: dk(d.wallCol, 0.95) }).pop();
+      else {
+        const wattle = d.style === 'swamp';
+        g.S(wattle ? S.bark : S.plank);
+        const n = Math.max(2, Math.round(len / 1.25));
+        for (let i = 0; i <= n; i++) {
+          const z = z0 + (i / n) * len;
+          g.push().translate(x, ly, z).block(0.11, 0.95 + (d.style === 'shanty' ? rd() * 0.3 : 0), 0.11, { color: wattle ? 0x6a5a40 : fence }).pop();
+          if (d.style === 'shanty' && i < n) g.push().translate(x, ly, z + len / n / 2).block(0.05, 0.75 + rd() * 0.35, 0.34, { color: [0x8a7458, 0x7a6a56, 0x9a8466][i % 3] }).pop();
+        }
+        for (const y of wattle ? [0.3, 0.55, 0.8] : [0.45, 0.85]) g.push().translate(x, ly + y, 0).box(wattle ? 0.08 : 0.05, wattle ? 0.06 : 0.09, len, { color: wattle ? 0x7a6a4a : fence }).pop();
+      }
+    }
+  }
+  // crates stacked against a store, barrels in a row by a bar
+  if (STORES.has(use) && rd() < 0.6) {
+    const sx = rd() < 0.5 ? 1 : -1, x = sx * (hw + 0.75), z = (rd() - 0.5) * (d.d - 2.4);
+    const ly = ground(x, z);
+    if (ly !== null && !nearDoor(d.doors, sx > 0 ? 'e' : 'w', z, 1.4)) {
+      g.push().translate(x, ly, z).rotateY(rd() * 0.4);
+      clutter.crate(g, 0.8);
+      g.push().translate(0, 0.8, 0).rotateY(0.3); clutter.crate(g, 0.7); g.pop();
+      g.push().translate(0, 0, 0.95).rotateY(-0.2); clutter.crate(g, 0.75, 0x7a5a38); g.pop();
+      g.pop();
+    }
+  }
+  if (use === 'bar' && rd() < 0.7) {
+    const sx = rd() < 0.5 ? 1 : -1, x = sx * (hw + 0.6), z0 = -hd + 1.2;
+    for (let i = 0; i < 3; i++) {
+      const z = z0 + i * 0.78, ly = ground(x, z);
+      if (ly === null || nearDoor(d.doors, sx > 0 ? 'e' : 'w', z, 1.2)) continue;
+      g.push().translate(x, ly, z); clutter.barrel(g, i === 1 ? 0x7a5a38 : 0x6a5a48); g.pop();
+    }
+  }
+  // a line of washing in a yard
+  if (HOMES.has(use) && (d.style === 'shanty' || d.style === 'concord' || d.style === 'swamp') && rd() < 0.3) {
+    const sx = rd() < 0.5 ? 1 : -1, x = sx * (hw + 1.3);
+    const y0 = ground(x, -1.5), y1 = ground(x, 1.5);
+    if (y0 !== null && y1 !== null && Math.abs(y0 - y1) < 0.4) {
+      const ly = (y0 + y1) / 2;
+      g.S(S.bark);
+      for (const z of [-1.6, 1.6]) g.push().translate(x, ly, z).block(0.08, 1.9, 0.08, { color: 0x5a4a36 }).pop();
+      g.push().translate(x, ly + 1.82, 0).box(0.02, 0.02, 3.2, { color: 0xd8ccb0 }).pop();
+      g.S(S.cloth);
+      for (let i = 0; i < 3; i++) if (rd() < 0.8) g.push().translate(x, ly + 1.5, -1.0 + i * 0.95).box(0.03, 0.62, 0.55, { color: [0xc8b89a, 0x8a5a4a, 0x5a6a7a, 0xd8d0c0][Math.floor(rd() * 4)] }).pop();
+    }
+  }
+  // a cart left by a warehouse
+  if (use === 'warehouse' && rd() < 0.45) {
+    const sx = rd() < 0.5 ? 1 : -1, x = sx * (hw + 2.4), z = (rd() - 0.5) * (d.d - 3);
+    const ly = ground(x, z);
+    if (ly !== null) {
+      g.push().translate(x, ly, z).rotateY(rd() * 0.6 - 0.3);
+      g.S(S.plank).push().translate(0, 0.78, 0).box(1.2, 0.1, 2.2, { color: plank }).pop();
+      for (const bx of [-0.57, 0.57]) g.push().translate(bx, 0.98, 0).box(0.06, 0.32, 2.2, { color: dk(trim, 0.85) }).pop();
+      g.push().translate(0, 0.98, -1.07).box(1.2, 0.32, 0.06, { color: dk(trim, 0.85) }).pop();
+      for (const bx of [-0.7, 0.7]) g.push().translate(bx, 0.5, 0.3).rotateZ(Math.PI / 2).cyl(0.5, 0.5, 0.1, 10, { color: 0x4a3a2a }).pop();
+      g.push().translate(0, 0.5, 0.3).rotateZ(Math.PI / 2).cyl(0.05, 0.05, 1.5, 6, { color: 0x3a3028 }).pop();
+      for (const bx of [-0.45, 0.45]) g.push().translate(bx, 0.6, 1.9).rotateX(0.25).box(0.07, 0.07, 1.6, { color: 0x5a4a36 }).pop();
+      g.pop();
+    }
+  }
+  // a signboard on a post for a shop with no name board over its door
+  if (d.shop && d.shop !== 'bar' && front && d.h <= 3.5 && rd() < 0.6) {
+    const x = front.off + (front.w / 2 + 2.0) * (rd() < 0.5 ? -1 : 1), z = hd + 0.9;
+    const ly = Math.abs(x) < hw + 0.5 ? ground(x, z) : null;
+    if (ly !== null) {
+      g.S(S.plank).push().translate(x, ly, z).block(0.12, 2.1, 0.12, { color: dk(trim, 0.8) }).pop();
+      g.push().translate(x, ly + 1.75, z + 0.08).box(1.1, 0.6, 0.06, { color: dk(kit.leaf, 1.1) }).pop();
+      g.push().translate(x - 0.3, ly + 1.75, z + 0.12);
+      drawEmblem(g, d.shop, 0.5);
+      g.pop();
+    }
+  }
+}
+
 /** Builds the meshes for a building from its data and furniture. */
 export function buildBuilding(b: WObj, furniture: WObj[]): BuildingMeshes {
   const d = b.data as BuildingData;
   const st = STYLES[d.style] ?? STYLES.shanty;
   const kit = kitFor(d.style);
   const rnd = geoRand(d.seed);
+  // (the outside dressing draws from a stream of its own, so nothing it takes shifts the rest)
+  const rd = geoRand(d.seed ^ 0x5d1ce);
   const g = new KitBuilder();
   const glow = new GeoBuilder();
   const hw = d.w / 2, hd = d.d / 2, H = d.h, t = Math.max(0.2, st.thick);
@@ -869,6 +1004,7 @@ export function buildBuilding(b: WObj, furniture: WObj[]): BuildingMeshes {
   if (ruin) dressRuin(g, glow, b, d, t, furn, rnd);
   else if (b.owner !== 'player') dressRoom(gi as KitBuilder, d, t, kit, furn, rnd);
   dressYard(g, b, d, t, d.style, rnd);
+  if (!ruin && !round && b.owner !== 'player' && lift === 0) dressOutside(g, b, d, t, kit, trim, rd);
   // somewhere to see by: a lantern hung from the middle of the room if nothing else gives light
   const dark = !lights.length && d.use !== 'tower' && d.use !== 'pen' && d.use !== 'stall' && !ruin && !unlit;
   if (dark) {
@@ -908,7 +1044,8 @@ export function buildBuilding(b: WObj, furniture: WObj[]): BuildingMeshes {
   if (!ruin && d.roof !== 'none') {
     const r = new KitBuilder();
     const rc = d.roofCol;
-    const ov = d.style === 'concord' ? 1.1 : d.style === 'shanty' ? 0.5 : 0.35;
+    // the overhang: the deeper it is, the less the building reads as a box
+    const ov = d.style === 'concord' ? 1.1 : d.style === 'shanty' || d.style === 'stone' || d.style === 'swamp' ? 0.75 : d.style === 'hollow' ? 0.5 : 0.35;
     const kind = round ? (st.roofType === 'cone' ? 'cone' : 'dome') : d.use === 'stall' ? 'shed' : d.roof;
     r.S(d.use === 'stall' ? S.cloth : kind === 'tent' ? S.cloth : kit.roof);
     switch (kind) {
@@ -919,6 +1056,12 @@ export function buildBuilding(b: WObj, furniture: WObj[]): BuildingMeshes {
           for (const [px, pz, w, dd] of [[0, hd, d.w + 0.1, t], [0, -hd, d.w + 0.1, t], [hw, 0, t, d.d], [-hw, 0, t, d.d]] as [number, number, number, number][]) r.push().translate(px, H + 0.5, pz).box(w, 0.8, dd, { color: dk(wall, 0.95) }).pop();
         }
         if (d.style === 'karuk') { r.S(S.bone); for (const [px, pz] of [[-hw, -hd], [hw, -hd], [-hw, hd], [hw, hd]]) r.push().translate(px, H + 0.9, pz).rotateZ(px > 0 ? -0.4 : 0.4).cone(0.12, 0.9, 5, { color: 0xd8ccb0 }).pop(); }
+        // a clay chimney at one corner, its mouth hooded
+        if ((d.style === 'adobe' || d.style === 'karuk') && rd() < 0.6) {
+          const cx = hw * 0.62 * (rd() < 0.5 ? 1 : -1), cz = -hd * 0.55;
+          r.S(S.plaster).push().translate(cx, H + 0.24, cz).cyl(0.2, 0.3, 1.1, 6, { color: dk(wall, 0.92) }).pop();
+          r.push().translate(cx, H + 1.35, cz).scale(1, 0.6, 1).sphere(0.3, 6, 4, { color: dk(wall, 0.85) }).pop();
+        }
         // things kept on a flat roof: a water barrel, a crate, a hatch
         if (d.w * d.d > 40) {
           r.push().translate(hw * 0.5, H + 0.24, -hd * 0.45);
@@ -951,6 +1094,12 @@ export function buildBuilding(b: WObj, furniture: WObj[]): BuildingMeshes {
           const px = hw * (rnd() - 0.5), pz = -hd * 0.4;
           r.push().translate(px, H + rise * (0.5 - pz / d.d) - 0.2, pz).cyl(0.13, 0.13, 1.6, 8, { color: 0x3a3634 }).pop();
           r.push().translate(px, H + rise * (0.5 - pz / d.d) + 1.4, pz).cone(0.26, 0.22, 8, { color: 0x2e2a28 }).pop();
+        }
+        // a vent stack through a metal shed roof
+        if (!stall && !st.corrugated && d.style === 'hollow' && rd() < 0.7) {
+          const vx = hw * (rd() - 0.5), vz = -hd * 0.3;
+          r.S(S.metal).push().translate(vx, H + rise * (0.5 - vz / d.d) + 0.5, vz).box(0.5, 1.3, 0.5, { color: 0x4a5058 }).pop();
+          r.push().translate(vx, H + rise * (0.5 - vz / d.d) + 1.25, vz).box(0.7, 0.1, 0.7, { color: 0x3a4048 }).pop();
         }
         // fascia along the low edge
         if (!stall) r.S(S.plank).push().translate(0, y0 - Math.sin(ang) * (Math.hypot(d.d, rise) / 2 + ov) - 0.08, (Math.cos(ang) * (Math.hypot(d.d, rise) / 2 + ov))).box(d.w + ov * 2, 0.18, 0.05, { color: dk(rc, 0.75) }).pop();
@@ -1003,6 +1152,13 @@ export function buildBuilding(b: WObj, furniture: WObj[]): BuildingMeshes {
             else r.translate((sd * span) / 4, 0, 0).rotateZ(-sd * ang);
             r.box(along ? 0.06 : slope, 0.22, along ? slope : 0.06, { color: dk(trim, 0.95) }).pop();
           }
+          if (d.style === 'swamp' && rd() < 0.6) {
+            // a stovepipe through the thatch
+            const px = along ? len * 0.22 : span * 0.2, pz = along ? span * 0.2 : len * 0.22;
+            const sy = base + rise * (1 - Math.abs(along ? pz : px) / (span / 2));
+            r.S(S.metal).push().translate(px, sy + 0.5, pz).cyl(0.11, 0.11, 1.4, 8, { color: 0x3a3634 }).pop();
+            r.push().translate(px, sy + 1.3, pz).cone(0.22, 0.2, 8, { color: 0x2e2a28 }).pop();
+          }
           if (d.style === 'stone') {
             // a stone chimney through the roof
             const cx = along ? len * 0.28 : span * 0.15, cz = along ? span * 0.15 : len * 0.28;
@@ -1042,6 +1198,14 @@ export function buildBuilding(b: WObj, furniture: WObj[]): BuildingMeshes {
         r.push().translate(0, H + rise + 0.05, 0).box(ridge * 2 + 0.3, 0.15, 0.25, { color: dk(rc, 0.7) }).pop();
         r.S(S.plank);
         for (const [px, pz, w, dd] of [[0, ez, ex * 2, 0.06], [0, -ez, ex * 2, 0.06], [ex, 0, 0.06, ez * 2], [-ex, 0, 0.06, ez * 2]] as [number, number, number, number][]) r.push().translate(px, H - 0.06, pz).box(w, 0.2, dd, { color: dk(trim, 0.9) }).pop();
+        // a brick stack through one slope, capped
+        if (rd() < 0.75) {
+          const cx = (ex - ov) * 0.45 * (rd() < 0.5 ? 1 : -1), cz = -(ez - ov) * 0.35;
+          const ch = rise * (1 - Math.abs(cz) / ez) + 1.0;
+          r.S(S.stone).push().translate(cx, H, cz).block(0.7, ch, 0.7, { color: 0x6e5a4e }).pop();
+          r.push().translate(cx, H + ch, cz).box(0.85, 0.12, 0.85, { color: 0x5a4a40 }).pop();
+          r.S(S.plaster).push().translate(cx, H + ch + 0.3, cz).cyl(0.14, 0.17, 0.5, 6, { color: 0x8a6a50 }).pop();
+        }
         break;
       }
       case 'dome': {

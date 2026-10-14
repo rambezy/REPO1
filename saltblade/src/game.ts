@@ -285,7 +285,7 @@ const structViews = (dt: number) => G.structViews.update(dt, G.R.camera.position
 const terrain = () => G.terrainR.update(G.R.camera.position);
 const props = () => G.props.update(G.R.camera.position);
 const render = () => G.R.render();
-const labels = (dt: number) => G.overlay.draw(G.W, G.R.camera, sel, hoverId, dt);
+const labels = (dt: number) => G.overlay.draw(G.W, G.R.camera, sel, hoverId, dt, G.cam.target);
 
 function moveCamera(dt: number) {
   G.cam.update(dt, G.T);

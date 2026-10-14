@@ -348,11 +348,16 @@ check('...the same champion steps in again', gorr2?.id === gorr.id);
 const sec = W.char(second.id)!;
 sec.combatMode = 'aggressive'; put(sec, rg.x + rg.r + 4, rg.z); sec.order = null;
 // (the two of them kept on their feet while we watch: the fight is not the point here)
+// (their vitals ten times their measure for the while, so no single blow of the champion's puts anyone down inside a step)
 const mend = (c: Char) => { for (let l = 0; l < 7; l++) c.body.hp[l] = c.body.max[l]; c.body.blood = c.body.bloodMax; };
+const brace = (c: Char, k: number) => { for (let l = 0; l < 3; l++) c.body.max[l] *= k; mend(c); };
+brace(gorr, 10); brace(me(), 10);
 let joinedIn = false;
 for (let i = 0; i < 24; i++) { mend(gorr); mend(me()); step(0.5, rg); if (sec.brain.enemy === gorr.id || gorr.lastHitBy === sec.id) joinedIn = true; }
+brace(gorr, 0.1); brace(me(), 0.1);
 ticks();
-check('...your eager ones do not jump in on their own: a duel is nobody else\'s fight', !joinedIn && !hsS.retry && gorr.lastHitBy === me().id && me().up && gorr.up, `Gorr last hit by ${W.char(gorr.lastHitBy)?.name ?? 'nobody'}; ${sec.name} ${sec.combatMode}, ${Math.round(Math.hypot(sec.x - gorr.x, sec.z - gorr.z))} m off`);
+// (blows come slower than they did: whether the champion has been hit by now is the dice's; that it was not the second is the point)
+check('...your eager ones do not jump in on their own: a duel is nobody else\'s fight', !joinedIn && !hsS.retry && gorr.lastHitBy !== sec.id && me().up && gorr.up, `Gorr last hit by ${W.char(gorr.lastHitBy)?.name ?? 'nobody'}; ${sec.name} ${sec.combatMode}, ${Math.round(Math.hypot(sec.x - gorr.x, sec.z - gorr.z))} m off`);
 // ...but one sent in forfeits it
 gorr.lastHitBy = sec.id; gorr.lastHitT = S.time;
 ticks();
