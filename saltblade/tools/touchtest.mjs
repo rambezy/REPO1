@@ -87,6 +87,8 @@ const freeCell = (page, sel, label = 'Inventory') => page.evaluate(([sel, label]
   const w = Math.round(el.offsetWidth / 30), hh = Math.round(el.offsetHeight / 30);
   const p = __sb.G.W.playerChars()[0], g = p.inv;
   const wrap = [...document.querySelectorAll('.gridwrap')].find((x) => x.querySelector('.gridlabel')?.textContent === label);
+  // (tapping the item scrolled the window to it: a long shop list can leave the pack below the fold)
+  wrap.querySelector('.grid').scrollIntoView({ block: 'nearest' });
   const r = wrap.querySelector('.grid').getBoundingClientRect();
   for (let y = 0; y + hh <= g.h; y++) for (let x = 0; x + w <= g.w; x++) {
     let ok = true;
