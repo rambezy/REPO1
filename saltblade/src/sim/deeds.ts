@@ -48,8 +48,11 @@ export const DEEDS: Deed[] = [
   { key: 'contract10', name: 'Known on Every Board', desc: 'Finish ten jobs off the town boards.', check: (W) => (W.flags.contracts?.done ?? 0) >= 10 },
   { key: 'free_road', name: 'The Free Road', desc: 'Stand the free towns together against the Reavers.', check: (W) => W.flags.story?.freeroad?.state === 'done' },
   { key: 'flamebearer', name: 'Flamebearer', desc: 'Burn the Scorched Hand\'s leaf for the Ember Covenant.', check: (W) => W.flags.story?.ashtithe?.state === 'done' },
+  { key: 'broken_chain', name: 'Chainbreaker', desc: 'Empty the pens at Chainfield for the Unchained of Brokenchain.', check: (W) => W.flags.story?.brokenchain?.state === 'done' },
+  { key: 'horn_sworn', name: 'Horn-Sworn', desc: 'Beat the Horn\'s champion and answer the Horn-Mother\'s challenge at Hornspire.', check: (W) => W.flags.story?.horn?.state === 'done' },
   { key: 'custodian', name: 'Friend of the Enclave', desc: 'Silence the Rust Mill for the Hollows of Rustward.', check: (W) => W.flags.story?.foundry?.state === 'done' },
-  { key: 'foundry_sleeps', name: 'The Foundry Sleeps', desc: 'Break the Foundry Mind and end its war on the waste.', check: (W) => W.flags.crisis?.state === 'resolved' },
+  { key: 'foundry_sleeps', name: 'The Foundry Sleeps', desc: 'Break the Foundry Mind and end its war on the waste.', check: (W) => W.flags.crises?.foundry?.state === 'resolved' || W.flags.crisis?.state === 'resolved' },
+  { key: 'muster_broken', name: 'The Muster Broken', desc: 'Bring down the warlord of the Reaver Muster at Reaver\'s Roost.', check: (W) => W.flags.crises?.muster?.state === 'resolved' },
 ];
 
 let t = 0;

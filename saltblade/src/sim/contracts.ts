@@ -23,17 +23,17 @@ import {
   TIERS, TIER_ODDS, TIER_STANDING, TIER_PENALTY, TIER_ITEM, TIER_GRADE, TIER_THREAT, TIER_REACH, TIER_LOAD, MAX_ACTIVE, KINDS, KIND_NAME, KEEPER,
   HAUL_OVER, WALK_PAY, TIER_PAY, ROAD_PAY,
   HAUL, DELIVER, CONTRABAND, ESCORT, HUNT_BEAST, HUNT_BAND, CAMP, TAKEN, PAID, NO_WORK, NO_BEASTS, LOCKED, RECIPIENT, TRAVELLER,
-  BEAST_NAMES, EPITHETS, BAND_NAME, BAND_SPEC, TRADES, TRAVELLERS, REWARD_ITEMS, CAMP_FOLK,
+  BEAST_NAMES, EPITHETS, BAND_NAME, BAND_SPEC, TRADES, TRAVELLERS, REWARD_ITEMS, CAMP_FOLK, CRISES,
 } from '../content/contracts';
 import { SPECS, threat, playerBand, type Band } from './worldsim';
 import { findFreeCage } from './ai';
 import { dropCarried } from './health';
 import {
-  Errand, Rating, rate, roadThreat, noviceBand, campThreat, campEstimate, campLeft, beastThreat, bandThreat, BOSS_HP, BOSS_SKILL, roadRoute, routeLength, siteById, carried, takeGoods,
+  Errand, Rating, errandSound, mendErrand, rate, roadThreat, noviceBand, campThreat, campEstimate, campLeft, beastThreat, bandThreat, BOSS_HP, BOSS_SKILL, roadRoute, routeLength, siteById, carried, takeGoods,
   findItem, dropItem, give, startErrand, checkErrand, releaseErrand, errandWhere, errandProgress, bearing, upMine, nearestMine, sweepErrandFolk, dangerAlong, dangerBetween,
 } from './errands';
 import { tickStories, storyTree, storyErrand, storyErrandDone, storyGoal, storyViews, storyCamps } from './stories';
-import { tickCrisis, crisisGoal, crisisState } from './crisis';
+import { tickCrisis, crisisGoal, crisisState, activeCrisis } from './crisis';
 import type { Site } from '../world/terrain';
 
 export type ContractKind = 'haul' | 'deliver' | 'escort' | 'hunt' | 'camp';
@@ -116,6 +116,7 @@ export function contractsState(): ContractsState {
   // (the jobs are looked at every second: a broken one is dropped rather than tripped over)
   if (!Array.isArray(st.active)) st.active = [];
   else if (!st.active.every(sound)) st.active = st.active.filter(sound);
+  for (const c of st.active) if (!errandSound(c.e)) mendErrand(c.e); // (and its errand's own fields, put to rights)
   if (!Array.isArray(st.past)) st.past = [];
   if (!Array.isArray(st.taken)) st.taken = [];
   return st as ContractsState;
@@ -903,9 +904,10 @@ export function contractStep(c: Contract): string {
  */
 export function currentGoal(): Goal | null {
   if (!S.W || !S.T) return null;
-  const cs = crisisState();
+  // a crisis counting down, or with a wave out, comes first
+  const marching = activeCrisis();
   const crisis = crisisGoal();
-  if (crisis && (cs.state === 'warning' || cs.squads.length)) return crisis;
+  if (crisis && marching && (crisisState(marching.key).state === 'warning' || crisisState(marching.key).squads.length)) return crisis;
   const act = activeContracts().filter((c) => c.state === 'active' || c.state === 'ready');
   const soon = act.filter((c) => c.state === 'active' && (c.due ?? Infinity) - S.clock.t < DAY / 2).sort((a, b) => (a.due ?? 0) - (b.due ?? 0))[0];
   if (soon) return { text: `${contractStep(soon)} Due ${dueText(soon)}.`, where: contractWhere(soon) ?? undefined, entry: 'job:' + soon.id };
@@ -934,8 +936,13 @@ export function goalMarks(): { x: number; z: number; label: string; kind: 'job' 
     if (w) out.push({ ...w, label: c.state === 'ready' ? `Collect: ${c.title}` : c.title, kind: 'job', done: c.state === 'ready' });
   }
   for (const v of storyViews()) if (v.where && (v.s.state === 'active' || v.s.state === 'open')) out.push({ ...v.where, label: `${v.def.name}: ${v.step?.title ?? v.def.giver.name}`, kind: 'story' });
+  // where each crisis's leader waits, and where its wave is marching
+  for (const d of CRISES) {
+    const cs = crisisState(d.key), site = siteById(cs.site);
+    if (site && cs.state !== 'none' && cs.state !== 'resolved') out.push({ x: site.x, z: site.z, label: d.leader.name[0].toUpperCase() + d.leader.name.slice(1), kind: 'crisis' });
+  }
   const cg = crisisGoal();
-  if (cg?.where) out.push({ ...cg.where, label: 'The Foundry Mind', kind: 'crisis' });
+  if (cg?.where && !out.some((m) => m.kind === 'crisis' && m.x === cg.where!.x && m.z === cg.where!.z)) out.push({ ...cg.where, label: cg.label, kind: 'crisis' });
   return out;
 }
 

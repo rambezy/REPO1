@@ -14,7 +14,7 @@ import { applyDamage } from './sim/combat';
 import { openJobs, takeContract, activeContracts, dangerOf, currentGoal, abandonContract } from './sim/contracts';
 import { storyState, setStoryStep, tickStories } from './sim/stories';
 import { crisisState, wakeCrisis, sendWave, resolveCrisis } from './sim/crisis';
-import { CRISIS } from './content/contracts';
+import { CRISIS_DEF } from './content/contracts';
 
 export function attachDebug() {
   const w = window as unknown as Record<string, unknown>;
@@ -261,13 +261,15 @@ export function attachDebug() {
     },
     /** Walks away from a job you have, by id (or the first). */
     drop(id?: string) { const c = id ? activeContracts().find((x) => x.id === id) : activeContracts()[0]; return c ? abandonContract(c.id) : false; },
-    /** The Foundry: 'start' wakes it now, 'wave' sends the next wave, 'end' breaks the Mind; nothing reports how it stands. */
-    crisis(cmd?: 'start' | 'wave' | 'end') {
-      if (cmd === 'start') wakeCrisis();
-      else if (cmd === 'wave') { if (crisisState().state === 'none') wakeCrisis(); const sq = sendWave(); if (sq) { crisisState().state = 'waves'; crisisState().next = G.clock.t + CRISIS.waveDays * 86400; } }
-      else if (cmd === 'end') resolveCrisis();
-      const cs = crisisState();
-      return { state: cs.state, foundry: G.T.sites.find((s: any) => s.id === cs.foundry)?.name, wave: cs.wave, squads: cs.squads.length, mind: cs.mind };
+    /** A crisis ('foundry' or 'muster'): 'start' wakes it now (whatever else is awake), 'wave' sends the next wave, 'end' brings its leader down; nothing reports how it stands. */
+    crisis(cmd?: 'start' | 'wave' | 'end', key = 'foundry') {
+      const d = CRISIS_DEF[key];
+      if (!d) return `no crisis ${key}: ${Object.keys(CRISIS_DEF).join(', ')}`;
+      if (cmd === 'start') wakeCrisis(key, true);
+      else if (cmd === 'wave') { if (crisisState(key).state === 'none') wakeCrisis(key, true); const sq = sendWave(key); if (sq) { crisisState(key).state = 'waves'; crisisState(key).next = G.clock.t + d.waveDays * 86400; } }
+      else if (cmd === 'end') resolveCrisis(key);
+      const cs = crisisState(key);
+      return { state: cs.state, lair: G.T.sites.find((s: any) => s.id === cs.site)?.name, wave: cs.wave, squads: cs.squads.length, leader: cs.leader, towns: cs.towns };
     },
     /** A story's state, or (with a step) puts it at that step: 0 opens it at the giver. */
     story(key = 'freeroad', step?: number) {

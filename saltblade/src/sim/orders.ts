@@ -232,7 +232,9 @@ export function runOrder(c: Char, dt: number) {
             // the door opens; the lock is not broken, and holds the next prisoner as it held this one
             // (a cage an older save left picked open gets a middling lock back)
             if (!ob.locked) ob.locked = 40;
-            freeFromCage(ob.occupant);
+            const held = ob.occupant;
+            freeFromCage(held);
+            if (!inside) emit('sim:freedCaptive', c.id, held);
             // a sentence walked out on: the law wants them back, if the law saw
             if (inside) { delete c.mem.jailUntil; if (ob.owner && ob.owner !== 'player') crime(c, 'escape', ob.owner, 500, true); }
           } else {
@@ -271,8 +273,8 @@ export function runOrder(c: Char, dt: number) {
           t.dirty = true;
           c.order = null; c.act = null;
           S.fx.notice(own ? `${c.name}'s shackles are off.` : `${t.name}'s shackles are off.`, 'good');
-          if (t.faction !== 'player' && t.role === 'slave') {
-            // freeing someone else's slave: a crime if seen, and a friend made
+          if (t.faction !== 'player' && t.role === 'slave' && owner !== 'player') {
+            // freeing someone else's slave: a crime if seen, and a friend made (your own you may unchain as you like)
             crime(c, 'freeing', owner ?? t.faction, 500, true);
             t.mem.freedBy = 'player';
             t.recruitable = true;
@@ -280,12 +282,12 @@ export function runOrder(c: Char, dt: number) {
             S.W.rel.add('player', 'unchained', 3);
             emit('sim:freedSlave', c.id, t.id);
           }
-          else if (owner) reportRunaway(t, owner);
+          else if (owner && owner !== 'player') reportRunaway(t, owner);
         } else if (watched && S.rng.chance(0.12)) {
           // caught fumbling at the irons
           S.fx.notice(`${c.name} was seen at ${own ? 'their' : t.name + '\'s'} shackles.`, 'bad');
-          if (t.faction !== 'player' && t.role === 'slave') crime(c, 'freeing', owner ?? t.faction, 500, true);
-          else if (owner) reportRunaway(t, owner);
+          if (t.faction !== 'player' && t.role === 'slave' && owner !== 'player') crime(c, 'freeing', owner ?? t.faction, 500, true);
+          else if (owner && owner !== 'player') reportRunaway(t, owner);
         }
       }
       return;

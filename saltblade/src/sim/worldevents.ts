@@ -100,7 +100,7 @@ function launch(c: Campaign) {
 }
 
 /** Strength a town can put on its walls: its guards if they exist, else what its plan would give it. */
-function defence(site: Site): number {
+export function defence(site: Site): number {
   const W = S.W;
   if (W.populated.has(site.id)) {
     const guards = [...W.chars.values()].filter((c) => c.site === site.id && (c.role === 'guard' || c.role === 'patrol' || c.role === 'boss') && c.faction === site.faction);

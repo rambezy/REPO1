@@ -285,7 +285,7 @@ function playerAI(c: Char, dt: number, think: boolean) {
     if (!enemy && !post && c.combatMode === 'aggressive' && (!c.order || c.order.k === 'follow' || c.order.k === 'hold')) {
       for (const m of S.W.squadOf(c)?.members ?? []) {
         const a = S.W.char(m);
-        if (!a || a === c || !a.up) continue;
+        if (!a || a === c || !a.up || a.mem.bout) continue; // (a bout or a duel is nobody else's fight)
         const foe = S.W.char(a.target);
         if (foe && foe.up && a.atk && dist(c, a) < 30) { enemy = foe; break; }
       }

@@ -13,6 +13,7 @@ import { totalBounty } from './crime';
 import { playerBase } from './base';
 import { DAY } from './clock';
 import { rng } from '../core/rng';
+import { storyGossip } from './stories';
 
 /** on: set from the options; needView: only people on screen talk (off in tests). */
 export const chatter = { on: true, needView: true };
@@ -377,7 +378,9 @@ function townTalk(W: World) {
     if (!pairs.length) continue;
     const [a, b] = rng.pick(pairs);
     const own = TOWN_TALK[a.faction] ?? [];
-    const talks = a.faction === 'drifters' || !own.length ? [...own, ...TOWN_TALK.default] : own;
+    // (a story waiting for you is the talk of its people's towns, twice over)
+    const told = storyGossip(a.faction);
+    const talks = [...(a.faction === 'drifters' || !own.length ? [...own, ...TOWN_TALK.default] : own), ...told, ...told];
     const fresh = talks.filter((x) => !recent.includes(x[0]));
     if (!fresh.length) continue;
     const lines = rng.pick(fresh);

@@ -112,8 +112,12 @@ export function aboutPlace(n: Char): string {
   return `This is ${reg.name}. ${reg.desc}`;
 }
 
+/** Others with something to tell, asked first: the stories waiting for you, say (sim/stories); each speaks up now and then, or says nothing. */
+export const rumourHooks: ((n: Char) => string | null)[] = [];
+
 /** Rumours point at real places and powers in the world. */
 export function rumour(n: Char): string {
+  for (const f of rumourHooks) { const said = f(n); if (said) return said; }
   const r = S.rng.next();
   if (r < 0.3) {
     const l = S.rng.pick(LANDMARKS);

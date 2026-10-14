@@ -700,7 +700,7 @@ S.W = live;
 
 // an older save, from before any of this
 const old = JSON.parse(JSON.stringify(data));
-delete old.flags.contracts; delete old.flags.story; delete old.flags.crisis;
+delete old.flags.contracts; delete old.flags.story; delete old.flags.crises;
 const w3 = new World();
 apply(old, w3);
 S.W = w3;
@@ -723,7 +723,7 @@ S.W = live;
 
 // ---------------------------------------------------------------- a broken save never stops the game
 {
-  const keepFlags = JSON.parse(JSON.stringify({ c: W.flags.contracts, s: W.flags.story, k: W.flags.crisis }));
+  const keepFlags = JSON.parse(JSON.stringify({ c: W.flags.contracts, s: W.flags.story, k: W.flags.crises }));
   const shapes: [string, () => void][] = [
     ['contracts = "abc"', () => { W.flags.contracts = 'abc'; }],
     ['contracts = []', () => { W.flags.contracts = []; }],
@@ -734,23 +734,26 @@ S.W = live;
     ['story = "abc"', () => { W.flags.story = 'abc'; }],
     ['story = { freeroad: "x" }', () => { W.flags.story = { freeroad: 'x' }; }],
     ['story = { freeroad: { state: "active", step: 99, e: 7, log: "x" } }', () => { W.flags.story = { freeroad: { state: 'active', step: 99, e: 7, log: 'x' } }; }],
+    // (an older save's one crisis, flags.crisis, is moved in to flags.crises: as broken as it may be)
     ['crisis = "abc"', () => { W.flags.crisis = 'abc'; }],
     ['crisis = { state: "waves", squads: "x", foundry: "y", wave: "z" }', () => { W.flags.crisis = { state: 'waves', squads: 'x', foundry: 'y', wave: 'z' }; }],
     ['crisis = { state: "waves", squads: [null, "a"], foundry: 99999, mind: "m", wave: NaN }', () => { W.flags.crisis = { state: 'waves', squads: [null, 'a'], foundry: 99999, mind: 'm', wave: NaN }; }],
+    ['crises = "abc"', () => { W.flags.crises = 'abc'; }],
+    ['crises = { foundry: 7, muster: { state: "waves", towns: "x", leader: "y", site: [1] } }', () => { W.flags.crises = { foundry: 7, muster: { state: 'waves', towns: 'x', leader: 'y', site: [1] } }; }],
   ];
   const bad: string[] = [];
   for (const [name, set] of shapes) {
-    delete W.flags.contracts; delete W.flags.story; delete W.flags.crisis;
+    delete W.flags.contracts; delete W.flags.story; delete W.flags.crisis; delete W.flags.crises;
     set();
     let threw = 0, first = '';
     const tryIt = (f: () => unknown) => { try { f(); } catch (e: any) { threw++; first ||= String(e?.message ?? e).slice(0, 80); } };
     for (let i = 0; i < 4; i++) tryIt(() => tickContracts(1.1));
     tryIt(() => currentGoal()); tryIt(() => goalMarks()); tryIt(() => storyViews());
     // ...and the game goes on from it: boards post, a story can be told, the crisis can wake
-    tryIt(() => { if (openJobs(cr).length < 3 || !Array.isArray(stats().past) || storyStates().freeroad.log.length === undefined || typeof crisisState().wave !== 'number' || !Array.isArray(crisisState().squads)) throw new Error('not put to rights'); });
+    tryIt(() => { if (openJobs(cr).length < 3 || !Array.isArray(stats().past) || storyStates().freeroad.log.length === undefined || typeof crisisState().wave !== 'number' || !Array.isArray(crisisState().squads) || typeof crisisState('muster').wave !== 'number' || W.flags.crisis !== undefined) throw new Error('not put to rights'); });
     if (threw) bad.push(`${name}: ${threw} (${first})`);
   }
-  W.flags.contracts = keepFlags.c; W.flags.story = keepFlags.s; W.flags.crisis = keepFlags.k;
+  W.flags.contracts = keepFlags.c; W.flags.story = keepFlags.s; W.flags.crises = keepFlags.k; delete W.flags.crisis;
   check('a broken save (work, stories or crisis of the wrong shape) never trips the game, and it plays on', bad.length === 0, bad.join(' | ') || `${shapes.length} shapes, none threw`);
   W.flags.story = { freeroad: { state: 'active', step: 99, e: 7, log: [{ step: 0, t: 1 }, { step: 1, t: 2 }] } };
   const fr2 = storyState('freeroad');
@@ -775,9 +778,9 @@ check('the Foundry does not wake before day 20', crisisState().state === 'none' 
 S.clock.t = 20 * DAY + 13 * HOUR;
 tickCrisis(2.1);
 const cs = crisisState();
-const foundry = siteById(cs.foundry)!;
-const mind = W.char(cs.mind!)!;
-check('from day 20, with a base, it wakes: a warning, and the Foundry Mind in its hall', cs.state === 'warning' && foundry?.kind === 'foundry' && !!mind && mind.name === CRISIS.mind.name && Math.hypot(mind.x - foundry.x, mind.z - foundry.z) < 40, `${foundry?.name}, ${Math.round(Math.hypot(foundry.x - hx, foundry.z - hz))} m from the base`);
+const foundry = siteById(cs.site)!;
+const mind = W.char(cs.leader!)!;
+check('from day 20, with a base, it wakes: a warning, and the Foundry Mind in its hall', cs.state === 'warning' && foundry?.kind === 'foundry' && !!mind && mind.name === CRISIS.leader.name && Math.hypot(mind.x - foundry.x, mind.z - foundry.z) < 40, `${foundry?.name}, ${Math.round(Math.hypot(foundry.x - hx, foundry.z - hz))} m from the base`);
 check('...the journal says what to do', /Foundry Mind/.test(currentGoal()?.text ?? ''), currentGoal()?.text);
 tickCrisis(2.1);
 check('...no wave comes in the warning day', cs.state === 'warning' && cs.squads.length === 0);
@@ -810,8 +813,8 @@ check('...and its deed', DEEDS.find((d) => d.key === 'foundry_sleeps')!.check(W,
 check('...and nothing more comes', (() => { const n = cs.squads.length; S.clock.t += DAY * 3; tickCrisis(2.1); tickCrisis(2.1); return cs.squads.length <= n && cs.state === 'resolved'; })());
 
 // the debug hook wakes it without the wait (a fresh state)
-delete W.flags.crisis;
-check('the crisis can be woken and sent on its way at once (for testing)', wakeCrisis() && !!sendWave() && crisisState().squads.length === 1);
+delete W.flags.crises.foundry;
+check('the crisis can be woken and sent on its way at once (for testing)', wakeCrisis('foundry', true) && !!sendWave() && crisisState().squads.length === 1);
 
 // ---------------------------------------------------------------- what the tracker says
 check('currentGoal points somewhere real', (() => { const g = currentGoal(); return !!g && !!g.text && (!g.where || (g.where.x > 0 && g.where.z > 0)); })(), currentGoal()?.text);

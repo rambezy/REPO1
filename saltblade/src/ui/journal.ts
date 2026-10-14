@@ -1,5 +1,5 @@
 // The journal (J): the jobs your people have taken, the stories they are
-// part of, the Foundry when it wakes, and what has been done and failed.
+// part of, a crisis when one wakes, and what has been done and failed.
 // Every place it sends you is marked on the map (see goalmarks.ts).
 import './journal.css';
 import { h, openWindow, isOpen, closeWindow, getWindow, ask, uiW } from './dom';
@@ -10,9 +10,9 @@ import {
   currentGoal, type Contract,
 } from '../sim/contracts';
 import { storyViews, type StoryView } from '../sim/stories';
-import { crisisView } from '../sim/crisis';
+import { crisisViews } from '../sim/crisis';
 import { bearing, siteById, errandProgress } from '../sim/errands';
-import { KIND_NAME, TIERS, MAX_ACTIVE, CRISIS } from '../content/contracts';
+import { KIND_NAME, TIERS, MAX_ACTIVE } from '../content/contracts';
 import { FACTION } from '../content/factions';
 import { DAY, HOUR } from '../sim/clock';
 
@@ -39,7 +39,7 @@ export function toggleJournal() {
 
 /** Opens the journal at an entry ('job:<id>', 'story:<key>', 'crisis', 'work'): its tab, the entry scrolled to and lit a moment. */
 export function openJournalAt(entry: string) {
-  tab = entry === 'crisis' ? 'crisis' : entry.startsWith('story:') ? 'stories' : 'work';
+  tab = entry.startsWith('crisis') ? 'crisis' : entry.startsWith('story:') ? 'stories' : 'work';
   if (!isOpen('journal')) openIt();
   shownKey = '';
   render();
@@ -72,11 +72,11 @@ function render() {
   if (!w || !S.W) return;
   const st = contractsState();
   const views = storyViews();
-  const cv = crisisView();
-  const crisis = cv.state !== 'none';
+  const cvs = crisisViews();
+  const crisis = cvs.length > 0;
   if (tab === 'crisis' && !crisis) tab = 'work';
   // redraw only when something on the page would read differently
-  const key = JSON.stringify([tab, Math.floor(S.clock.t / 600), st.active.map((c) => [c.id, c.state, c.e.state, c.e.paused, c.e.lostT]), views.map((v) => [v.s.state, v.s.step, v.s.retry, v.progress]), cv.state, cv.wave, st.past.length, S.W.money]);
+  const key = JSON.stringify([tab, Math.floor(S.clock.t / 600), st.active.map((c) => [c.id, c.state, c.e.state, c.e.paused, c.e.lostT]), views.map((v) => [v.s.state, v.s.step, v.s.retry, v.s.refused, v.progress, v.danger?.level]), cvs.map((cv) => [cv.key, cv.state, cv.wave, cv.towns?.hit, cv.towns?.sacked]), st.past.length, S.W.money]);
   if (key === shownKey) return;
   shownKey = key;
   const scroll = w.body.querySelector('.jlist')?.scrollTop ?? 0;
@@ -85,10 +85,12 @@ function render() {
   const active = activeContracts().filter((c) => c.state === 'active' || c.state === 'ready');
   const storyN = views.filter((v) => v.s.state === 'active' || v.s.state === 'open').length;
   const labels: [typeof tab, string][] = [['work', `Work${active.length ? ` (${active.length})` : ''}`], ['stories', `Stories${storyN ? ` (${storyN})` : ''}`]];
-  if (crisis) labels.push(['crisis', CRISIS.name]);
+  // (the crisis marching, or resting, by name; once they are all over, together)
+  const live = cvs.filter((cv) => cv.state !== 'resolved');
+  if (crisis) labels.push(['crisis', live.length === 1 || cvs.length === 1 ? (live[0] ?? cvs[0]).def.name : 'Crises']);
   labels.push(['done', 'Done']);
   for (const [k, label] of labels) {
-    const b = h('button', { class: 'ftab' + (tab === k ? ' on' : '') + (k === 'crisis' && cv.state !== 'resolved' ? ' alarm' : '') }, label);
+    const b = h('button', { class: 'ftab' + (tab === k ? ' on' : '') + (k === 'crisis' && live.length ? ' alarm' : '') }, label);
     b.onclick = () => { tab = k; shownKey = ''; render(); };
     tabs.appendChild(b);
   }
@@ -98,7 +100,7 @@ function render() {
   const list = h('div', { class: 'jlist' });
   if (tab === 'work') renderWork(list, active);
   else if (tab === 'stories') renderStories(list, views);
-  else if (tab === 'crisis') renderCrisis(list, cv);
+  else if (tab === 'crisis') for (const cv of cvs) renderCrisis(list, cv);
   else renderDone(list);
   w.body.append(tabs, next ?? '', list);
   list.scrollTop = scroll;
@@ -147,14 +149,16 @@ function card(c: Contract): HTMLElement {
 function renderStories(list: HTMLElement, views: StoryView[]) {
   for (const v of views) {
     const { def, s } = v;
+    // (the town, unless the giver's name already says it)
+    const townName = siteById(S.T.sites.find((x) => x.key === def.town || x.settlement === def.town)?.id)?.name ?? '';
     const state = s.state === 'done' ? 'Done' : s.state === 'active' ? `Step ${s.step + 1} of ${def.steps.length}` : s.state === 'open' ? 'Waiting for you' : 'Not yet';
     const el = h('div', { class: `jstory ${s.state}`, 'data-entry': 'story:' + def.key },
       h('div', { class: 'jhead' }, h('span', { class: 'jtitle' }, def.name), h('span', { class: 'jdue' }, state)),
-      h('div', { class: 'jfrom dim' }, `${FACTION[def.faction]?.name ?? def.faction} · ${def.giver.known}, ${siteById(S.T.sites.find((x) => x.key === def.town || x.settlement === def.town)?.id)?.name ?? ''}`),
+      h('div', { class: 'jfrom dim' }, `${FACTION[def.faction]?.name ?? def.faction} · ${def.giver.known}${townName && !def.giver.known.includes(townName) ? `, ${townName}` : ''}`),
       h('div', { class: 'jbrief' }, def.blurb),
     );
     if (s.state === 'locked') el.appendChild(row('Not yet', def.needs));
-    if (s.state === 'open') el.append(h('div', { class: 'jstep' }, `${def.giver.known} wants a word.`), h('div', { class: 'jbtns' }, mapButton(v.where)));
+    if (s.state === 'open') el.append(h('div', { class: 'jstep' }, s.refused ? `You turned ${def.giver.known} down. The offer stands.` : `${def.giver.known} wants a word.`), h('div', { class: 'jbtns' }, mapButton(v.where)));
     // the steps so far, and the one you are on
     if (s.state === 'active' || s.state === 'done') {
       const steps = h('ol', { class: 'jsteps' });
@@ -165,6 +169,7 @@ function renderStories(list: HTMLElement, views: StoryView[]) {
       });
       el.appendChild(steps);
       if (s.state === 'active' && v.progress) el.appendChild(h('div', { class: 'jprog' }, v.progress));
+      if (s.state === 'active' && v.danger) el.appendChild(row('Danger', dangerSpan(v.danger), v.danger.what ? ` (${v.danger.what})` : '', `. ${v.danger.line}`));
       if (s.state === 'active') el.appendChild(h('div', { class: 'jbtns' }, mapButton(v.where)));
       if (s.state === 'done') el.appendChild(h('div', { class: 'jcap' }, def.capstone));
     }
@@ -172,20 +177,23 @@ function renderStories(list: HTMLElement, views: StoryView[]) {
   }
 }
 
-// ---------------------------------------------------------------- the crisis
-function renderCrisis(list: HTMLElement, cv: ReturnType<typeof crisisView>) {
-  const site = cv.site;
+// ---------------------------------------------------------------- the crises
+function renderCrisis(list: HTMLElement, cv: ReturnType<typeof crisisViews>[number]) {
+  const { def, site } = cv;
   const when = cv.next !== undefined ? ` in ${span(cv.next - S.clock.t)}` : ' soon';
-  const state = cv.state === 'warning' ? `It is counting. The first wave sets out${when}.`
+  const leader = def.leader.name[0].toUpperCase() + def.leader.name.slice(1);
+  const state = cv.state === 'warning' ? `It is gathering. The first wave sets out${when}.`
     : cv.state === 'waves' ? `Wave ${cv.wave} of ${cv.waves} has been sent.${cv.wave < cv.waves ? ` The next sets out${when}, once the last is beaten or gone.` : ''}`
-      : cv.state === 'quiet' ? `It has spent itself, for now. It wakes again${when}.`
-        : 'The Foundry Mind is broken. The machines it made have stopped.';
-  list.appendChild(h('div', { class: 'jcard crisis' + (cv.state === 'resolved' ? ' ready' : ' urgent'), 'data-entry': 'crisis' },
-    h('div', { class: 'jhead' }, h('span', { class: 'jkind' }, 'Crisis'), h('span', { class: 'jtitle' }, `${CRISIS.name}${site ? `: ${site.name}` : ''}`)),
+      : cv.state === 'quiet' ? `It has spent itself, for now. It comes again${when}.`
+        : `${leader} is down. ${def.text.end.split('. ').slice(1).join('. ') || ''}`.trim();
+  const towns = cv.towns?.hit ? `Its waves have marched on ${cv.towns.hit} town${cv.towns.hit > 1 ? 's' : ''}${cv.towns.sacked ? `, and ${cv.towns.sacked} fell` : ', and none has fallen'}.` : '';
+  list.appendChild(h('div', { class: 'jcard crisis' + (cv.state === 'resolved' ? ' ready' : ' urgent'), 'data-entry': 'crisis:' + cv.key },
+    h('div', { class: 'jhead' }, h('span', { class: 'jkind' }, 'Crisis'), h('span', { class: 'jtitle' }, `${def.name}${site ? `: ${site.name}` : ''}`)),
     h('div', { class: 'jstep' }, state),
-    cv.state === 'resolved' ? h('div', { class: 'jcap' }, CRISIS.reward) : h('div', { class: 'jbrief' }, cv.guide),
-    cv.state === 'resolved' ? null : row('Breaking the Mind', dangerSpan(cv.danger), `. ${cv.danger.line}`),
-    cv.state === 'resolved' ? null : row('If you do', 'the waves stop for good, and the waste pays its thanks.'),
+    towns ? h('div', { class: 'jprog' }, towns) : null,
+    cv.state === 'resolved' ? h('div', { class: 'jcap' }, def.text.reward) : h('div', { class: 'jbrief' }, cv.guide),
+    cv.state === 'resolved' ? null : row(`Bringing down ${def.leader.name}`, dangerSpan(cv.danger), `. ${cv.danger.line}`),
+    cv.state === 'resolved' ? null : row('If you do', `the waves stop for good. ${def.text.reward}`),
     h('div', { class: 'jbtns' }, site ? mapButton({ x: site.x, z: site.z }, `Show ${site.name}`) : null),
   ));
 }

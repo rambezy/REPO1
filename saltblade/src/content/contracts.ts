@@ -259,7 +259,7 @@ export const CAMP_FOLK: Record<string, { faction: string; role: string; n: [numb
 };
 
 // ---------------------------------------------------------------- stories
-export type StepKind = 'talk' | 'camp' | 'deliver' | 'defend' | 'hunt' | 'haul' | 'reach' | 'escort';
+export type StepKind = 'talk' | 'camp' | 'deliver' | 'defend' | 'hunt' | 'haul' | 'reach' | 'escort' | 'free' | 'duel';
 
 export interface StoryStep {
   kind: StepKind;
@@ -274,21 +274,32 @@ export interface StoryStep {
   at?: string;
   /** where an escort sets out from, if not the giver's town */
   from?: string;
-  /** goods to bring */
+  /** goods to bring; or (a free step) how many to set free */
   good?: string;
   n?: number;
-  /** who: a recipient, a traveller, or a quarry */
+  /** who: a recipient, a traveller, a quarry, or the one to beat */
   who?: string;
   whoTitle?: string;
   faction?: string;
   size?: number;
   level?: number;
+  /** a beast to hunt (else a band of the faction's), and how much bigger than the worst of its kind */
+  species?: string;
+  great?: number;
+  /** an escort of those a free step set loose, rather than travellers who wait for you */
+  party?: 'freed';
+  /** what the one to beat in a duel fights with */
+  loadout?: string;
+  race?: string;
   /** the road a hunt is on: between two settlements */
   road?: [string, string];
   /** what finishing the step pays */
   pay?: number;
   standing?: [string, number][];
 }
+
+/** What opens a story, any one of: jobs done for a people, standing with them, or something done (a game's flags: escaped, freed, pitWins...) at least so often. */
+export interface Opens { done?: [string, number][]; standing?: [string, number][]; flags?: [string, number][] }
 
 export interface StoryDef {
   key: string;
@@ -299,8 +310,15 @@ export interface StoryDef {
   giver: { name: string; title: string; race: string; female: boolean; loadout: string; level: number; heir: string; known: string };
   /** a line for the journal while it is waiting for you */
   blurb: string;
-  /** when the giver will talk to you, in words */
+  /** when the giver will talk to you, in words, and in rules */
   needs: string;
+  opens: Opens;
+  /** what else you can ask the giver (a choice and its answer; `if`: only if a flag of the game is set) */
+  ask?: { t: string; say: string; if?: string }[];
+  /** turning them down: what you say, what they say, how they greet you after, and the standing it costs */
+  refuse?: { t: string; say: string; back: string; cost: number };
+  /** the townsfolk and the road talk of it, while it waits for you (a conversation, by people of these peoples) */
+  gossip?: { factions: string[]; lines: string[][] };
   /** the word that comes to you when they will */
   call: string;
   /** the giver's word to someone not yet trusted */
@@ -318,8 +336,17 @@ export const STORIES: StoryDef[] = [
     giver: { name: 'Hesk', title: 'Captain of the Watch', race: 'karuk', female: true, loadout: 'drifters_guard', level: 36, heir: 'Dace', known: 'Captain Hesk of the Crossroad Watch' },
     blurb: 'The Dust Reavers toll every road out of Crossroad. The Watch can hold its walls, but not the roads.',
     needs: 'Do a job for one of the free towns, or be well liked by the Drifters (standing 20).',
+    opens: { done: [['drifters', 1]], standing: [['drifters', 20]] },
     call: 'Word reaches you from Crossroad: Captain Hesk of the Watch is asking after you.',
     notYet: 'I know your face. I don\'t know your work. Take a job off the board, and then we\'ll talk.',
+    ask: [
+      { t: 'Why don\'t the free towns hold the roads themselves?', say: 'Because every one of them thinks the road outside its own gate is somebody else\'s problem. Squatter\'s Rest thinks it is too small to matter. Dustwell thinks it is too poor to be worth robbing. They are both wrong.' },
+    ],
+    refuse: { t: 'The roads aren\'t my problem.', say: 'No. Not until they are. The Watch keeps a list of the ones who said that; most of them are on it twice, once alive.', back: 'Changed your mind about the roads? They haven\'t changed theirs about you.', cost: 2 },
+    gossip: { factions: ['drifters'], lines: [
+      ['Captain Hesk had the Watch out on the east road again.', 'Against the Den?', 'Against the Den. She lost two.', 'She\'s looking for someone who won\'t get lost.'],
+      ['They say Hesk is asking after anyone who\'s worked the boards.', 'Hesk asks after everyone.', 'Not like this.'],
+    ] },
     capstone: 'The free towns stand together. A house in Crossroad is yours, a Watch sergeant walks with you, and the Reavers stop marching on the free towns.',
     steps: [
       {
@@ -354,8 +381,16 @@ export const STORIES: StoryDef[] = [
     giver: { name: 'Maren Vosk', title: 'Inquisitor', race: 'valefolk', female: true, loadout: 'ember_guard', level: 40, heir: 'Corwin Ashe', known: 'Inquisitor Maren Vosk' },
     blurb: 'Dreamleaf is coming over the Spine in pilgrims\' packs. The Covenant wants it stopped where it starts.',
     needs: 'Do a job for the Covenant, or be well regarded by it (standing 15). The Inquisitor will not deal with non-humans.',
+    opens: { done: [['ember', 1]], standing: [['ember', 15]] },
     call: 'A Covenant rider finds you on the road: Inquisitor Maren Vosk at Pyre\'s Watch would speak with you.',
     notYet: 'The flame does not know you yet. Serve it in some small thing first, and come back.',
+    ask: [
+      { t: 'What is the Ash Tithe?', say: 'Every tenth of what the waste grows belongs to the flame. The Scorched Hand grows dreamleaf and pays nothing. That is not a debt we forgive. It is a debt we collect.' },
+    ],
+    refuse: { t: 'I don\'t burn farms for anyone.', say: 'Then you will never be warm. Go.', back: 'You came back to the light. Most do, in the end.', cost: 2 },
+    gossip: { factions: ['ember'], lines: [
+      ['The Inquisitor is asking for someone to carry the tithe into the Mire.', 'The Mire? The Hand would have their skin.', 'That is why she is asking.'],
+    ] },
     capstone: 'You are named a Flamebearer of the Covenant and carry the Pyre\'s Tongue. The Scorched Hand will not forget it.',
     steps: [
       {
@@ -391,8 +426,16 @@ export const STORIES: StoryDef[] = [
     giver: { name: 'Ashkel', title: 'Custodian', race: 'hollow', female: false, loadout: 'hollows_guard', level: 34, heir: 'Index', known: 'Custodian Ashkel' },
     blurb: 'The foundries of the Rustwastes are building again. Not repairing: building.',
     needs: 'Do a job for the Hollows or the Delvers, be known to them (standing 10 with the Hollows, or 20 with the Delvers), or show you know machines (salvage two, or rewire one).',
+    opens: { done: [['hollows', 1], ['delvers', 1]], standing: [['hollows', 10], ['delvers', 20]], flags: [['salvaged', 2], ['reprogrammed', 1]] },
     call: 'A Hollow courier finds you: Custodian Ashkel at Rustward asks for someone who knows machines.',
     notYet: 'OUR RECORDS DO NOT YET INCLUDE YOUR WORK. WORK FOR THE ENCLAVE, OR FOR THE DELVERS, AND RETURN.',
+    ask: [
+      { t: 'Why do you speak like that?', say: 'WE WERE BUILT TO BE HEARD ACROSS A FOUNDRY FLOOR. We can speak softly. It takes effort, and the effort is better spent on the count.' },
+    ],
+    refuse: { t: 'I don\'t go near foundries.', say: 'A SENSIBLE POLICY. WE NOTE IT. We will ask again when the foundries come near you.', back: 'YOU HAVE RETURNED. THE COUNT HAS NOT STOPPED IN YOUR ABSENCE.', cost: 1 },
+    gossip: { factions: ['hollows', 'delvers'], lines: [
+      ['The Custodian at Rustward is asking for anyone who knows machines.', 'Knows them how?', 'Knows how to take them apart.'],
+    ] },
     capstone: 'The Rust Mill is silent, and a warbot the Custodian rewired walks with you. Something deeper heard it go quiet.',
     steps: [
       {
@@ -427,6 +470,104 @@ export const STORIES: StoryDef[] = [
       },
     ],
   },
+  {
+    key: 'brokenchain', name: 'The Broken Chain', faction: 'unchained', town: 'brokenchain', deed: 'broken_chain',
+    giver: { name: 'Iyabo', title: 'Voice of Brokenchain', race: 'duneborn', female: true, loadout: 'unchained', level: 32, heir: 'Corin', known: 'Iyabo, the Voice of Brokenchain' },
+    blurb: 'The Chainhouse fields at Chainfield hold more of the Unchained\'s own than Brokenchain ever will.',
+    needs: 'Escape slavery, or free a slave, or do a job for the Unchained, or be known to them (standing 10).',
+    opens: { flags: [['escaped', 1], ['freed', 1]], done: [['unchained', 1]], standing: [['unchained', 10]] },
+    call: 'A runaway brings word out of the reeds: Iyabo, the Voice of Brokenchain, has heard of you, and wants a word.',
+    notYet: 'You walk in here with clean wrists and a full purse. Nobody in these reeds trusts that. Strike somebody\'s irons off, or work for us, and then we talk.',
+    ask: [
+      { t: 'Who are you?', say: 'Property, for nineteen years. The Chainhouse burned a number into my shoulder. I cut it out with a fish knife the night I ran. Now I\'m the Voice: I decide who we save next, and who we bury.' },
+      { t: 'What\'s in it for me?', say: 'Our thanks, which is worth more out here than you\'d think. Whatever the catchers carry. And you sleep better after. Probably.' },
+      { t: 'I wore their irons too.', if: 'escaped', say: 'I know. It\'s in how you stand. Then you know the weight, and I don\'t need to tell you why.' },
+    ],
+    refuse: { t: 'That\'s not my fight.', say: 'Then it isn\'t. Walk away, like everyone else did. The reeds will still be here if you grow a conscience.', back: 'Back again. Was it the conscience, or just curiosity?', cost: 3 },
+    gossip: { factions: ['unchained', 'drifters', 'ironcoin'], lines: [
+      ['Somebody freed a whole row of the Chainfield pens last month.', 'Unchained?', 'Who else would.', 'They say the Voice in the reeds is looking for more hands like that.'],
+      ['Iyabo sent a runner to Hardcoin again.', 'Hiring?', 'Asking. The Unchained don\'t hire. They ask, and they remember who said no.'],
+    ] },
+    capstone: 'Overseer Varga is gone, and the pens at Chainfield stand open: their slaves walk to Brokenchain, which has people to spare for your band now, and a smith of its own. The Unchained call you Chainbreaker.',
+    steps: [
+      {
+        kind: 'talk', title: 'The Voice in the reeds', text: 'Speak with Iyabo, the Voice of Brokenchain.',
+        say: 'The fields at Chainfield hold more of us than this camp ever will. I want them out. Not all at once, or the Chainhouse hangs the lot of them to make a point. A few at a time, from under the overseers\' noses: strike their irons, open their cages. Three, to start. Are you in?',
+        done: 'Iyabo, the Voice of Brokenchain, asked you to empty the pens at Chainfield.',
+      },
+      {
+        kind: 'free', at: 'chainfield', n: 3, title: 'Strike the irons', text: 'Free three slaves at Chainfield: pick their shackles, or the locks of their cages. If an overseer sees you at it, the Chainhouse will want your head.',
+        say: 'Go at night, and go quiet. Shackles give to patience; cages to a pick. If an overseer sees you at the irons, the whole house comes running.',
+        done: 'You freed slaves from the fields of Chainfield.', pay: 300, standing: [['unchained', 4]],
+      },
+      {
+        kind: 'escort', party: 'freed', at: 'brokenchain', from: 'chainfield', who: 'the freed', title: 'The reed road', text: 'See the ones you freed safe to Brokenchain. They walk only with your people beside them.',
+        say: 'They won\'t know the way, and the catchers will be out by morning. Walk them in.',
+        done: 'The ones you freed walked into Brokenchain.', pay: 300, standing: [['unchained', 4]],
+      },
+      {
+        kind: 'hunt', road: ['chainfield', 'saltmere'], faction: 'chainhouse', who: 'Varga', whoTitle: 'Chief Overseer of Chainfield', size: 5, level: 30, title: 'The catchers\' road', text: 'Bring down Overseer Varga, out on the Saltmere road with her catchers, hunting the runaways.',
+        say: 'Varga runs the fields, and she rides out herself when stock goes missing. She\'s on the Saltmere road with her catchers now. While she lives, nobody in those pens stops looking over their shoulder.',
+        done: 'Overseer Varga of Chainfield is down.', pay: 600, standing: [['unchained', 5]],
+      },
+      {
+        kind: 'defend', at: 'brokenchain', faction: 'chainhouse', title: 'The reprisal', text: 'Hold Brokenchain when the Chainhouse comes for it.',
+        say: 'They know where we are now. They\'ll come with chains and dogs, and they\'ll come soon. Stand with us.',
+        done: 'The Chainhouse\'s reprisal broke in Brokenchain\'s reeds.', pay: 800, standing: [['unchained', 6]],
+      },
+      {
+        kind: 'talk', title: 'The pens stand open', text: 'Return to Iyabo at Brokenchain.',
+        say: 'Varga is gone, and the reprisal is in the reeds. The overseers at Chainfield are counting what\'s left of their stock, and it isn\'t much: the pens stand open, and our people are walking in by the dozen. Some of them want to walk with you. Take them, and take the name we gave you. Chainbreaker.',
+        done: 'Iyabo named you Chainbreaker. The pens at Chainfield stand open.',
+      },
+    ],
+  },
+  {
+    key: 'horn', name: 'The Horn\'s Challenge', faction: 'karuk', town: 'hornspire', deed: 'horn_sworn',
+    giver: { name: 'Ukka', title: 'Horn-Mother', race: 'karuk', female: true, loadout: 'karuk_guard', level: 44, heir: 'Thokk', known: 'Horn-Mother Ukka of Hornspire' },
+    blurb: 'The Horn-Mother of Hornspire keeps the old ways. One of them is that the Horn listens only to those who have bled in front of it.',
+    needs: 'Win a bout in the Pit at Hornspire, or do a job for the Karuk, or be well liked by them (standing 20).',
+    opens: { flags: [['pitWins', 0]], done: [['karuk', 1]], standing: [['karuk', 20]] },
+    call: 'A Karuk runner finds you, breathing hard: the Horn-Mother at Hornspire wants a look at you.',
+    notYet: 'You have never bled in the Pit. The Horn does not hear people who have not bled in front of it. Win a bout, or serve the Warhost, and come back.',
+    ask: [
+      { t: 'Who are you?', say: 'The mother of the Horn King, and the only one in Hornspire he is afraid of. I keep the old ways. Somebody has to; the young ones would sell them for a good knife.' },
+      { t: 'Why fight your champion?', say: 'Because the Horn does not trust what has not bled in front of it. Gorr has put down every challenger for six winters. If you are standing when he falls, the Horn will listen to you.' },
+    ],
+    refuse: { t: 'I\'m not fighting your champion for anyone\'s amusement.', say: 'Hah! Then you are wiser than you look, and smaller. The Pit will be here when you grow.', back: 'The soft one, back again. Grown, have we?', cost: 2 },
+    gossip: { factions: ['karuk'], lines: [
+      ['The Horn-Mother watched the Pit all night again.', 'Looking for someone?', 'Looking for someone to put Gorr on his back. She says he is getting proud.'],
+      ['Gorr Stonebrow has not lost a bout in six winters.', 'He has not had a real fight in six winters.', 'Say that in the Pit.'],
+    ] },
+    capstone: 'Gorr Stonebrow, the Horn\'s champion, walks with you; the Karuk call you Horn-Sworn, and the Horn King\'s own maul is yours.',
+    steps: [
+      {
+        kind: 'talk', title: 'The Horn-Mother\'s eye', text: 'Speak with Horn-Mother Ukka at Hornspire.',
+        say: 'You smell of the soft towns, and you stand like someone who has been hit before. Good. The Horn has a champion, Gorr Stonebrow, who has put down every challenger for six winters. Meet him in the Pit, one on one, until one of you stays down. Nobody else of yours steps in, or the Horn calls it forfeit. Well?',
+        done: 'Horn-Mother Ukka of Hornspire offered you the Horn\'s Challenge.',
+      },
+      {
+        kind: 'duel', at: 'hornspire', who: 'Gorr Stonebrow', whoTitle: 'Champion of the Horn', race: 'karuk', loadout: 'karuk_guard', level: 46, title: 'One on one', text: 'Beat Gorr Stonebrow in the Pit at Hornspire, one on one. If anyone else of yours joins in, it is forfeit.',
+        say: 'Go into the Pit when you are ready. Gorr will come when he sees you there. One of you, one of him; I will be watching.',
+        done: 'You put Gorr Stonebrow down in the Pit, one on one.', pay: 500, standing: [['karuk', 6]],
+      },
+      {
+        kind: 'hunt', road: ['hornspire', 'cragfold'], species: 'hookbeak', great: 1.35, who: 'the Old Grey', title: 'The Old Grey', text: 'Bring down the Old Grey, a hookbeak older than Hornspire\'s walls, on the Cragfold road. Not alone: take all your people, and hire spears if they are not enough.',
+        say: 'Gorr will live. His pride may not. Now the Horn wants a skull: an old hookbeak the herders call the Old Grey has taken three of them on the Cragfold road this season. This is no duel. Take everyone you have, and hire spears if that is not enough; the Grey does not care how many of you come, only how many are left.',
+        done: 'The Old Grey is dead on the Cragfold road.', pay: 900, standing: [['karuk', 6]],
+      },
+      {
+        kind: 'defend', at: 'cragfold', faction: 'blackcomb', title: 'The swarm at Cragfold', text: 'Hold Cragfold when the Blackcomb drones come for its herds.',
+        say: 'Blackcomb drones have been stripping the herds at Cragfold, and the herders are too proud to ask for help. Go and hold Cragfold when the swarm comes. Do not tell them I sent you.',
+        done: 'The Blackcomb swarm broke on Cragfold\'s walls.', pay: 1000, standing: [['karuk', 8]],
+      },
+      {
+        kind: 'talk', title: 'Horn-Sworn', text: 'Return to Horn-Mother Ukka at Hornspire.',
+        say: 'The herders of Cragfold are telling everyone who will listen. So: the Pit, the Grey, the swarm. The Horn has heard you. Kneel, if your knees bend. You rise Horn-Sworn, and Gorr goes with you; he asked to, which he has never done for anyone. And take this maul from my son\'s rack. He will not miss it, and if he does, he will not say so.',
+        done: 'Horn-Mother Ukka named you Horn-Sworn of the Karuk.',
+      },
+    ],
+  },
 ];
 
 export const STORY: Record<string, StoryDef> = Object.fromEntries(STORIES.map((s) => [s.key, s]));
@@ -434,23 +575,106 @@ export const STORY: Record<string, StoryDef> = Object.fromEntries(STORIES.map((s
 /** Names for the people a capstone sends with you. */
 export const SERGEANT = { name: 'Brannoc', title: 'Watch Sergeant' };
 export const WARBOT = { name: 'Bulwark', title: 'Gift of the Enclave' };
+export const CHAMPION = { name: 'Gorr Stonebrow', title: 'Champion of the Horn', heir: 'Mordu Ashhorn' };
+/** Brokenchain's own smith, once the pens stand open, and what the runaways who come there are called. */
+export const SMITH = { name: 'Dele', title: 'Chainbreaker\'s Smith', shop: 'The Chain Forge' };
+export const RUNAWAY = 'Runaway';
 
-// ---------------------------------------------------------------- the crisis
-export const CRISIS = {
-  name: 'The Foundry Wakes',
-  /** how long the warning lasts, and the days between waves (game days) */
-  warnDays: 1,
-  waveDays: 0.8,
-  /** how strong each wave is against your band (see sim/crisis) */
-  waves: [0.75, 1.0, 1.3, 1.6, 2.0],
-  /** how long the foundry stays quiet once it has spent itself, before it wakes again */
-  quietDays: 8,
-  wake: '{foundry} has woken. Sentinels are walking out of it in step, and the Delvers say everything it makes is coming {where}.',
-  guide: 'Raise walls and turrets, and keep your people home when the waves come; or march on {foundry} and break the Foundry Mind, and it all stops.',
-  wave: 'The {nth} wave from {foundry} is marching on {target}.',
-  quiet: '{foundry} has gone quiet, spent. The Foundry Mind still sits in its hall, and until it is broken it will wake again.',
-  rewake: '{foundry} is counting again.',
-  end: 'The Foundry Mind is broken. The machines it made stop where they stand, and the Rustwastes are quiet for the first time in a year.',
-  reward: 'The free towns, the Concord and the Delvers send their thanks in chits, and the Mind\'s heart is yours.',
-  mind: { name: 'the Foundry Mind', title: 'It Counts' },
-};
+// ---------------------------------------------------------------- the crises
+/**
+ * A crisis: late in a game, or a while after a story ends, a power of the
+ * waste turns on the world. A day's warning; then waves sized to your band,
+ * each a little stronger than the last, until you bring down whoever leads
+ * them. All of it is said here; sim/crisis is the one engine that runs them,
+ * and only one is ever awake and marching at a time.
+ */
+export interface CrisisDef {
+  key: string;
+  name: string;
+  /** what wakes it: from this day of the game with a base of yours standing; or this long after a story's end */
+  wakeDay: number;
+  afterStory?: { key: string; days: number };
+  /** where its leader waits: a settlement, or the nearest site of a kind to your base (not the one a story had you clear) */
+  lair: { key?: string; kind?: string; notStory?: string };
+  /** the one to bring down: a beast or a person, made harder than their kind (hit points and skills), and what they carry */
+  leader: { name: string; title: string; animal?: string; scale?: number; person?: { faction: string; role: string; loadout: string; level: number; race?: string; female?: boolean }; hp: number; skill: number; items?: [string, number][] };
+  /** those who keep the leader */
+  guards: { n: number; faction: string; role: string; loadout?: string; level?: number; title: string };
+  /**
+   * What marches: people (a squad of the world's, by its key) up to so many a wave (a base and a number more
+   * each wave), and beasts sent with them, from a wave on (0, the first), up to so many (one only, or a base and more each wave).
+   */
+  wave: { spec: string; role: string; name: string; townName?: string; folk: [string, string]; people: [number, number]; beasts?: { species: string; from: number; cap: [number, number]; one?: boolean }[] };
+  /** what the waves march on: your base (every wave, or every other one); and towns, of these peoples or (with no base) the nearest lawful */
+  targets: { base: 'always' | 'alternate'; towns: { factions?: string[]; noBaseOnly?: boolean } };
+  /** how long the warning lasts and the days between waves; each wave's strength against your band; the rest it takes once five are spent */
+  warnDays: number;
+  waveDays: number;
+  waves: number[];
+  quietDays: number;
+  /** how much of a town's own defence a wave on it brings, besides its share of your band (on the first wave; a tenth more each) */
+  townShare: number;
+  /** and at most how many times the town's own strength it brings, so that a town left alone holds now and then, and your help decides it */
+  townCap?: number;
+  /** what is said ({lair}, {where}: one of `where`, without a base and with; {nth}, {target}) */
+  text: { wake: string; guide: string; wave: string; town?: string; quiet: string; rewake: string; end: string; reward: string; where: [string, string] };
+  reward: { money: number; items: [string, number][]; standing: [string, number][]; quiet?: [string, number]; title?: string };
+  deed: string;
+}
+
+export const CRISES: CrisisDef[] = [
+  {
+    key: 'foundry', name: 'The Foundry Wakes', wakeDay: 20, afterStory: { key: 'foundry', days: 1 }, deed: 'foundry_sleeps',
+    lair: { kind: 'foundry', notStory: 'foundry' },
+    leader: { name: 'the Foundry Mind', title: 'It Counts', animal: 'warbot', scale: 1.2, hp: 1.8, skill: 1.3, items: [['power_core', 1], ['maker_optic', 2]] },
+    guards: { n: 2, faction: 'machines', role: 'construct', loadout: 'machines_boss', title: 'Keeper of the Count' },
+    wave: {
+      spec: 'sentinels', role: 'patrol', name: 'Sentinels', townName: 'Foundry war party', folk: ['Sentinel', 'Sentinels'], people: [2, 1],
+      beasts: [{ species: 'warbot', from: 2, cap: [1, 0], one: true }, { species: 'sawdrone', from: 0, cap: [2, 2] }],
+    },
+    targets: { base: 'always', towns: { noBaseOnly: true } },
+    warnDays: 1, waveDays: 0.8, waves: [0.75, 1.0, 1.3, 1.6, 2.0], quietDays: 8, townShare: 0,
+    text: {
+      wake: '{lair} has woken. Sentinels are walking out of it in step, and the Delvers say everything it makes is coming {where}.',
+      guide: 'Raise walls and turrets, and keep your people home when the waves come; or march on {lair} and break the Foundry Mind, and it all stops.',
+      wave: 'The {nth} wave from {lair} is marching on {target}.',
+      quiet: '{lair} has gone quiet, spent. The Foundry Mind still sits in its hall, and until it is broken it will wake again.',
+      rewake: '{lair} is counting again.',
+      end: 'The Foundry Mind is broken. The machines it made stop where they stand, and the Rustwastes are quiet for the first time in a year.',
+      reward: 'The free towns, the Concord and the Delvers send their thanks in chits, and the Mind\'s heart is yours.',
+      where: ['for the towns nearby', 'for your base'],
+    },
+    reward: {
+      money: 8000, items: [['foundry_heart', 1], ['relic_core', 1]],
+      standing: [['drifters', 10], ['concord', 10], ['delvers', 10], ['hollows', 10], ['karuk', 10], ['thrum', 10], ['ironcoin', 10]],
+    },
+  },
+  {
+    key: 'muster', name: 'The Reaver Muster', wakeDay: 25, afterStory: { key: 'freeroad', days: 30 }, deed: 'muster_broken',
+    lair: { key: 'reaversroost' },
+    leader: { name: 'Grath Ashjaw', title: 'Warlord of the Muster', person: { faction: 'reavers', role: 'boss', loadout: 'reavers_boss', level: 54, race: 'karuk', female: false }, hp: 1.5, skill: 1.15, items: [['redrage', 2]] },
+    guards: { n: 3, faction: 'reavers', role: 'bandit', loadout: 'reavers', level: 34, title: 'Muster Guard' },
+    wave: { spec: 'reavers', role: 'bandit', name: 'Reaver warband', folk: ['Reaver', 'Reavers'], people: [4, 2], beasts: [{ species: 'dunehound', from: 1, cap: [1, 1] }] },
+    targets: { base: 'alternate', towns: { factions: ['drifters'] } },
+    warnDays: 1, waveDays: 0.7, waves: [0.6, 0.75, 0.9, 1.05, 1.2], quietDays: 6, townShare: 0.5, townCap: 1.2,
+    text: {
+      wake: 'War drums at {lair}: Grath Ashjaw has come down out of the Ash and called the muster. Every Reaver on the Flats is answering, and the warbands are coming {where}.',
+      guide: 'Help the free towns hold their walls when the warbands come, and keep your own; or go into {lair} and bring down Grath Ashjaw, and the muster breaks.',
+      wave: 'A Reaver warband, the {nth} of the muster, is marching from {lair} on {target}.',
+      town: 'The free towns call for help: {target} will not hold alone.',
+      quiet: 'The muster has spent itself on the walls, for now. Grath Ashjaw still holds {lair}, and the drums will start again.',
+      rewake: 'The drums at {lair} have started again.',
+      end: 'Grath Ashjaw is down, and the muster breaks. The warbands melt back into the Flats, every chief of them sure the next warlord will be them.',
+      reward: 'The free towns pay what they promised, and the roads are quiet for a season.',
+      where: ['for the free towns', 'for the free towns and your base'],
+    },
+    reward: {
+      money: 6000, items: [['relic_core', 1]],
+      standing: [['drifters', 15], ['ironcoin', 10], ['concord', 5], ['unchained', 5]],
+      quiet: ['reavers', 45], title: 'Breaker of the Muster',
+    },
+  },
+];
+export const CRISIS_DEF: Record<string, CrisisDef> = Object.fromEntries(CRISES.map((c) => [c.key, c]));
+/** The first of them, the Foundry (its numbers, for what still reads them so). */
+export const CRISIS = CRISES[0];
