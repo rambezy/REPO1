@@ -2,10 +2,9 @@
 // places with people as the player approaches.
 import { G } from '../state';
 import { S } from '../sim/ctx';
-import { buildTown } from '../world/towns';
-import { buildSite } from '../world/sites';
-import { SETTLEMENT } from '../content/layout';
-import { RNG, hash3 } from '../core/rng';
+import { buildSeedWorld } from '../world/seedworld';
+import { peekUid } from '../sim/inventory';
+import { markBase, noteSeed } from '../sim/save';
 import { populateTown, populateSite } from '../sim/populate';
 import { structuresIn, townRings } from '../sim/structures';
 import { anchors } from '../sim/sim';
@@ -13,24 +12,18 @@ import { tickExplore } from '../ui/map';
 import { emit } from '../core/events';
 import type { Char } from '../sim/char';
 
-export function buildStructures() {
-  const W = G.W, T = G.T;
+/**
+ * The world its seed makes: ore, towns and the places between. In a game
+ * (not the title's backdrop) it is remembered as the base that saves are told
+ * against: a save keeps only what differs from it, and a load builds it again.
+ */
+export function seedWorld(game = true) {
+  const W = G.W, id0 = W.nextId, uid0 = peekUid();
   G.nav.structures = structuresIn;
   G.nav.rings = townRings;
-  for (const site of T.sites) {
-    const rng = new RNG(hash3(site.seed, 1234, 5));
-    if (site.kind === 'town') {
-      const def = SETTLEMENT[site.settlement!];
-      const info = buildTown(W, T, site, def, hash3(site.seed, 4321, 1));
-      W.towns.set(site.id, info);
-    } else buildSite(W, T, site, rng);
-  }
-  W.rebuildObjHash();
-}
-
-/** Rebuilds town layouts after loading a save (they are deterministic). */
-export function rebuildTownInfo() {
-  // Town layouts live in the saved objects; TownInfo is only needed to populate.
+  buildSeedWorld(W, G.T);
+  if (game) markBase(W, id0, uid0);
+  else noteSeed(W, id0, uid0); // (what this version makes, so that saves told against another base are known for what they are)
 }
 
 let popT = 0;

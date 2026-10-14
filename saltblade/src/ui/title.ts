@@ -15,7 +15,7 @@ import { Char } from '../sim/char';
 import { Look } from '../sim/look';
 import { makePlayerPerson, NewGameSetup } from '../game/newgame';
 import { startNewGame, loadSlot, loadData, backdropWorld } from '../game/session';
-import { listSaves, deleteSave, importSaveFile, importText, SaveMeta, fitsWorld, slotLabel, safeToResume } from '../sim/save';
+import { listSaves, deleteSave, importSaveFile, importText, SaveMeta, fitsWorld, misfit, slotLabel, safeToResume } from '../sim/save';
 import { input } from '../core/input';
 import { keymap, ACTIONS, ACTION, ActionDef, ActionId, keyLabel, bindingOf, helpRows } from '../core/keys';
 import { DAY, HOUR } from '../sim/clock';
@@ -402,7 +402,7 @@ export async function renderLoadList(el: HTMLElement, onLoad: (slot: string) => 
     const when = new Date(m.savedAt);
     const rowEl = h('div', { class: 'saverow' },
       h('div', { class: 'svslot', 'data-slot': m.slot }, slotLabel(m.slot)),
-      h('div', { class: 'svinfo' }, h('b', {}, m.name), h('div', { class: 'dim' }, fitsWorld(m) ? `Day ${m.day} · ${m.chars} ${m.chars === 1 ? 'person' : 'people'} · ${m.money.toLocaleString()} chits · ${m.place}` : `Day ${m.day} · made before the waste changed shape; it can no longer be loaded`)),
+      h('div', { class: 'svinfo' }, h('b', {}, m.name), h('div', { class: 'dim' }, fitsWorld(m) ? `Day ${m.day} · ${m.chars} ${m.chars === 1 ? 'person' : 'people'} · ${m.money.toLocaleString()} chits · ${m.place}` : `Day ${m.day} · ${misfit(m)}; it can no longer be loaded`)),
       h('div', { class: 'svwhen dim' }, when.toLocaleDateString() + ' ' + when.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })),
     );
     const load = h('button', { class: 'tbtn small primary' }, 'Load');

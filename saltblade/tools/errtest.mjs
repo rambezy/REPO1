@@ -3,10 +3,14 @@
 // after "Keep playing" stays quiet; a part that keeps failing is switched off;
 // errors outside the main loop are caught too; a copy of the game goes to the
 // Emergency slot; "Load last autosave" works; the picture can go away and come
-// back; and a browser without WebGL is told so instead of hanging.
+// back; a browser without WebGL is told so instead of hanging; and an
+// autosave in a mid-game world does not hold up the game (it is taken a few
+// milliseconds at a time, and the longest slice is timed: what the frame it
+// lands in waits for).
 // Usage: with the dev server running, node tools/errtest.mjs
 //   (URL=http://localhost:5180/ by default; OUT=tools/out for the screenshots)
 import { chromium } from 'playwright';
+import os from 'node:os';
 const base = (process.env.URL || 'http://localhost:5180/').replace(/#.*$/, '');
 const out = process.env.OUT || 'tools/out';
 const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
@@ -120,6 +124,46 @@ await page.screenshot({ path: `${out}/gl_back.png`, timeout: 120000 });
 const escaped = pageErrors.filter((m) => !/A test error in a click|A test rejection|one bad frame/.test(m));
 check('no error escaped to the page but the ones thrown on purpose', escaped.length === 0, escaped.slice(0, 3).join(' | '));
 await page.close();
+
+// ---------------------------------------------------------------- an autosave in a mid-game world
+{
+  const mid = await browser.newPage({ viewport: { width: 1280, height: 760 } });
+  await mid.goto(`${base}#debug,play`);
+  await mid.waitForFunction(() => window.__sb && window.__sb.G.mode === 'play', null, { timeout: 180000 });
+  const world = await mid.evaluate(async () => {
+    const { G } = window.__sb;
+    const pop = await import('/src/sim/populate.ts');
+    // the towns and places within a long day's walk peopled, as a player who has travelled would find them
+    const lead = G.W.playerChars()[0];
+    for (const s of G.T.sites) { if (Math.hypot(s.x - lead.x, s.z - lead.z) > 3500 || G.W.populated.has(s.id)) continue; if (s.kind === 'town') pop.populateTown(G.W, G.W.towns.get(s.id)); else pop.populateSite(G.W, s); }
+    window.__save = await import('/src/sim/save.ts');
+    window.__sess = await import('/src/game/session.ts');
+    return { chars: G.W.chars.size, objs: G.W.objs.size };
+  });
+  // (the world lives on a while, as it would before an autosave comes: people move, and what was kept goes stale;
+  // what a save will check is gone over now and then meanwhile, as in play)
+  await wait(25000);
+  // each autosave: gone over between frames, then the game at one moment taken a few milliseconds at a time; what a frame
+  // can be held up by is the longest slice (timed in the page, start to end)
+  const spikes = [];
+  let kb = 0;
+  for (let i = 0; i < 4; i++) {
+    const ok = await mid.evaluate(() => window.__sess.autosave());
+    const slices = await mid.evaluate(() => [...window.__save.lastHold]);
+    if (!ok || slices.length < 2) break;
+    spikes.push(Math.max(...slices));
+    await wait(4000);
+  }
+  kb = await mid.evaluate(async () => { const m = (await window.__save.listSaves()).find((x) => x.slot.startsWith('auto')); const d = m && await window.__save.readSave(m.slot); return d ? Math.round(JSON.stringify(d).length / 1024) : 0; });
+  const med = (a) => [...a].sort((x, y) => x - y)[a.length >> 1];
+  // (timed by the clock: on a machine busy with other work the page's thread waits its turn, and every time is longer;
+  // there it is judged by the quickest of the four, the nearest to what the save itself takes)
+  const load = os.loadavg()[0], cores = os.cpus().length, busy = load > cores * 1.25;
+  check('an autosave in a mid-game world holds the game for well under a frame', spikes.length === 4 && (busy ? Math.min(...spikes) : med(spikes)) < 16,
+    `${world.chars} people, ${world.objs} things, ${kb} KB; the longest slice of each: ${spikes.map((x) => x.toFixed(1)).join(', ')} ms`
+    + (busy ? `; the machine is busy (load ${load.toFixed(1)} on ${cores} cores): judged by the quickest` : ''));
+  await mid.close();
+}
 
 // ---------------------------------------------------------------- no WebGL at all
 const bare = await browser.newPage({ viewport: { width: 1280, height: 760 } });

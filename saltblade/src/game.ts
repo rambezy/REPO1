@@ -53,7 +53,7 @@ import { WeatherFx } from './render/weatherFx';
 import { Decals } from './render/decals';
 import { Particles } from './render/particles';
 import { highLevel } from './sim/drugs';
-import { takeReloadStash } from './sim/save';
+import { takeReloadStash, installSaveGuard, holding } from './sim/save';
 import { installErrorHandlers, hasWebGL2, noWebGL, showFatal, watchGraphics, system, guard, report, injectFailure, systemReport, System } from './game/errors';
 import { impactScale } from './render/impact';
 
@@ -76,6 +76,7 @@ function loadingScreen() {
 }
 
 export async function boot() {
+  installSaveGuard(); // (first of all: input finishes an autosave under way before anything else hears of it)
   installErrorHandlers();
   // nothing to be done without WebGL: say so now, not after the world is made
   if (!hasWebGL2()) { noWebGL(); return; }
@@ -229,7 +230,9 @@ function step(dt: number) {
   const t0 = performance.now();
   G.perf = perf;
   G.realTime += dt;
-  const simDt = dt * G.speed * impactScale(dt); // a big hit holds the world for a few frames
+  // a big hit holds the world for a few frames; an autosave under way, for the moment it takes (its slices are the world at one moment)
+  const held = holding();
+  const simDt = held ? 0 : dt * G.speed * impactScale(dt);
   G.simTime += simDt;
   // the sim runs in small steps so fast-forward stays stable
   let left = simDt;
@@ -243,13 +246,13 @@ function step(dt: number) {
   perf.sim = ema(perf.sim, t1 - t0);
   let tp = performance.now();
   const lap = (k: 'pop' | 'chars' | 'structs' | 'terrain' | 'props' | 'misc') => { const n = performance.now(); perf[k] = ema(perf[k], n - tp); tp = n; };
-  guard(PART.pop, tickPopulation, dt);
+  if (!held) guard(PART.pop, tickPopulation, dt);
   lap('pop');
   guard(PART.autosave, tickAutosave, dt);
   if (G.mode === 'title') guard(PART.title, tickTitle, dt);
   guard(PART.audio, tickAudio, dt);
-  guard(PART.hints, tickHints, dt);
-  guard(PART.gameOver, tickGameOver, dt);
+  if (!held) guard(PART.hints, tickHints, dt);
+  if (!held) guard(PART.gameOver, tickGameOver, dt);
   guard(PART.camera, moveCamera, dt);
   guard(PART.sky, skyAndWeather, dt);
   lap('misc');

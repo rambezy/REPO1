@@ -3,6 +3,8 @@
 // to put furniture where the town will not let you build.
 import { S } from './ctx';
 import { WObj } from './objects';
+import type { World } from './world';
+import type { Terrain } from '../world/terrain';
 import { RNG, hash3 } from '../core/rng';
 import { toWorld, BuildingData, TownInfo } from '../world/towns';
 import { FACTION } from '../content/factions';
@@ -11,9 +13,11 @@ import { emit } from '../core/events';
 const SELLERS = ['drifters', 'concord', 'delvers', 'hollows', 'karuk', 'unchained'];
 const USES = ['house', 'shack', 'house_big', 'hut', 'farmhouse'];
 
-/** Picks a few empty houses in each town to put up for sale (new worlds only). */
-export function markHousesForSale() {
-  const W = S.W;
+/**
+ * Picks a few empty houses in each town to put up for sale: part of what the
+ * land's seed makes (world/seedworld.ts), the same every time.
+ */
+export function markHousesForSale(W: World = S.W, T: Terrain = S.T) {
   for (const [siteId, info] of W.towns as Map<number, TownInfo>) {
     const fac = info.site.faction;
     if (!fac || !SELLERS.includes(fac)) continue;
@@ -28,7 +32,7 @@ export function markHousesForSale() {
       const hw = d.w / 2, hd = d.d / 2;
       const [lx, lz] = door.side === 's' ? [door.off + 1.4, hd + 0.9] : door.side === 'n' ? [door.off + 1.4, -hd - 0.9] : door.side === 'e' ? [hw + 0.9, door.off + 1.4] : [-hw - 0.9, door.off + 1.4];
       const [wx, wz] = toWorld(b, lx, lz);
-      W.addObj({ id: 0, kind: 'sign', def: 'forsale', x: wx, z: wz, y: S.T.heightAt(wx, wz), rot: b.rot, owner: fac, site: siteId, parent: 0, data: { building: b.id, price } });
+      W.addObj({ id: 0, kind: 'sign', def: 'forsale', x: wx, z: wz, y: T.heightAt(wx, wz), rot: b.rot, owner: fac, site: siteId, parent: 0, data: { building: b.id, price } });
       // nobody lives there
       info.beds = info.beds.filter((id) => W.objs.get(id)?.parent !== b.id);
     }

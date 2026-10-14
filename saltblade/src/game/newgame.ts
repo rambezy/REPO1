@@ -8,7 +8,7 @@ import { RNG } from '../core/rng';
 import { SETTLEMENT } from '../content/layout';
 import { WORLD } from '../world/consts';
 import { Char } from '../sim/char';
-import { buildStructures } from './world';
+import { seedWorld } from './world';
 import { SCENARIO, Scenario, ScenarioPerson } from '../content/scenarios';
 import { Look } from '../sim/look';
 import { RACE } from '../content/races';
@@ -22,15 +22,8 @@ import { ITEM } from '../content/items';
 import { makeItem } from '../sim/inventory';
 import { World } from '../sim/world';
 import { postBounties } from '../sim/bounties';
-import { markHousesForSale } from '../sim/property';
 import { beginObjectives, firstGoalSite, welcomingTown } from '../ui/objectives';
 import { clamp } from '../core/math';
-
-export function placeOres() {
-  for (const o of G.T.ores) {
-    G.W.addObj({ id: 0, kind: 'ore', def: o.kind, x: o.x, z: o.z, y: o.y, rot: o.rot, owner: '', site: 0, parent: 0, data: { left: Math.round(300 * o.size), size: o.size } });
-  }
-}
 
 export function playerSquad(name = 'Wanderers'): Squad {
   const s = new Squad();
@@ -186,10 +179,8 @@ export function newGame(setup: NewGameSetup | string) {
   const sc = SCENARIO[su.scenario] ?? SCENARIO.wanderer;
   const rng = new RNG(S.rng.next() * 1e9);
   if (!su.people.length) su.people = defaultPeople(sc, rng);
-  placeOres();
-  buildStructures();
+  seedWorld(); // (and the houses for sale)
   postBounties();
-  markHousesForSale();
   S.clock.t = DAY + 7.5 * HOUR;
   W.factionName = su.faction.trim() || sc.squad;
   W.money = sc.money;

@@ -4,9 +4,9 @@ import { G } from '../state';
 import { S } from '../sim/ctx';
 import { World } from '../sim/world';
 import { sel, setSpeed } from './control';
-import { newGame, NewGameSetup, placeOres } from './newgame';
-import { buildStructures } from './world';
-import { serialize, apply, writeSave, readSave, listSaves, damage, danger, nextAutoSlot, AUTO_SLOTS, SaveMeta, SAVE_VERSION, WORLD_SHAPE } from '../sim/save';
+import { newGame, NewGameSetup } from './newgame';
+import { seedWorld } from './world';
+import { serialize, apply, writeSave, readSave, listSaves, damage, danger, nextAutoSlot, keepWarm, AUTO_SLOTS, SaveMeta, SAVE_VERSION, WORLD_SHAPE, SaveMisfit } from '../sim/save';
 import { structuresIn, townRings } from '../sim/structures';
 import { emit } from '../core/events';
 import { closeTop } from '../ui/dom';
@@ -45,8 +45,7 @@ export function resetWorld() {
 export function backdropWorld() {
   resetWorld();
   S.rng = new RNG((Date.now() & 0xffff) + 1);
-  placeOres();
-  buildStructures();
+  seedWorld(false);
   G.W.flags.backdrop = true;
 }
 
@@ -59,6 +58,7 @@ export function startNewGame(setup: NewGameSetup) {
   G.autosaveT = 0;
   heldT = 0;
   unsaved = 0;
+  keepWarm(); // (so the first save is as quick as the rest)
   emit('game:start');
 }
 
@@ -82,18 +82,28 @@ export function saveMeta(): Omit<SaveMeta, 'slot' | 'savedAt'> {
 let unsaved = 0;
 export const unsavedTime = () => unsaved;
 
-export async function saveGame(slot: string): Promise<boolean> {
+export async function saveGame(slot: string, inSlices = false): Promise<boolean> {
   if (G.mode !== 'play') return false;
-  const ok = await writeSave(slot, slot === 'emergency' ? { ...saveMeta(), safe: false } : saveMeta(), sessionExtra());
+  const take = () => writeSave(slot, slot === 'emergency' ? { ...saveMeta(), safe: false } : saveMeta(), sessionExtra(), inSlices);
+  let ok = await take();
+  // (another game was loaded while this one was being taken: the one now in play is saved instead)
+  if (ok === null && G.mode === 'play') ok = await take();
   if (ok && slot !== 'emergency') unsaved = 0;
-  if (slot !== 'emergency') S.fx.notice(ok ? (AUTO_SLOTS.includes(slot) ? 'Autosaved.' : 'Game saved.') : 'Could not save: storage is unavailable.', ok ? 'info' : 'bad');
-  return ok;
+  if (slot !== 'emergency' && ok !== null) S.fx.notice(ok ? (AUTO_SLOTS.includes(slot) ? 'Autosaved.' : 'Game saved.') : 'Could not save: storage is unavailable.', ok ? 'info' : 'bad');
+  return !!ok;
 }
 
-/** Saves into whichever of the three autosave slots is due (never over the last good one, from a bad moment). */
+/**
+ * Saves into whichever of the three autosave slots is due (never over the
+ * last good one, from a bad moment). What the save takes as it stands is gone
+ * over first, between frames, so it finds little to write afresh; then the
+ * game at one moment is taken a few milliseconds at a time, the world held
+ * meanwhile, so the autosave never holds up a frame for long.
+ */
 export async function autosave(): Promise<boolean> {
   const saves = await listSaves().catch(() => [] as SaveMeta[]);
-  return saveGame(nextAutoSlot(saves, quiet()));
+  if (G.mode === 'play') { await keepWarm(); await new Promise((r) => setTimeout(r, 0)); }
+  return saveGame(nextAutoSlot(saves, quiet()), true);
 }
 
 export function sessionExtra() {
@@ -117,6 +127,8 @@ export function loadData(data: any): string | null {
     apply(data, W);
   } catch (e) {
     console.error(e);
+    // (made by a version that laid out the towns otherwise: what it left unwritten is not what this one builds)
+    if (e instanceof SaveMisfit) return 'That save was made by another version of the game, whose towns are laid out differently, and no longer fits.';
     return 'The save is damaged and could not be loaded.';
   }
   installWorld(W);
@@ -136,6 +148,7 @@ export function loadData(data: any): string | null {
   G.autosaveT = 0;
   heldT = 0;
   unsaved = 0;
+  keepWarm();
   emit('game:start');
   S.fx.notice(`Loaded ${G.W.factionName}, day ${S.clock.day}.`, 'good');
   return null;
@@ -158,9 +171,13 @@ const HOLD_MAX = 10 * 60;
  * interval, ten minutes at most, it saves anyway. Such a save is marked as
  * made at a bad moment and never takes the place of the last good autosave.
  */
+let warmT = 0;
 export function tickAutosave(dt: number) {
   if (G.mode !== 'play' || !G.speed) return;
   unsaved += dt;
+  // what a save takes as it stands is kept up to date between frames, so saving never holds up the game
+  warmT += dt;
+  if (warmT > 10) { warmT = 0; keepWarm(); }
   if (G.settings?.autosave === 0) return;
   G.autosaveT = (G.autosaveT ?? 0) + dt;
   const every = (G.settings?.autosave ?? 8) * 60;
